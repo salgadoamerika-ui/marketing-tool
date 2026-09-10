@@ -1,0 +1,263 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --font-sans: var(--app-font-sans);
+  --font-mono: var(--app-font-mono);
+  --radius-lg: 1rem;
+}
+
+:root {
+  --background: 36 33% 93%;
+  --foreground: 203 38% 16%;
+  --card: 36 33% 95%;
+  --card-foreground: 203 38% 16%;
+  --border: 33 19% 80%;
+  --input: 33 19% 80%;
+  --ring: 167 37% 31%;
+  --primary: 167 37% 31%;
+  --primary-foreground: 36 33% 95%;
+  --secondary: 36 23% 88%;
+  --muted: 36 22% 87%;
+  --muted-foreground: 203 14% 43%;
+  --accent: 14 62% 58%;
+  --accent-foreground: 203 38% 16%;
+  --app-font-sans: 'Manrope', ui-sans-serif, sans-serif;
+  --app-font-mono: 'DM Mono', ui-monospace, monospace;
+  --radius: 1rem;
+  --shadow-soft: 0 24px 80px rgba(31, 56, 55, 0.12);
+}
+
+.dark {
+  --background: 203 38% 16%;
+  --foreground: 36 33% 93%;
+  --card: 203 35% 20%;
+  --card-foreground: 36 33% 93%;
+  --border: 203 22% 29%;
+  --input: 203 22% 29%;
+  --ring: 157 39% 63%;
+  --primary: 157 39% 63%;
+  --primary-foreground: 203 38% 16%;
+  --secondary: 203 28% 24%;
+  --muted: 203 28% 24%;
+  --muted-foreground: 36 18% 72%;
+  --accent: 14 62% 62%;
+  --accent-foreground: 203 38% 16%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    min-width: 320px;
+    background: hsl(var(--background));
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    margin: 0;
+  }
+}
+
+@keyframes welcome-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes drift {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+.welcome-in {
+  animation: welcome-in 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.welcome-in-delay {
+  animation: welcome-in 900ms 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ambient-drift {
+  animation: drift 10s ease-in-out infinite;
+}
+
+.greeting-page {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-height: 100dvh;
+  width: 100%;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 78% 20%, rgba(219, 116, 79, 0.14), transparent 23rem),
+    radial-gradient(circle at 14% 82%, rgba(55, 111, 98, 0.1), transparent 28rem),
+    hsl(var(--background));
+}
+
+.greeting-page::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.88' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+  content: '';
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.greeting-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.48;
+  background-image:
+    linear-gradient(rgba(31, 56, 55, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31, 56, 55, 0.055) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, transparent, black 22%, black 78%, transparent);
+  pointer-events: none;
+}
+
+.greeting-content {
+  position: relative;
+  z-index: 2;
+  width: min(92vw, 940px);
+  padding: 9rem 1.5rem 8rem;
+  text-align: center;
+}
+
+.greeting-title {
+  max-width: 860px;
+  margin: 0 auto;
+  color: hsl(var(--foreground));
+  font-size: clamp(2.9rem, 8.25vw, 7.5rem);
+  font-weight: 700;
+  letter-spacing: -0.075em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.greeting-title::after {
+  display: block;
+  width: 4.25rem;
+  height: 0.25rem;
+  margin: 2.5rem auto 0;
+  border-radius: 999px;
+  background: hsl(var(--accent));
+  content: '';
+}
+
+.greeting-mark {
+  position: absolute;
+  top: clamp(2rem, 8vw, 6rem);
+  left: clamp(1.5rem, 7vw, 7rem);
+  z-index: 2;
+  display: flex;
+  width: 3rem;
+  height: 3rem;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: 0.28rem;
+  transform: rotate(-12deg);
+}
+
+.greeting-mark span {
+  display: block;
+  width: 1.24rem;
+  height: 1.24rem;
+  border-radius: 0.18rem;
+  background: hsl(var(--primary));
+}
+
+.greeting-mark span:nth-child(2) {
+  background: hsl(var(--accent));
+}
+
+.greeting-mark span:nth-child(3) {
+  margin-left: 1.52rem;
+  background: hsl(var(--foreground));
+}
+
+.greeting-orbit {
+  position: absolute;
+  z-index: 1;
+  border: 1px solid rgba(55, 111, 98, 0.18);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.greeting-orbit-one {
+  top: -15rem;
+  right: -10rem;
+  width: min(58vw, 46rem);
+  aspect-ratio: 1;
+}
+
+.greeting-orbit-two {
+  bottom: -20rem;
+  left: -16rem;
+  width: min(60vw, 52rem);
+  aspect-ratio: 1;
+  border-color: rgba(219, 116, 79, 0.16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-in,
+  .welcome-in-delay,
+  .ambient-drift {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .greeting-content {
+    padding: 7rem 1.25rem 6rem;
+  }
+
+  .greeting-title {
+    font-size: clamp(2.7rem, 13vw, 4.5rem);
+    letter-spacing: -0.065em;
+  }
+
+  .greeting-title::after {
+    margin-top: 2rem;
+  }
+
+  .greeting-mark {
+    top: 2rem;
+    left: 1.5rem;
+    transform: scale(0.78) rotate(-12deg);
+    transform-origin: top left;
+  }
+
+  .greeting-grid {
+    background-size: 52px 52px;
+  }
+}
