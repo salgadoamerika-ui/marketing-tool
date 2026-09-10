@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive Marketing Studio — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,300;1,9..144,400;1,9..144,500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --plum:#3E3238; --plum-2:#6E5560; --rose:#A84A6E; --rose-soft:#E4C4D2;
+    --wash:#F8EDF1; --champagne:#FBF6F2; --champagne-2:#F6EDE9; --line:#F0E6E4; --line-2:#E9DBDD;
+    --ink:#3E3238; --ink-soft:#9A8E94;
+    --surface:#FFFDFB; --tint:#F8EDF1; --accent:#A84A6E; --accent-deep:#8A3A5A;
+    --good:#4F7058; --good-bg:#E6EFE8; --good-soft:#8FB89C;
+    --warn:#8A6A32; --warn-bg:#F6ECDD; --warn-soft:#D2B98C;
+    --ct-announce-bg:#F7E5EC; --ct-announce-tx:#9E3F61;
+    --ct-inside-bg:#EFE7F0;   --ct-inside-tx:#6E5580;
+    --ct-book-bg:#E6EFE8;     --ct-book-tx:#4F7058;
+    --ct-price-bg:#F6ECDD;    --ct-price-tx:#8A6A32;
+    --ct-proof-bg:#F9E6EE;    --ct-proof-tx:#A6486E;
+    --ct-insight-bg:#E9EAF2;  --ct-insight-tx:#565E7C;
+    --ct-recap-bg:#F2E9EF;    --ct-recap-tx:#6E5A6A;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--champagne);color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.6;}
+  .hidden{display:none !important;}
+  .app{max-width:1600px;margin:0 auto;padding:32px 48px 60px;}
+
+  /* ---- shared tabs ---- */
+  .tabbar{display:flex;align-items:flex-end;gap:5px;margin-bottom:26px;
+    border-bottom:2px solid var(--plum);padding-left:4px;}
+  .tab{padding:7px 18px;font-size:12.5px;font-weight:500;color:var(--ink-soft);
+    display:flex;align-items:center;gap:7px;background:#EFE0E6;
+    border:1px solid var(--line-2);border-bottom:none;border-radius:9px 9px 0 0;
+    position:relative;bottom:-2px;transition:background .15s;cursor:pointer;}
+  .tab:hover{background:#F5E9EE;}
+  .tab .dot{width:7px;height:7px;border-radius:50%;}
+  .tab.active{color:#fff;background:var(--plum);border-color:var(--plum);padding-bottom:9px;}
+  .tab.add{background:none;border:none;color:var(--rose);font-size:17px;font-weight:400;padding:6px 12px;bottom:0;}
+  .tab.add:hover{background:none;color:var(--plum-2);}
+  .bell{margin-left:auto;position:relative;bottom:2px;width:36px;height:36px;border-radius:10px;
+    background:#fff;border:1px solid var(--line-2);display:flex;align-items:center;justify-content:center;
+    color:var(--plum);font-size:17px;cursor:pointer;}
+  .bell:hover{background:var(--wash);}
+  .bell .count{position:absolute;top:-5px;right:-5px;background:var(--rose);color:#fff;font-size:10px;font-weight:500;
+    min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;}
+  .bell .count.zero{display:none;}
+  .reminder{background:var(--tint);color:var(--plum);border:1px solid var(--rose-soft);border-radius:14px;padding:14px 18px;margin-bottom:20px;
+    display:flex;align-items:center;gap:14px;animation:slidein .5s cubic-bezier(.2,.7,.2,1);}
+  @keyframes slidein{from{opacity:0;transform:translateY(-12px);}to{opacity:1;transform:translateY(0);}}
+  .reminder.leaving{animation:slideout .4s ease forwards;}
+  @keyframes slideout{to{opacity:0;transform:translateY(-12px);height:0;padding:0;margin:0;overflow:hidden;}}
+  .reminder .ic{width:36px;height:36px;border-radius:10px;background:var(--wash);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;}
+  .reminder .tx{flex:1;}
+  .reminder .tx .a{font-family:'Fraunces';font-style:italic;font-size:16px;color:var(--plum);}
+  .reminder .tx .b{font-size:12px;color:var(--ink-soft);margin-top:1px;}
+  .reminder .acts{display:flex;gap:8px;align-items:center;}
+  .reminder .yes{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12.5px;font-weight:500;cursor:pointer;}
+  .reminder .no{background:none;border:1px solid var(--line-2);color:var(--ink-soft);border-radius:8px;padding:8px 14px;font-size:12.5px;cursor:pointer;}
+  .reminder .dismiss{color:var(--accent);font-size:16px;cursor:pointer;margin-left:4px;}
+  .notif-panel{position:fixed;top:76px;right:34px;width:340px;background:#fff;border:1px solid var(--line-2);
+    border-radius:16px;box-shadow:0 20px 50px rgba(28,10,34,.24);z-index:55;overflow:hidden;}
+  .notif-panel .nh{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}
+  .notif-panel .nh h3{font-family:'Fraunces';font-style:italic;font-weight:500;font-size:17px;color:var(--plum);margin:0;}
+  .notif-panel .nh .cl{color:var(--ink-soft);font-size:16px;cursor:pointer;}
+  .notif-list{max-height:340px;overflow:auto;}
+  .notif-item{display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);}
+  .notif-item:last-child{border-bottom:none;}
+  .notif-item .ni{width:32px;height:32px;border-radius:9px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;}
+  .notif-item .nt{flex:1;}
+  .notif-item .nt .a{font-size:13px;font-weight:500;color:var(--plum);line-height:1.3;}
+  .notif-item .nt .b{font-size:11.5px;color:var(--ink-soft);margin-top:2px;line-height:1.4;}
+  .notif-item .nt .open{font-size:11.5px;color:var(--rose);font-weight:500;cursor:pointer;margin-top:6px;display:inline-block;}
+  .notif-empty{padding:34px 18px;text-align:center;color:var(--ink-soft);font-size:12.5px;font-style:italic;}
+
+  /* why-this-move reasoning popover */
+  #why-pop{position:fixed;z-index:80;width:300px;background:var(--surface);border:1px solid var(--rose-soft);
+    border-radius:14px;box-shadow:0 18px 44px rgba(62,50,56,.22);overflow:hidden;}
+  #why-pop .wh{background:var(--tint);padding:13px 16px;border-bottom:1px solid var(--rose-soft);display:flex;align-items:center;gap:9px;}
+  #why-pop .wh .tag{font-size:10px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--wash);color:var(--accent-deep);}
+  #why-pop .wh .cl{margin-left:auto;color:var(--accent);font-size:15px;cursor:pointer;}
+  #why-pop .wb{padding:14px 16px;}
+  #why-pop .wtitle{font-family:'Fraunces';font-style:italic;font-size:16px;color:var(--plum);margin:0 0 8px;}
+  #why-pop .wrow{display:flex;gap:9px;margin-bottom:11px;font-size:12.5px;color:var(--plum-2);line-height:1.5;}
+  #why-pop .wrow:last-child{margin-bottom:0;}
+  #why-pop .wrow .wi{color:var(--accent);flex:none;font-weight:700;}
+  #why-pop .wrow b{color:var(--plum);font-weight:500;}
+  .cc.sug{cursor:pointer;}
+  .cc.justadded{animation:pop .6s cubic-bezier(.2,.7,.2,1);}
+  @keyframes pop{0%{opacity:0;transform:scale(.8);}60%{transform:scale(1.06);}100%{opacity:1;transform:scale(1);}}
+  .change-banner{background:var(--good-bg);color:var(--good);border:1px solid var(--good-soft);border-radius:14px;
+    padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:14px;animation:slidein .5s cubic-bezier(.2,.7,.2,1);}
+  .change-banner .ic{width:34px;height:34px;border-radius:10px;background:#fff;color:var(--good);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;}
+  .change-banner .a{font-family:'Fraunces';font-style:italic;font-size:16px;color:var(--good);}
+  .change-banner .b{font-size:12px;color:var(--good);opacity:.85;margin-top:1px;}
+  .change-banner .cl{margin-left:auto;color:var(--good);font-size:16px;cursor:pointer;}
+
+  /* ---- shared masthead + controls ---- */
+  .masthead{text-align:center;margin-bottom:8px;}
+  .eyebrow{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--rose-soft);font-weight:500;margin:0 0 10px;}
+  .masthead h1{font-family:'Fraunces';font-weight:400;font-size:64px;line-height:1;color:var(--plum);margin:0;letter-spacing:-.01em;}
+  .masthead h1.it{font-style:italic;}
+  .navarrow{background:var(--surface);border:1px solid var(--line-2);color:var(--accent);width:38px;height:38px;
+    border-radius:50%;font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s;}
+  .navarrow:hover{background:var(--wash);border-color:var(--rose-soft);}
+  .navarrow.sm{width:26px;height:26px;font-size:15px;}
+  /* walkthrough tour */
+  #tour-overlay{position:fixed;inset:0;z-index:85;background:rgba(62,50,56,.45);}
+  #tour-spot{position:absolute;border-radius:12px;box-shadow:0 0 0 9999px rgba(62,50,56,.55);transition:all .4s cubic-bezier(.2,.7,.2,1);pointer-events:none;}
+  #tour-card{position:absolute;width:290px;background:var(--surface);border-radius:14px;box-shadow:0 18px 44px rgba(62,50,56,.28);padding:18px 20px;transition:all .4s cubic-bezier(.2,.7,.2,1);}
+  #tour-card .tk{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:500;}
+  #tour-card h4{font-family:'Fraunces';font-style:italic;font-weight:500;font-size:18px;color:var(--plum);margin:6px 0 6px;}
+  #tour-card p{font-size:12.5px;color:var(--ink-soft);line-height:1.55;margin:0 0 14px;}
+  #tour-card .tnav{display:flex;justify-content:space-between;align-items:center;}
+  #tour-card .tdots{display:flex;gap:5px;}
+  #tour-card .tdots i{width:6px;height:6px;border-radius:50%;background:var(--line-2);display:block;}
+  #tour-card .tdots i.on{background:var(--accent);}
+  #tour-card .tbtns{display:flex;gap:8px;}
+  #tour-card .tskip{background:none;border:none;color:var(--ink-soft);font-size:12px;cursor:pointer;}
+  #tour-card .tnext{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12.5px;font-weight:500;cursor:pointer;}
+  .rule{display:flex;align-items:center;justify-content:center;gap:16px;margin:16px 0 4px;}
+  .rule::before,.rule::after{content:"";height:1px;width:110px;background:var(--line-2);}
+  .rule .meta{font-size:13px;color:var(--ink-soft);letter-spacing:.04em;}
+  .rule .meta b{color:var(--plum);font-weight:500;}
+  .controls{display:flex;justify-content:center;gap:12px;margin:20px 0 30px;}
+  .seg{display:inline-flex;border:1px solid var(--line-2);border-radius:999px;overflow:hidden;background:#fff;}
+  .seg span{padding:7px 20px;font-size:12.5px;font-weight:500;color:var(--ink-soft);cursor:pointer;}
+  .seg span.on{background:var(--plum);color:#fff;}
+  .add-post{display:inline-flex;align-items:center;gap:7px;background:var(--rose);color:#fff;border:none;
+    font-size:13px;font-weight:500;padding:8px 20px;border-radius:999px;cursor:pointer;letter-spacing:.02em;}
+  .add-post:hover{background:#872049;}
+
+  /* ---- monthly ---- */
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:28px;align-items:start;}
+  .cal{background:#fff;border:1.5px solid var(--line-2);border-radius:16px;overflow:hidden;}
+  .dow-row{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--line);}
+  .dow-row div{color:var(--ink-soft);text-align:center;padding:14px 0;font-family:'Inter';font-size:12px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;}
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);}
+  .cell{min-height:140px;border-top:1px solid var(--line);border-left:1px solid var(--line);padding:12px 13px;}
+  .cell:nth-child(7n+1){border-left:none;}
+  .dnum{font-family:'Fraunces';font-size:15px;font-weight:500;color:var(--plum);}
+  .dnum.dim{color:#CBBDC7;}
+  .chips{margin-top:7px;display:flex;flex-direction:column;gap:5px;}
+  .cc{font-size:12px;font-weight:500;padding:6px 10px;border-radius:7px;line-height:1.3;}
+  .ct-announce{background:var(--ct-announce-bg);color:var(--ct-announce-tx);}
+  .ct-inside{background:var(--ct-inside-bg);color:var(--ct-inside-tx);}
+  .ct-book{background:var(--ct-book-bg);color:var(--ct-book-tx);}
+  .ct-price{background:var(--ct-price-bg);color:var(--ct-price-tx);}
+  .ct-proof{background:var(--ct-proof-bg);color:var(--ct-proof-tx);}
+  .ct-insight{background:var(--ct-insight-bg);color:var(--ct-insight-tx);}
+  .ct-recap{background:var(--ct-recap-bg);color:var(--ct-recap-tx);}
+  .boost{display:inline-block;font-size:8.5px;font-weight:500;color:var(--rose);
+    border:1px solid var(--rose-soft);border-radius:4px;padding:1px 5px;margin-top:2px;letter-spacing:.06em;text-transform:uppercase;}
+  .strikeflag{display:inline-block;font-size:8.5px;font-weight:500;color:var(--warn);background:var(--warn-bg);
+    border-radius:4px;padding:1px 6px;margin-top:2px;letter-spacing:.02em;cursor:help;}
+  .side{display:flex;flex-direction:column;gap:16px;}
+  .panel{background:#fff;border:1.5px solid var(--line-2);border-radius:16px;padding:18px;}
+  .panel.dark{background:var(--tint);border-color:var(--rose-soft);}
+  .panel.dark h3{color:var(--plum);}
+  .panel.dark p{color:var(--ink-soft);}
+  .panel.dark .phase{color:var(--accent-deep);}
+  .panel h3{font-family:'Fraunces';font-style:italic;font-weight:500;font-size:17px;color:var(--plum);margin:0 0 13px;}
+  .phase{display:inline-block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-deep);font-weight:500;margin-bottom:10px;}
+  .panel.dark p{font-size:12px;line-height:1.55;margin:0 0 16px;}
+  .up{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:10px;font-size:12px;font-weight:500;cursor:pointer;width:100%;}
+  .up:hover{background:var(--accent-deep);}
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .li{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink);}
+  .li .sw{width:11px;height:11px;border-radius:3px;flex:none;}
+  .ct-del{margin-left:auto;color:var(--accent);font-size:11px;cursor:pointer;display:none;}
+  .legend.editing .ct-del{display:inline;}
+  .note{font-size:12px;color:var(--ink-soft);line-height:1.55;margin:0;}
+  /* airtime / portfolio panel */
+  .airtime-row{padding:10px 0;border-top:1px solid var(--line);}
+  .airtime-row:first-of-type{border-top:none;padding-top:2px;}
+  .airtime-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px;}
+  .airtime-top .nm{font-size:12.5px;font-weight:500;color:var(--plum);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .airtime-row .rs{font-size:10.5px;color:var(--ink-soft);margin-top:5px;}
+  .airtime-bar{width:100%;height:6px;border-radius:999px;background:var(--line);overflow:hidden;}
+  .airtime-bar i{display:block;height:100%;border-radius:999px;max-width:100%;}
+  .atag{font-size:9px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;flex:none;white-space:nowrap;}
+  .atag.up{background:var(--good-bg);color:var(--good);}
+  .atag.season{background:var(--wash);color:var(--accent-deep);}
+  .atag.floor{background:var(--champagne-2);color:var(--ink-soft);}
+  .atag.win{background:#EDE4F0;color:var(--ct-inside-tx);}
+  /* insight recommendation card */
+  #insight-rec{position:fixed;right:34px;bottom:26px;width:340px;background:var(--surface);border:1px solid var(--rose-soft);
+    border-radius:16px;box-shadow:0 20px 50px rgba(62,50,56,.26);z-index:82;overflow:hidden;
+    animation:recIn .5s cubic-bezier(.2,.7,.2,1);}
+  @keyframes recIn{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  #insight-rec .rh{background:var(--tint);padding:12px 16px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--rose-soft);}
+  #insight-rec .rh .sp{width:26px;height:26px;border-radius:8px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:14px;flex:none;}
+  #insight-rec .rh .k{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent-deep);font-weight:500;}
+  #insight-rec .rh .cl{margin-left:auto;color:var(--accent);font-size:15px;cursor:pointer;}
+  #insight-rec .rb{padding:15px 16px;}
+  #insight-rec .obs{font-size:12px;color:var(--ink-soft);line-height:1.5;margin:0 0 10px;}
+  #insight-rec .obs b{color:var(--plum);font-weight:500;}
+  #insight-rec .mv{font-family:'Fraunces';font-style:italic;font-size:16px;color:var(--plum);line-height:1.3;margin:0 0 12px;}
+  #insight-rec .why2{font-size:11.5px;color:var(--ink-soft);line-height:1.5;margin:0 0 14px;}
+  #insight-rec .racts{display:flex;gap:8px;}
+  #insight-rec .radd{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:12.5px;font-weight:500;cursor:pointer;flex:1;}
+  #insight-rec .rdismiss{background:none;border:1px solid var(--line-2);color:var(--ink-soft);border-radius:8px;padding:9px 14px;font-size:12.5px;cursor:pointer;}
+
+  /* ---- weekly ---- */
+  .week{display:grid;grid-template-columns:0.9fr repeat(7,1fr);
+    background:#fff;border:1.5px solid var(--line-2);border-radius:16px;overflow:hidden;}
+  .col{border-left:1px solid var(--line);display:flex;flex-direction:column;}
+  .col:first-child{border-left:none;}
+  .band{background:var(--champagne-2);color:var(--plum);text-align:center;padding:11px 6px;border-bottom:1px solid var(--line);}
+  .band .dow{font-family:'Fraunces';font-size:15px;font-weight:500;letter-spacing:.03em;color:var(--plum);}
+  .band .dnum2{font-size:10.5px;color:var(--ink-soft);margin-top:1px;letter-spacing:.05em;text-transform:uppercase;}
+  .band.ci{background:var(--tint);}
+  .col-body{padding:12px 11px;display:flex;flex-direction:column;gap:14px;flex:1;min-height:360px;}
+  .checkin .lead{font-family:'Fraunces';font-style:italic;font-weight:500;font-size:20px;line-height:1.15;color:var(--plum);}
+  .checkin p{font-size:12px;line-height:1.55;color:var(--ink-soft);margin:0;}
+  .checkin .up2{margin-top:auto;background:var(--rose);color:#fff;border:none;border-radius:9px;padding:10px;font-size:12px;font-weight:500;cursor:pointer;}
+  .checkin .up2:hover{background:#B4356A;}
+  .checkin .due{font-size:10.5px;color:var(--rose);margin-top:9px;text-align:center;letter-spacing:.04em;text-transform:uppercase;}
+  .task{display:flex;flex-direction:column;gap:7px;padding-bottom:14px;border-bottom:1px solid var(--line);}
+  .task:last-child{border-bottom:none;padding-bottom:0;}
+  .task .thumb{width:100%;aspect-ratio:4/3;border-radius:10px;background:var(--champagne-2);display:flex;align-items:center;justify-content:center;color:var(--rose-soft);font-size:18px;}
+  .task .thumb.rose{background:var(--wash);}
+  .task .thumb.plum{background:#EBE1EE;}
+  .task .kicker{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:500;color:var(--rose);}
+  .task .name{font-family:'Fraunces';font-size:14.5px;font-weight:500;color:var(--plum);line-height:1.2;cursor:pointer;}
+  .task .name:hover{color:var(--accent);}
+  .task .kicker{cursor:pointer;}
+  .task .line{font-size:11px;color:var(--ink-soft);}
+  .task .line .plat{color:var(--plum-2);font-weight:500;}
+  .besttime{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:500;color:var(--good);
+    background:var(--good-bg);border-radius:5px;padding:1px 6px;margin-top:4px;letter-spacing:.02em;cursor:help;}
+  .besttime::before{content:"\25B2";font-size:7px;}
+  .besttime.peak{color:var(--accent-deep);background:var(--wash);}
+  .besttime.peak::before{content:"\2605";}
+  .task .check{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-soft);cursor:pointer;}
+  .cbox{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--rose-soft);flex:none;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;}
+  .cbox.on{background:var(--rose);border-color:var(--rose);}
+  .task.done .name,.task.done .thumb{opacity:.5;}
+  .task.done .name{text-decoration:line-through;}
+  .rest{color:#CBBDC7;font-size:11px;text-align:center;font-style:italic;margin:auto 0;font-family:'Fraunces';}
+  .dayadd{border:1px dashed var(--line-2);border-radius:9px;color:var(--rose-soft);font-size:11px;text-align:center;padding:11px 6px;cursor:pointer;}
+  /* mid-campaign read card */
+  .midread{background:var(--rose);border-radius:11px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:7px;}
+  .midread .mk{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#F6D9E6;font-weight:500;}
+  .midread .ml{font-family:'Fraunces';font-style:italic;font-size:14px;font-weight:500;line-height:1.2;color:#fff;}
+  .midread p{font-size:10.5px;color:#F6D9E6;line-height:1.4;margin:0;}
+  .midread button{background:#fff;color:var(--rose);border:none;border-radius:7px;padding:8px;font-size:11px;font-weight:500;cursor:pointer;margin-top:2px;}
+
+  /* ---- welcome overlay ---- */
+  #welcome{position:fixed;inset:0;z-index:60;
+    background:linear-gradient(180deg,#FFFFFF 0%,#FCF4F0 42%,#F6E4EC 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;
+    transition:opacity .6s ease,visibility .6s ease;}
+  #welcome.gone{opacity:0;visibility:hidden;}
+  #welcome .glow{position:absolute;width:680px;height:680px;border-radius:50%;
+    background:radial-gradient(circle, rgba(158,43,94,.05) 0%, rgba(247,239,234,0) 68%);top:50%;left:50%;transform:translate(-50%,-56%);}
+  #welcome .brand{font-size:11px;letter-spacing:.46em;text-transform:uppercase;color:var(--ink-soft);font-weight:400;margin:0 0 60px;opacity:0;animation:rise 1s ease .1s forwards;}
+  #welcome .big{font-family:'Fraunces';font-weight:300;font-size:104px;line-height:.98;letter-spacing:-.03em;color:var(--plum);margin:0;opacity:0;animation:rise 1.3s cubic-bezier(.2,.7,.2,1) .25s forwards;}
+  #welcome .big em{font-style:italic;font-weight:300;color:var(--rose);}
+  #welcome .nm{font-family:'Fraunces';font-style:italic;font-weight:300;font-size:34px;color:var(--rose);margin:20px 0 0;opacity:0;animation:rise 1.3s ease .55s forwards;}
+  #welcome .enter{margin-top:56px;background:none;border:none;color:var(--rose);font-size:13px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;display:inline-flex;align-items:center;gap:12px;opacity:0;animation:rise 1.3s ease .9s forwards;padding:8px 4px;transition:gap .25s ease,color .2s;}
+  #welcome .enter:hover{gap:20px;color:var(--plum);}
+  @keyframes rise{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+
+  /* ---- modals (shared) ---- */
+  .modal-overlay{position:fixed;inset:0;z-index:70;background:rgba(28,10,34,.5);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow:auto;}
+  .modal{background:var(--champagne);width:100%;max-width:552px;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,.6);box-shadow:0 30px 70px rgba(28,10,34,.34);}
+  .m-head{background:var(--tint);color:var(--plum);padding:20px 26px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--rose-soft);}
+  .m-head h2{font-family:'Fraunces';font-style:italic;font-weight:500;font-size:24px;margin:0;color:var(--plum);}
+  .m-x{color:var(--accent);font-size:19px;cursor:pointer;}
+  .m-body{padding:22px 26px 26px;}
+  .field{margin-bottom:17px;}
+  .field>label{display:block;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--rose);font-weight:500;margin-bottom:7px;}
+  .opt{font-size:10.5px;color:var(--ink-soft);text-transform:none;letter-spacing:0;font-weight:400;font-style:italic;}
+  input[type=text],input[type=date],input[type=number],select{width:100%;padding:10px 12px;border:1px solid var(--line-2);border-radius:10px;background:#fff;font-family:inherit;font-size:14px;color:var(--ink);}
+  select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%239E2B5E' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;}
+  .drop{border:1.5px dashed var(--line-2);border-radius:12px;background:#fff;padding:20px;text-align:center;cursor:pointer;}
+  .drop .ic{font-size:22px;color:var(--rose-soft);}
+  .drop .t{font-size:13px;color:var(--plum);font-weight:500;margin-top:6px;}
+  .drop .s{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+  .plats{display:flex;gap:8px;flex-wrap:wrap;}
+  .pchip{display:flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid var(--line-2);border-radius:999px;font-size:13px;cursor:pointer;background:#fff;color:var(--ink-soft);}
+  .pchip .tick{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--rose-soft);display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;}
+  .pchip.on{background:var(--wash);border-color:var(--rose-soft);color:var(--rose);font-weight:500;}
+  .pchip.on .tick{background:var(--rose);border-color:var(--rose);}
+  .pchip.addp{border-style:dashed;color:var(--rose);}
+  .pchip.addp .tick{border:none;font-size:13px;color:var(--rose);}
+  .seg2{display:inline-flex;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:#fff;}
+  .seg2 span{padding:9px 20px;font-size:13px;font-weight:500;color:var(--ink-soft);cursor:pointer;}
+  .seg2 span.on{background:var(--plum);color:#fff;}
+  .budget{margin-top:11px;display:flex;align-items:center;gap:10px;background:var(--wash);border-radius:10px;padding:11px 13px;}
+  .budget .inl{display:flex;align-items:center;gap:6px;flex:1;}
+  .budget .cur{font-size:14px;color:var(--plum);font-weight:500;}
+  .budget .days{width:120px;}
+  .hint{font-size:11px;color:var(--ink-soft);font-style:italic;margin:6px 0 0;}
+  .insights-row{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--line-2);border-radius:12px;padding:13px 15px;}
+  .insights-row .ic{width:34px;height:34px;border-radius:9px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;}
+  .insights-row .tx{flex:1;}
+  .insights-row .tx .a{font-size:13px;font-weight:500;color:var(--plum);}
+  .insights-row .tx .b{font-size:11.5px;color:var(--ink-soft);}
+  .insights-row button{background:none;border:1px solid var(--rose-soft);color:var(--rose);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;}
+  .m-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:24px;padding-top:18px;border-top:1px solid var(--line);}
+  .btn-ghost{background:none;border:1px solid var(--line-2);color:var(--ink-soft);border-radius:10px;padding:11px 22px;font-size:13.5px;font-weight:500;cursor:pointer;}
+  .btn-save{background:var(--rose);border:none;color:#fff;border-radius:10px;padding:11px 26px;font-size:13.5px;font-weight:500;cursor:pointer;}
+  .btn-save:hover{background:#872049;}
+
+  /* insights modal specifics */
+  .stepline{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--rose-soft);font-weight:500;margin:0 0 11px;}
+  .uploaded{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.7);border:1px solid var(--line);border-radius:13px;padding:11px 14px;margin-bottom:8px;}
+  .uploaded .thumb2{width:38px;height:38px;border-radius:9px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;}
+  .uploaded .tx{flex:1;}
+  .uploaded .tx .a{font-size:12.5px;font-weight:500;color:var(--plum);}
+  .uploaded .tx .b{font-size:11px;color:var(--ink-soft);}
+  .uploaded .status{font-size:11px;color:var(--good);font-weight:500;background:var(--good-bg);padding:4px 10px;border-radius:999px;}
+  .sect{display:flex;align-items:center;gap:12px;margin:24px 0 14px;}
+  .sect::after{content:"";height:1px;flex:1;background:var(--line);}
+  .sect span{font-family:'Fraunces';font-style:italic;font-size:16px;color:var(--plum);}
+  .stats{display:flex;gap:10px;}
+  .stat{flex:1;background:rgba(255,255,255,.7);border:1px solid var(--line);border-radius:14px;padding:14px 12px;text-align:center;}
+  .stat.hero{background:var(--plum);border-color:var(--plum);}
+  .stat .n{font-family:'Fraunces';font-size:23px;font-weight:500;color:var(--plum);line-height:1;}
+  .stat.hero .n{color:#fff;}
+  .stat .l{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin-top:5px;}
+  .stat.hero .l{color:var(--rose-soft);}
+  .read-note{font-size:12px;color:var(--ink-soft);font-style:italic;margin:11px 0 0;text-align:center;}
+  .insight{background:rgba(255,255,255,.72);border:1px solid var(--line);border-left:3px solid var(--good-soft);border-radius:0 15px 15px 0;padding:16px 18px;margin-top:13px;}
+  .insight.gap{border-left-color:var(--warn-soft);}
+  .insight .hd{display:flex;align-items:center;gap:10px;margin-bottom:9px;}
+  .insight .tag{font-size:9.5px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;padding:4px 11px;border-radius:999px;}
+  .tag.good{background:var(--good-bg);color:var(--good);}
+  .tag.warn{background:var(--warn-bg);color:var(--warn);}
+  .insight .svc{font-size:11.5px;color:var(--ink-soft);}
+  .insight .what{font-family:'Fraunces';font-size:17px;font-weight:500;color:var(--plum);line-height:1.25;margin:0 0 11px;}
+  .insight .move{display:flex;align-items:flex-start;gap:10px;}
+  .insight .move .ic{width:22px;height:22px;border-radius:7px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:12px;flex:none;margin-top:1px;}
+  .insight .move .mtx{font-size:13px;color:var(--plum-2);line-height:1.5;}
+  .insight .move .mtx b{color:var(--rose);font-weight:500;}
+  .m-foot .leftnote{font-size:11.5px;color:var(--ink-soft);font-style:italic;margin-right:auto;}
+
+  /* ---- empty state / guided setup ---- */
+  #setup{max-width:660px;margin:20px auto 0;}
+  .setup-hero{text-align:center;margin-bottom:34px;}
+  .setup-hero .em{width:52px;height:52px;border-radius:15px;background:var(--wash);color:var(--rose);
+    display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 18px;}
+  .setup-hero h1{font-family:'Fraunces';font-style:italic;font-weight:500;font-size:34px;color:var(--plum);margin:0 0 8px;}
+  .setup-hero p{font-size:14px;color:var(--ink-soft);margin:0;max-width:44ch;margin-left:auto;margin-right:auto;line-height:1.6;}
+  .steps{display:flex;justify-content:center;gap:8px;margin-bottom:26px;}
+  .stepdot{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);font-weight:500;}
+  .stepdot .b{width:24px;height:24px;border-radius:50%;background:#fff;border:1px solid var(--line-2);
+    display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ink-soft);}
+  .stepdot.on .b{background:var(--rose);border-color:var(--rose);color:#fff;}
+  .stepdot.on{color:var(--plum);}
+  .stepdot .sep{width:26px;height:1px;background:var(--line-2);margin:0 2px;}
+  .setup-card{background:#fff;border:1.5px solid var(--line-2);border-radius:18px;padding:28px 30px;}
+  .setup-card .q{font-family:'Fraunces';font-size:20px;font-weight:500;color:var(--plum);margin:0 0 4px;}
+  .setup-card .sub{font-size:13px;color:var(--ink-soft);margin:0 0 20px;}
+  .setup-nav{display:flex;justify-content:space-between;align-items:center;margin-top:24px;}
+  .setup-skip{font-size:12.5px;color:var(--ink-soft);cursor:pointer;background:none;border:none;}
+  .choice-row{display:flex;flex-direction:column;gap:10px;}
+  .choice{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--line-2);border-radius:12px;padding:14px 16px;cursor:pointer;background:#fff;transition:border-color .15s,background .15s;}
+  .choice:hover{border-color:var(--rose-soft);background:var(--wash);}
+  .choice.sel{border-color:var(--rose);background:var(--wash);}
+  .choice .ci{width:34px;height:34px;border-radius:9px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;}
+  .choice .ct{flex:1;}
+  .choice .ct .a{font-family:'Fraunces';font-size:15px;font-weight:500;color:var(--plum);}
+  .choice .ct .b{font-size:12px;color:var(--ink-soft);line-height:1.45;}
+
+  /* building transition */
+  #building{position:fixed;inset:0;z-index:65;background:linear-gradient(180deg,#FBF3EF 0%,#F5E5EC 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+  #building .spin{width:46px;height:46px;border-radius:50%;border:3px solid var(--wash);border-top-color:var(--rose);
+    animation:sp 0.9s linear infinite;margin-bottom:24px;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+  #building h2{font-family:'Fraunces';font-style:italic;font-weight:500;font-size:28px;color:var(--plum);margin:0 0 8px;}
+  #building p{font-size:13.5px;color:var(--ink-soft);margin:0;}
+
+  /* planned (generated) chip — solid & confident, with a small pending dot */
+  .cc.sug{position:relative;padding-left:18px;}
+  .cc.sug::before{content:"";position:absolute;left:7px;top:50%;transform:translateY(-50%);
+    width:6px;height:6px;border-radius:50%;border:1.5px solid currentColor;opacity:.65;}
+  .cc.sug.done::before{background:currentColor;opacity:1;}
+  .cc.ripple{opacity:0;animation:rippleIn .95s cubic-bezier(.2,.7,.2,1) forwards;}
+  @keyframes rippleIn{from{opacity:0;transform:translateX(-22px);}to{opacity:1;transform:translateX(0);}}
+  .suglegend{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink);}
+  .suglegend .sw{width:14px;height:9px;border:1px dashed var(--rose-soft);border-radius:3px;flex:none;}
+</style>
+</head>
+<body>
+
+<!-- ============ APP ============ -->
+<div class="app">
+  <div class="tabbar">
+    <div class="tab active" data-biz="Lopez Legal &amp; Tax"><span class="dot" style="background:var(--rose-soft)"></span>Lopez Legal &amp; Tax</div>
+    <div class="tab" data-biz="Bright Start Camp"><span class="dot" style="background:#9CBCB0"></span>Bright Start Camp</div>
+    <div class="tab" data-biz="Coastal Insurance"><span class="dot" style="background:#C9B48A"></span>Coastal Insurance</div>
+    <div class="tab add" onclick="openAddBiz()">+</div>
+    <div class="bell" onclick="toggleNotif()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="count zero" id="notif-count">0</span></div>
+  </div>
+
+  <!-- ===== MONTHLY VIEW ===== -->
+  <div id="view-monthly" class="hidden">
+    <div id="fresh-banner" class="hidden" style="background:var(--tint);color:var(--plum);border:1px solid var(--rose-soft);border-radius:14px;padding:14px 20px;margin-bottom:22px;display:flex;align-items:center;gap:14px;">
+      <div style="width:34px;height:34px;border-radius:10px;background:var(--wash);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;">&#10022;</div>
+      <div style="flex:1;">
+        <div style="font-family:'Fraunces';font-style:italic;font-size:16px;color:var(--plum);">Here's your first month, built from your post</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:1px;">Every move is planned and ready — check them off as you go, or skip anything that doesn't fit.</div>
+      </div>
+      <span style="font-size:18px;cursor:pointer;color:var(--accent);" onclick="document.getElementById('fresh-banner').classList.add('hidden')">&#10005;</span>
+    </div>
+    <div class="change-banner hidden" id="change-banner">
+      <div class="ic">&#10022;</div>
+      <div style="flex:1;">
+        <div class="a">Plan updated from your insights</div>
+        <div class="b" id="change-text">Boosted the refund story and added 2 more like it — your winning angle.</div>
+      </div>
+      <span class="cl" onclick="document.getElementById('change-banner').classList.add('hidden')">&#10005;</span>
+    </div>
+    <div class="reminder" id="wake-banner">
+      <div class="ic">&#9200;</div>
+      <div class="tx">
+        <div class="a">Running the Fall programs launch again?</div>
+        <div class="b">You ran this around now last year — want me to pick it back up, sharpened with what I learned?</div>
+      </div>
+      <div class="acts">
+        <button class="no" onclick="dismissWake()">Not this year</button>
+        <button class="yes" onclick="wakeYes()">Yes, let's do it</button>
+        <span class="dismiss" onclick="dismissWake()" title="Remind me later">&#10005;</span>
+      </div>
+    </div>
+    <div class="masthead">
+      <p class="eyebrow" id="biz-name-m">Lopez Legal &amp; Tax</p>
+      <div style="display:flex;align-items:center;justify-content:center;gap:20px;">
+        <button class="navarrow" onclick="changeMonth(-1)" aria-label="Previous month">&#8249;</button>
+        <h1 id="month-title">September</h1>
+        <button class="navarrow" onclick="changeMonth(1)" aria-label="Next month">&#8250;</button>
+      </div>
+      <div class="rule"><span class="meta">Content calendar <b>2026</b></span></div>
+    </div>
+    <div class="controls">
+      <div class="seg"><span class="on" data-view="monthly">Month</span><span data-view="weekly">Week</span></div>
+      <button class="add-post" onclick="openAdd()">+ Add post</button>
+    </div>
+    <div class="layout">
+      <div class="cal">
+        <div class="dow-row"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
+        <div class="grid" id="month-grid"></div>
+      </div>
+      <div class="side">
+        <div class="panel dark">
+          <span class="phase">Fall programs · final 2 weeks</span>
+          <h3>This month at a glance</h3>
+          <p>Campaign in its close phase — promo and last chance land this week. Evergreen services eased to maintenance while the launch peaks.</p>
+          <button class="up" onclick="openInsights()">&#8593; Upload insights</button>
+        </div>
+        <div class="panel">
+          <h3 style="display:flex;justify-content:space-between;align-items:center;">Content types <span onclick="toggleEditCT()" style="font-size:11px;color:var(--accent);cursor:pointer;font-style:normal;font-family:'Inter';font-weight:500;">Edit</span></h3>
+          <div class="legend" id="ct-legend">
+            <div class="li"><span class="sw" style="background:var(--ct-announce-bg)"></span>Announce<span class="ct-del" onclick="delCT(this)">&#10005;</span></div>
+            <div class="li"><span class="sw" style="background:var(--ct-inside-bg)"></span>Look inside<span class="ct-del" onclick="delCT(this)">&#10005;</span></div>
+            <div class="li"><span class="sw" style="background:var(--ct-book-bg)"></span>Book<span class="ct-del" onclick="delCT(this)">&#10005;</span></div>
+            <div class="li"><span class="sw" style="background:var(--ct-price-bg)"></span>Pricing<span class="ct-del" onclick="delCT(this)">&#10005;</span></div>
+            <div class="li"><span class="sw" style="background:var(--ct-proof-bg)"></span>Testimonial<span class="ct-del" onclick="delCT(this)">&#10005;</span></div>
+            <div class="li"><span class="sw" style="background:var(--ct-insight-bg)"></span>Insight<span class="ct-del" onclick="delCT(this)">&#10005;</span></div>
+            <div class="li"><span class="sw" style="background:var(--ct-recap-bg)"></span>Recap<span class="ct-del" onclick="delCT(this)">&#10005;</span></div>
+            <div class="li"><span class="sw" style="border:1px solid var(--rose-soft);background:#fff"></span>Boosted<span class="ct-del" onclick="delCT(this)">&#10005;</span></div>
+          </div>
+          <div id="ct-add" class="hidden" style="margin-top:11px;display:flex;gap:6px;">
+            <input type="text" id="ct-new" placeholder="New type…" style="flex:1;padding:7px 10px;font-size:12px;border:1px solid var(--line-2);border-radius:8px;">
+            <button onclick="addCT()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 12px;font-size:12px;font-weight:500;cursor:pointer;">Add</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h3 style="display:flex;justify-content:space-between;align-items:center;">This month's balance <span onclick="showToast('Airtime is split by season, live traction, and a floor that keeps every service alive.')" style="font-size:11px;color:var(--accent);cursor:pointer;font-style:normal;font-family:'Inter';font-weight:500;">?</span></h3>
+          <p style="font-size:11px;color:var(--ink-soft);margin:0 0 10px;line-height:1.5;">How I'm dividing the week across your services.</p>
+          <div class="airtime-row">
+            <div class="airtime-top"><span class="nm">Fall programs</span><span class="atag up">Peak</span></div>
+            <div class="airtime-bar"><i style="width:90%;background:var(--accent);"></i></div>
+            <div class="rs">Campaign · final 2 weeks</div>
+          </div>
+          <div class="airtime-row">
+            <div class="airtime-top"><span class="nm">Tax planning</span><span class="atag win">Riding</span></div>
+            <div class="airtime-bar"><i style="width:70%;background:var(--good-soft);"></i></div>
+            <div class="rs">Winning — refund angle broke out</div>
+          </div>
+          <div class="airtime-row">
+            <div class="airtime-top"><span class="nm">Divorce</span><span class="atag season">Normal</span></div>
+            <div class="airtime-bar"><i style="width:45%;background:var(--rose-soft);"></i></div>
+            <div class="rs">Steady evergreen</div>
+          </div>
+          <div class="airtime-row">
+            <div class="airtime-top"><span class="nm">Immigration</span><span class="atag floor">Floor</span></div>
+            <div class="airtime-bar"><i style="width:14%;background:var(--line-2);"></i></div>
+            <div class="rs">Low season — held at floor</div>
+          </div>
+          <div class="airtime-row">
+            <div class="airtime-top"><span class="nm">Insurance</span><span class="atag floor">Floor</span></div>
+            <div class="airtime-bar"><i style="width:12%;background:var(--line-2);"></i></div>
+            <div class="rs">Quiet — ~1/mo, never zero</div>
+          </div>
+          <p style="font-size:10.5px;color:var(--ink-soft);margin:12px 0 0;line-height:1.5;font-style:italic;">Immigration & insurance stay on a monthly floor so a slow month never loses the audience — they\u2019re still part of your revenue.</p>
+        </div>
+        <div class="panel">
+          <h3>Note</h3>
+          <p class="note">Immigration is quiet this month — surfacing once (Sep 16) to hold its floor. Weekly check-in due Monday.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== GUIDED SETUP (empty state) ===== -->
+  <div id="view-setup" class="hidden">
+    <div id="setup">
+      <div class="setup-hero">
+        <div class="em">&#10022;</div>
+        <h1>Let's set up your first business</h1>
+        <p>A few quick questions and I'll build your first plan. You can change any of it later.</p>
+      </div>
+      <div class="steps">
+        <div class="stepdot on" id="sd1"><span class="b">1</span>Service</div>
+        <div class="sep"></div>
+        <div class="stepdot" id="sd2"><span class="b">2</span>Platforms</div>
+        <div class="sep"></div>
+        <div class="stepdot" id="sd3"><span class="b">3</span>First move</div>
+      </div>
+
+      <!-- Step 1: service -->
+      <div class="setup-card" id="setup-step-1">
+        <p class="q">What are you promoting first?</p>
+        <p class="sub">Start with one service or offering — you can add the rest anytime.</p>
+        <div class="field"><input type="text" placeholder="e.g. Teeth whitening" style="margin-bottom:14px;"></div>
+        <p class="sub" style="margin-bottom:12px;">Is this something ongoing, or a push toward a date?</p>
+        <div class="choice-row">
+          <div class="choice sel" onclick="selChoice(this)">
+            <div class="ci">&#8734;</div>
+            <div class="ct"><div class="a">Evergreen</div><div class="b">Something you always offer — runs a steady rhythm to stay visible and book clients.</div></div>
+          </div>
+          <div class="choice" onclick="selChoice(this)">
+            <div class="ci">&#9873;</div>
+            <div class="ct"><div class="a">Has a deadline</div><div class="b">A launch or enrollment with a close date — runs a campaign that builds toward it.</div></div>
+          </div>
+        </div>
+        <div class="setup-nav">
+          <button class="setup-skip" onclick="finishSetup()">Skip setup</button>
+          <button class="btn-save" onclick="setupStep(2)">Continue &#8594;</button>
+        </div>
+      </div>
+
+      <!-- Step 2: platforms -->
+      <div class="setup-card hidden" id="setup-step-2">
+        <p class="q">Where's your audience?</p>
+        <p class="sub">Pick the platforms you post on. I'll learn which ones this service does best on over time.</p>
+        <div class="plats" style="margin:6px 0 8px;" id="setup-plats">
+          <div class="pchip on" onclick="this.classList.toggle('on')"><span class="tick">&#10003;</span>Facebook</div>
+          <div class="pchip on" onclick="this.classList.toggle('on')"><span class="tick">&#10003;</span>Instagram</div>
+          <div class="pchip on" onclick="this.classList.toggle('on')"><span class="tick">&#10003;</span>TikTok</div>
+          <div class="pchip addp" onclick="showSetupPlatInput()"><span class="tick">+</span>Add platform</div>
+        </div>
+        <div id="setup-plat-input" class="hidden" style="display:flex;gap:8px;margin-bottom:10px;">
+          <input type="text" id="setup-plat-name" placeholder="e.g. LinkedIn, YouTube, Pinterest" style="flex:1;">
+          <button class="btn-save" style="padding:9px 16px;" onclick="addSetupPlatform()">Add</button>
+        </div>
+        <div class="setup-nav">
+          <button class="setup-skip" onclick="setupStep(1)">&#8592; Back</button>
+          <button class="btn-save" onclick="setupStep(3)">Continue &#8594;</button>
+        </div>
+      </div>
+
+      <!-- Step 3: first move -->
+      <div class="setup-card hidden" id="setup-step-3">
+        <p class="q">What have you done so far?</p>
+        <p class="sub">Log your most recent post for this service — or start fresh and I'll suggest the first move.</p>
+        <div class="choice-row" style="margin-bottom:14px;">
+          <div class="choice sel" onclick="selChoice(this)">
+            <div class="ci">&#128228;</div>
+            <div class="ct"><div class="a">I just posted something</div><div class="b">Tell me what it was and I'll build the plan forward from there.</div></div>
+          </div>
+          <div class="choice" onclick="selChoice(this)">
+            <div class="ci">&#10022;</div>
+            <div class="ct"><div class="a">Nothing yet — start me off</div><div class="b">I'll suggest the perfect first move and build from scratch.</div></div>
+          </div>
+        </div>
+        <div class="field"><input type="text" placeholder="e.g. Posted an intro reel on Instagram" style="margin-bottom:4px;"></div>
+        <div class="setup-nav">
+          <button class="setup-skip" onclick="setupStep(2)">&#8592; Back</button>
+          <button class="btn-save" onclick="finishSetup()">Build my plan &#8594;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== WEEKLY VIEW ===== -->
+  <div id="view-weekly" class="hidden">
+    <div class="masthead">
+      <p class="eyebrow" id="biz-name-w">Lopez Legal &amp; Tax</p>
+      <h1 class="it">Weekly Calendar</h1>
+      <div class="rule"><span style="display:inline-flex;align-items:center;gap:16px;"><button class="navarrow sm" onclick="changeWeek(-1)">&#8249;</button><span class="meta">Week of <b id="week-title">14 – 20 September 2026</b></span><button class="navarrow sm" onclick="changeWeek(1)">&#8250;</button></span></div>
+    </div>
+    <div class="controls">
+      <div class="seg"><span data-view="monthly">Month</span><span class="on" data-view="weekly">Week</span></div>
+      <button class="add-post" onclick="openAdd()">+ Add post</button>
+    </div>
+    <div class="week">
+      <div class="col checkin">
+        <div class="band ci"><div class="dow">Check-in</div><div class="dnum2">Weekly</div></div>
+        <div class="col-body">
+          <div class="lead">Upload last week's insights</div>
+          <p>Your standing weekly read — screenshot your numbers and I'll tune the plan around what landed.</p>
+          <button class="up2" onclick="openInsights()">&#8593; Upload insights</button>
+          <div class="due">Due Monday</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="band"><div class="dow">Mon</div><div class="dnum2">Sep 15</div></div>
+        <div class="col-body">
+          <div class="task"><div class="thumb rose">&#10022;</div><div class="kicker">Boost</div><div class="name">Divorce services</div><div class="line"><span class="plat">Facebook</span> &middot; 9:00 AM</div><div class="besttime peak" title="Your divorce audience is most active on Facebook in the morning">Best time · FB peak</div><div class="check"><span class="cbox"></span>Mark done</div></div>
+          <div class="task"><div class="thumb rose">&#10022;</div><div class="kicker">Boost</div><div class="name">Tax planning</div><div class="line"><span class="plat">Facebook</span> &middot; 10:00 AM</div><div class="besttime" title="Mid-morning is when your tax posts get the most saves">Good window</div><div class="check"><span class="cbox"></span>Mark done</div></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="band"><div class="dow">Tue</div><div class="dnum2">Sep 16</div></div>
+        <div class="col-body">
+          <div class="task"><div class="thumb plum">&#9719;</div><div class="kicker">Insight</div><div class="name">Immigration Q&amp;A</div><div class="line"><span class="plat">Instagram</span> &middot; 11:00 AM</div><div class="besttime peak" title="Immigration audience indexes highest on Instagram late morning">Best time · IG peak</div><div class="check"><span class="cbox"></span>Mark done</div></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="band"><div class="dow">Wed</div><div class="dnum2">Sep 17</div></div>
+        <div class="col-body">
+          <div class="midread">
+            <span class="mk">Mid-campaign read</span>
+            <div class="ml">Fall programs is halfway through its ad run</div>
+            <p>Check now while there's still budget to steer — if it's working, we double down.</p>
+            <button onclick="openInsights()">&#8593; Check results</button>
+          </div>
+          <div class="dayadd" onclick="openAdd()">+ Add post</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="band"><div class="dow">Thu</div><div class="dnum2">Sep 18</div></div>
+        <div class="col-body">
+          <div class="task done"><div class="thumb">&#10003;</div><div class="kicker">Posted</div><div class="name">Refund result story</div><div class="line"><span class="plat">TikTok</span> &middot; done</div></div>
+          <div class="task"><div class="thumb rose">&#10022;</div><div class="kicker">Boost &middot; overperformer</div><div class="name">Ride the refund story</div><div class="line"><span class="plat">TikTok</span> &middot; 4:00 PM</div><div class="besttime peak" title="Your TikTok reach peaks late afternoon — ride the boost then">Best time · TikTok peak</div><div class="check"><span class="cbox"></span>Mark done</div></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="band"><div class="dow">Fri</div><div class="dnum2">Sep 19</div></div>
+        <div class="col-body">
+          <div class="task"><div class="thumb plum">&#10070;</div><div class="kicker">Look inside</div><div class="name">Fall programs</div><div class="line"><span class="plat">Instagram</span> &middot; 1:00 PM</div><div class="besttime" title="Early afternoon works for launch content on Instagram">Good window</div><div class="check"><span class="cbox"></span>Mark done</div></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="band"><div class="dow">Sat</div><div class="dnum2">Sep 20</div></div>
+        <div class="col-body">
+          <div class="task"><div class="thumb">&#9793;</div><div class="kicker">Maintenance</div><div class="name">Insurance check-in</div><div class="line"><span class="plat">Facebook</span> &middot; 12:00 PM</div><div class="besttime" title="Midday keeps this maintenance post visible without competing with peak content">Steady slot</div><div class="check"><span class="cbox"></span>Mark done</div></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="band"><div class="dow">Sun</div><div class="dnum2">Sep 21</div></div>
+        <div class="col-body"><div class="rest">Rest day</div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ BUILDING TRANSITION ============ -->
+<div id="building" class="hidden">
+  <div class="spin"></div>
+  <h2>Building your plan…</h2>
+  <p>Turning your first post into a month of moves.</p>
+</div>
+
+<!-- ============ WELCOME ============ -->
+<div id="welcome">
+  <div class="glow"></div>
+  <p class="brand">Adaptive Marketing Studio</p>
+  <h1 class="big">Welcome <em>back</em></h1>
+  <p class="nm">Amerika</p>
+  <button class="enter" onclick="stepIn()">Step in &#8594;</button>
+</div>
+
+<!-- ============ NEW BUSINESS CREATED ============ -->
+<div id="modal-newbiz" class="modal-overlay hidden">
+  <div class="modal" style="max-width:470px;">
+    <div class="m-body" style="text-align:center;padding:34px 32px 28px;">
+      <div style="width:60px;height:60px;border-radius:17px;background:var(--good-bg);color:var(--good);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 18px;">&#10003;</div>
+      <h2 style="font-family:'Fraunces';font-style:italic;font-weight:500;font-size:24px;color:var(--plum);margin:0 0 6px;"><span id="nb-name">Harbor Dental</span> is set up</h2>
+      <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin:0 0 22px;">It's its own space now — completely separate from your other businesses. Here's what comes with it:</p>
+      <div style="text-align:left;display:flex;flex-direction:column;gap:11px;margin-bottom:24px;">
+        <div style="display:flex;gap:11px;align-items:flex-start;"><span style="width:26px;height:26px;border-radius:8px;background:var(--wash);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;">&#9707;</span><div style="font-size:13px;color:var(--plum-2);line-height:1.4;"><b style="color:var(--plum);">Its own tab and calendar</b> — switch into it anytime, nothing bleeds between businesses.</div></div>
+        <div style="display:flex;gap:11px;align-items:flex-start;"><span style="width:26px;height:26px;border-radius:8px;background:var(--wash);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;">&#9878;</span><div style="font-size:13px;color:var(--plum-2);line-height:1.4;"><b style="color:var(--plum);">Its own airtime engine</b> — balances that business's week across its own services.</div></div>
+        <div style="display:flex;gap:11px;align-items:flex-start;"><span style="width:26px;height:26px;border-radius:8px;background:var(--wash);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;">&#8635;</span><div style="font-size:13px;color:var(--plum-2);line-height:1.4;"><b style="color:var(--plum);">Its own weekly heartbeat</b> — its own check-ins, on its own rhythm.</div></div>
+        <div style="display:flex;gap:11px;align-items:flex-start;"><span style="width:26px;height:26px;border-radius:8px;background:var(--wash);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;">&#10022;</span><div style="font-size:13px;color:var(--plum-2);line-height:1.4;"><b style="color:var(--plum);">A learning thread of its own</b> — this business's audience never gets mixed with another's.</div></div>
+      </div>
+      <button class="btn-save" style="width:100%;" onclick="buildNewBiz()">See its calendar &#8594;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ NEW SERVICE CREATED ============ -->
+<div id="modal-newservice" class="modal-overlay hidden">
+  <div class="modal" style="max-width:460px;">
+    <div class="m-body" style="text-align:center;padding:34px 32px 28px;">
+      <div style="width:60px;height:60px;border-radius:17px;background:var(--good-bg);color:var(--good);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 18px;">&#10003;</div>
+      <h2 style="font-family:'Fraunces';font-style:italic;font-weight:500;font-size:24px;color:var(--plum);margin:0 0 6px;"><span id="ns-name">Estate planning</span> is live</h2>
+      <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin:0 0 22px;">It's a full project now — not just a label. Here's what I set up automatically:</p>
+      <div style="text-align:left;display:flex;flex-direction:column;gap:11px;margin-bottom:24px;">
+        <div style="display:flex;gap:11px;align-items:flex-start;"><span style="width:26px;height:26px;border-radius:8px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;">&#9632;</span><div style="font-size:13px;color:var(--plum-2);line-height:1.4;"><b style="color:var(--plum);">Its own color</b> on your calendar, so its posts stand out.</div></div>
+        <div style="display:flex;gap:11px;align-items:flex-start;"><span style="width:26px;height:26px;border-radius:8px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;">&#9878;</span><div style="font-size:13px;color:var(--plum-2);line-height:1.4;"><b style="color:var(--plum);">A spot in your airtime rotation</b> — it'll compete for the week with your other services.</div></div>
+        <div style="display:flex;gap:11px;align-items:flex-start;"><span style="width:26px;height:26px;border-radius:8px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;">&#8635;</span><div style="font-size:13px;color:var(--plum-2);line-height:1.4;"><b style="color:var(--plum);">Its own weekly check-in</b>, folded into your standing heartbeat.</div></div>
+        <div style="display:flex;gap:11px;align-items:flex-start;"><span style="width:26px;height:26px;border-radius:8px;background:var(--wash);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;">&#10022;</span><div style="font-size:13px;color:var(--plum-2);line-height:1.4;"><b style="color:var(--plum);">A fresh learning thread</b> — starts on best practices, personalizes as its audience responds.</div></div>
+      </div>
+      <button class="btn-save" style="width:100%;" onclick="closeAll()">Got it</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ADD BUSINESS MODAL ============ -->
+<div id="modal-addbiz" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="m-head"><h2>Add a business</h2><span class="m-x" onclick="closeAll()">&#10005;</span></div>
+    <div class="m-body">
+      <p class="hint" style="margin:0 0 18px;font-style:normal;font-size:13px;color:var(--ink-soft);">Each business is its own space — its own calendar, services, and learning. Nothing crosses over.</p>
+      <div class="field"><label>Business name</label><input type="text" id="biz-new-name" placeholder="e.g. Harbor Dental"></div>
+      <div class="field"><label>Tab color</label>
+        <div class="plats">
+          <div class="pchip on" onclick="pickColor(this)"><span class="tick" style="background:var(--rose-soft);border:none;"></span>Rosewood</div>
+          <div class="pchip" onclick="pickColor(this)"><span class="tick" style="background:#9CBCB0;border:none;"></span>Sage</div>
+          <div class="pchip" onclick="pickColor(this)"><span class="tick" style="background:#C9B48A;border:none;"></span>Sand</div>
+          <div class="pchip" onclick="pickColor(this)"><span class="tick" style="background:#8CA6C9;border:none;"></span>Slate</div>
+        </div></div>
+      <div class="field"><label>First service <span class="opt">— you can add more later</span></label><input type="text" placeholder="e.g. Teeth cleaning"></div>
+      <div class="field"><label>This service is…</label>
+        <div class="seg2"><span class="on">Evergreen</span><span>Has a deadline</span></div>
+        <p class="hint">Evergreen runs an ongoing rhythm; a deadline runs a campaign toward a close date.</p></div>
+      <div class="field"><label>Where do you post?</label>
+        <div class="plats">
+          <div class="pchip on" onclick="this.classList.toggle('on')"><span class="tick">&#10003;</span>Facebook</div>
+          <div class="pchip on" onclick="this.classList.toggle('on')"><span class="tick">&#10003;</span>Instagram</div>
+          <div class="pchip on" onclick="this.classList.toggle('on')"><span class="tick">&#10003;</span>TikTok</div>
+          <div class="pchip addp"><span class="tick">+</span>Add platform</div>
+        </div></div>
+      <div class="m-foot"><button class="btn-ghost" onclick="closeAll()">Cancel</button><button class="btn-save" onclick="createBusiness()">Create business</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ADD POST MODAL ============ -->
+<div id="modal-addpost" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="m-head"><h2>Add a post</h2><span class="m-x" onclick="closeAll()">&#10005;</span></div>
+    <div class="m-body">
+      <div class="field"><label>Attach the post <span class="opt">— optional</span></label>
+        <div class="drop"><div class="ic">&#8686;</div><div class="t">Drop an image or click to upload</div><div class="s">A picture of what you posted, just for your reference</div></div></div>
+      <div class="field"><label>Service / project</label>
+        <select id="svc-select" onchange="onServiceChange(this)"><option>Divorce services</option><option>Tax planning</option><option>Immigration services</option><option>Insurance</option><option>Fall programs (campaign)</option><option>+ Add new service…</option></select>
+        <div id="new-svc-box" class="addnew hidden" style="margin-top:10px;background:var(--wash);border:1px solid var(--rose-soft);border-radius:11px;padding:12px 13px;">
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="new-svc-name" placeholder="e.g. Estate planning" style="flex:1;">
+            <button style="background:var(--rose);color:#fff;border:none;border-radius:9px;padding:0 16px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;" onclick="createService()">Add</button>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:7px;margin-top:9px;font-size:11px;color:var(--plum-2);line-height:1.45;"><span style="color:var(--rose);font-weight:700;">&#8635;</span><span>Adds it everywhere — a new project with its own color, airtime, check-in, and learning.</span></div>
+        </div>
+      </div>
+      <div class="field"><label>Content type</label>
+        <select id="ct-select"><option>Announcement</option><option>Look inside</option><option>Book / enroll now</option><option>Pricing update</option><option>Testimonial</option><option>Insight</option><option>Recap</option></select></div>
+      <div class="field"><label>Day posted</label><input type="date" id="day-select" value="2026-09-15"></div>
+      <div class="field"><label>Where did you post it?</label>
+        <div class="plats">
+          <div class="pchip on" onclick="this.classList.toggle('on')"><span class="tick">&#10003;</span>Facebook</div>
+          <div class="pchip on" onclick="this.classList.toggle('on')"><span class="tick">&#10003;</span>Instagram</div>
+          <div class="pchip" onclick="this.classList.toggle('on')"><span class="tick"></span>TikTok</div>
+          <div class="pchip addp"><span class="tick">+</span>Add platform</div>
+        </div></div>
+      <div class="field"><label>Organic or paid?</label>
+        <div class="seg2"><span onclick="setPaid(false)" id="seg-org">Organic</span><span class="on" onclick="setPaid(true)" id="seg-paid">Paid</span></div>
+        <div class="budget" id="budgetbox"><div class="inl"><label style="margin:0;text-transform:uppercase;font-size:12px;color:var(--rose);">Budget</label><span class="cur">$</span><input type="number" value="40"></div><input class="days" type="text" placeholder="Run: 4 days"></div>
+        <p class="hint">Budget + run length tells me when to read results — mid-campaign and at the end.</p></div>
+      <div class="field"><label>Insights</label>
+        <div class="insights-row"><div class="ic">&#128202;</div><div class="tx"><div class="a">Add insights screenshot</div><div class="b">Upload your numbers when the post has performed — this is what I learn from.</div></div><button onclick="openInsights()">&#8593; Add</button></div></div>
+      <div class="m-foot"><button class="btn-ghost" onclick="closeAll()">Cancel</button><button class="btn-save" onclick="savePost()">Save post</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ UPLOAD INSIGHTS MODAL (blank state) ============ -->
+<div id="modal-upload" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="m-head"><h2>Upload insights</h2><span class="m-x" onclick="closeAll()">&#10005;</span></div>
+    <div class="m-body">
+      <p class="hint" style="margin:0 0 16px;font-style:normal;font-size:13px;color:var(--ink-soft);">Screenshot your latest numbers and drop them in — I'll read what landed and tune your plan around it.</p>
+      <div class="field"><label>Insight screenshots</label>
+        <div class="drop" style="padding:30px 20px;"><div class="ic" style="font-size:26px;">&#8686;</div><div class="t">Drop your insights screenshots here</div><div class="s">Instagram, TikTok, or Facebook — one or several at once</div></div></div>
+      <div class="field"><label>Which post or service? <span class="opt">— optional, I can usually tell</span></label>
+        <select><option>Let me detect it from the screenshot</option><option>Tax planning</option><option>Divorce services</option><option>Immigration services</option><option>Insurance</option><option>Fall programs (campaign)</option></select></div>
+      <div class="m-foot"><button class="btn-ghost" onclick="closeAll()">Cancel</button><button class="btn-save" onclick="runAnalyze()">Analyze &#8594;</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ INSIGHTS RESULTS MODAL ============ -->
+<div id="modal-insights" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="m-head"><h2>Here's what I learned</h2><span class="m-x" onclick="closeAll()">&#10005;</span></div>
+    <div class="m-body">
+      <p class="stepline">From your upload</p>
+      <div class="uploaded"><div class="thumb2">&#128202;</div><div class="tx"><div class="a">tiktok-refund-story.png</div><div class="b">TikTok &middot; Sep 18 post</div></div><div class="status">Read</div></div>
+      <div class="uploaded"><div class="thumb2">&#128202;</div><div class="tx"><div class="a">ig-fall-programs.png</div><div class="b">Instagram &middot; Fall campaign</div></div><div class="status">Read</div></div>
+      <div class="sect"><span>The refund story</span></div>
+      <div class="stats"><div class="stat hero"><div class="n">24.1k</div><div class="l">Views</div></div><div class="stat"><div class="n">3.8k</div><div class="l">Likes</div></div><div class="stat"><div class="n">210</div><div class="l">Saves</div></div></div>
+      <p class="read-note">~6&times; your usual reach for a tax post.</p>
+      <div class="sect"><span>What I'm doing about it</span></div>
+      <div class="insight"><div class="hd"><span class="tag good">Overperformer</span><span class="svc">Tax &middot; TikTok</span></div><p class="what">The refund-result angle broke out.</p><div class="move"><span class="ic">&#8594;</span><div class="mtx"><b>Boosting it</b> now, and cloned the angle into <b>2 posts next week</b>.</div></div></div>
+      <div class="insight gap"><div class="hd"><span class="tag warn">Conversion gap</span><span class="svc">Fall programs &middot; Instagram</span></div><p class="what">Lots of engagement, few enrollments.</p><div class="move"><span class="ic">&#8594;</span><div class="mtx">Likely a <b>trust gap</b> — queued a <b>parent testimonial</b> to test it.</div></div></div>
+      <div class="m-foot"><span class="leftnote">Adjust any of this on the calendar.</span><button class="btn-ghost" onclick="closeAll()">Not now</button><button class="btn-save" onclick="applyToPlan()">Apply to plan</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ NOTIFICATION PANEL ============ -->
+<div id="notif-panel" class="notif-panel hidden">
+  <div class="nh"><h3>Notifications</h3><span class="cl" onclick="toggleNotif()">&#10005;</span></div>
+  <div class="notif-list" id="notif-list">
+    <div class="notif-empty" id="notif-empty">Nothing waiting right now.</div>
+  </div>
+</div>
+
+<!-- ============ WHY-THIS-MOVE POPOVER ============ -->
+<div id="why-pop" class="hidden">
+  <div class="wh"><span class="tag" id="why-tag">Reasoning</span><span class="cl" onclick="closeWhy()">&#10005;</span></div>
+  <div class="wb" id="why-body"></div>
+</div>
+
+<!-- ============ WALKTHROUGH TOUR ============ -->
+<div id="tour-overlay" class="hidden">
+  <div id="tour-spot"></div>
+  <div id="tour-card">
+    <span class="tk" id="tour-kicker">Welcome tour</span>
+    <h4 id="tour-title"></h4>
+    <p id="tour-text"></p>
+    <div class="tnav">
+      <div class="tdots" id="tour-dots"></div>
+      <div class="tbtns"><button class="tskip" onclick="endTour()">Skip</button><button class="tnext" id="tour-next" onclick="tourNext()">Next</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function stepIn(){document.getElementById('welcome').classList.add('gone');showView('setup');}
+  function showView(v){
+    document.getElementById('view-monthly').classList.toggle('hidden', v!=='monthly');
+    document.getElementById('view-weekly').classList.toggle('hidden', v!=='weekly');
+    document.getElementById('view-setup').classList.toggle('hidden', v!=='setup');
+    document.querySelector('.tabbar').style.display = (v==='setup')?'none':'flex';
+  }
+  function selChoice(el){el.parentNode.querySelectorAll('.choice').forEach(function(x){x.classList.remove('sel');});el.classList.add('sel');}
+  function setupStep(n){
+    [1,2,3].forEach(function(i){
+      document.getElementById('setup-step-'+i).classList.toggle('hidden', i!==n);
+      var dot=document.getElementById('sd'+i);
+      dot.classList.toggle('on', i<=n);
+    });
+  }
+  function showSetupPlatInput(){document.getElementById('setup-plat-input').classList.remove('hidden');document.getElementById('setup-plat-name').focus();}
+  function addSetupPlatform(){
+    var v=document.getElementById('setup-plat-name').value.trim(); if(!v)return;
+    var chip=document.createElement('div'); chip.className='pchip on'; chip.onclick=function(){this.classList.toggle('on');};
+    chip.innerHTML='<span class="tick">\u2713</span>'+v;
+    var addBtn=document.querySelector('#setup-plats .addp');
+    document.getElementById('setup-plats').insertBefore(chip, addBtn);
+    document.getElementById('setup-plat-name').value='';
+    document.getElementById('setup-plat-input').classList.add('hidden');
+    // make it available in the add-post platform picker too
+    window._extraPlatforms=window._extraPlatforms||[]; window._extraPlatforms.push(v);
+  }
+  function finishSetup(){
+    document.getElementById('view-setup').classList.add('hidden');
+    var bl=document.getElementById('building');
+    bl.classList.remove('hidden');
+    setTimeout(function(){
+      bl.classList.add('hidden');
+      document.getElementById('fresh-banner').classList.remove('hidden');
+      markSuggested();
+      showView('monthly');
+      setTimeout(startTour, 2600);
+    }, 1900);
+  }
+  // sparse fresh calendar for a brand-new business (one service, just getting started)
+  function showNewBizCalendar(name){
+    document.getElementById('fresh-banner').classList.remove('hidden');
+    // clear the demo month and drop in a light starter plan
+    var cells=document.querySelectorAll('#view-monthly .grid .cell');
+    cells.forEach(function(c){var ch=c.querySelector('.chips'); if(ch) ch.remove();});
+    // a simple evergreen starter rhythm across the month
+    var puts=[[1,'a','Teeth whitening — intro'],[4,'b','Look inside'],[8,'c','Book a visit'],[11,'f','Dental tip'],[15,'e','Patient review'],[18,'c','Book a visit'],[22,'f','Dental tip'],[25,'e','Patient review'],[29,'c','Book a visit']];
+    puts.forEach(function(pd,i){
+      var c=cells[pd[0]]; if(!c)return;
+      var ch=document.createElement('div'); ch.className='chips';
+      ch.innerHTML='<span class="cc sug ripple '+pd[1]+'" style="animation-delay:'+(i*240)+'ms">'+pd[2]+'</span>';
+      c.appendChild(ch);
+    });
+    // update the "at a glance" panel
+    var glance=document.querySelector('#view-monthly .panel.dark');
+    if(glance){glance.querySelector('.phase').textContent='New · evergreen';
+      glance.querySelector('h3').textContent='Fresh start for '+name;
+      glance.querySelector('p').textContent='One service so far. Post a few times and upload your insights — I\u2019ll start personalizing from there.';}
+    // hide the other business's wake-up reminder and stale note
+    var wb=document.getElementById('wake-banner'); if(wb) wb.classList.add('hidden');
+    var note=document.querySelector('#view-monthly .side .panel:last-child .note');
+    if(note) note.textContent='Nothing to flag yet — check back after your first week of posts.';
+  }
+  function markSuggested(){
+    monthEvents(8).forEach(function(e){e.sug=true;});
+    curMonth=8; renderMonth();
+    var chips=document.querySelectorAll('#view-monthly .cc');
+    chips.forEach(function(c,i){
+      c.classList.add('ripple');
+      c.style.animationDelay=(i*230)+'ms';
+      c.addEventListener('animationend',function(){c.classList.remove('ripple');c.style.animationDelay='';},{once:true});
+    });
+  }
+  // ----- modals -----
+  var ctClassMap={'announcement':'ct-announce','look inside':'ct-inside','book / enroll now':'ct-book','pricing update':'ct-price','testimonial':'ct-proof','insight':'ct-insight','recap':'ct-recap'};
+  function savePost(){
+    var svc=document.getElementById('svc-select').value;
+    var ct=document.getElementById('ct-select').value;
+    var dateStr=document.getElementById('day-select').value;
+    var plats=[]; document.querySelectorAll('#modal-addpost .plats .pchip.on').forEach(function(p){plats.push(p.textContent.trim());});
+    var parts=dateStr.split('-'); var m=parseInt(parts[1],10)-1; var d=parseInt(parts[2],10);
+    var cls=ctClassMap[ct.toLowerCase()]||'ct-recap';
+    var shortSvc=svc.replace(' (campaign)','').split(' ')[0];
+    var label=shortSvc+' — '+ct.toLowerCase().replace(' / enroll now','').replace(' update','');
+    monthEvents(m).push({day:d,text:label,cls:cls,sug:false,done:true});
+    logHistory(shortSvc);
+    closeAll();
+    curMonth=m; renderMonth(); showView('monthly');
+    showToast('Logged "'+label+'" — building your next moves…');
+    addNotif('&#10003;','Post logged',label+' on '+months[m]+' '+d,'');
+    // THE CORE LOOP: recommend the strategic next moves based on what was posted
+    setTimeout(function(){ recommendAfter(ct.toLowerCase(), shortSvc, cls, m, d); }, 700);
+  }
+  // ===== the real learning model: activity (what you did) + performance (what you uploaded) =====
+  // A logged/completed post is a RECORD. It only becomes a learnable data point once
+  // its performance stats are uploaded from the insights section. Trends are gated on
+  // posts that have PERFORMANCE attached — not just posts logged.
+  var postHistory={};   // { serviceKey: count of posts LOGGED (awaiting results) }
+  var perfHistory={};   // { serviceKey: count of posts with UPLOADED stats — the real fuel }
+  var awaitingResults=0; // logged posts across all services with no stats yet
+  function svcKey(s){ return (s||'').toLowerCase().split(' ')[0]; }
+  function logHistory(svc){ var k=svcKey(svc); postHistory[k]=(postHistory[k]||0)+1; awaitingResults++; return postHistory[k]; }
+  // when insights are uploaded, logged posts get their performance attached -> real data points
+  function attachPerformance(){
+    // move everything 'awaiting results' into performance history
+    for(var k in postHistory){ perfHistory[k]=(perfHistory[k]||0)+(postHistory[k]||0); }
+    awaitingResults=0;
+  }
+  var INSIGHT_THRESHOLD=3; // need this many posts WITH PERFORMANCE for a real trend
+  // pre-seed Lopez as an established business: it has past posts AND their uploaded stats
+  (function(){ ['divorce','tax','immigration','insurance','fall'].forEach(function(k){postHistory[k]=3;perfHistory[k]=3;}); })();
+
+  // generate ONE clever, insight-driven recommendation from a logged post (quality over quantity)
+  function recommendAfter(ct, svc, cls, m, d){
+    var count=perfHistory[svcKey(svc)]||0; // real data points = posts with uploaded stats
+    // Not enough PERFORMANCE data yet → record-keeping. The tool learns from uploaded stats, not check-marks.
+    if(count < INSIGHT_THRESHOLD){
+      var logged=postHistory[svcKey(svc)]||0;
+      showToast('Logged. I\u2019ll know how it did once you upload this week\u2019s insights — that\u2019s what I learn from.');
+      addNotif('&#9678;','Post recorded','Logged '+svc+'. Upload your insights to turn activity into a real pattern.','');
+      return;
+    }
+    // library of insightful recos — each notices something specific, backed by real performance data
+    var n=count; // real data points = posts with uploaded performance
+    var lib={
+      'announce':{
+        k:'From your uploaded stats',ic:'&#128200;',
+        obs:'Across the <b>'+n+' '+svcKey(svc)+' announcements you\u2019ve uploaded numbers for</b>, reach is strong but first-day bookings run slow — <b>people need a beat</b>.',
+        mv:'Don\u2019t ask yet. Post a "behind the decision" story next, not a CTA.',
+        why:'Your uploaded results show a 2\u20133 day warm-up out-books going straight to "sign up".',
+        add:svc+' — behind the story',addCls:'ct-inside',off:2},
+      'book':{
+        k:'From your uploaded stats',ic:'&#128161;',
+        obs:'In the numbers you\u2019ve uploaded, <b>booking posts that open with a client result out-convert plain CTAs about 2:1</b>.',
+        mv:'Lead your next '+svc+' booking post with a real outcome, not "book now".',
+        why:'Your own performance data keeps showing proof beats asks — bake the proof into the ask.',
+        add:svc+' — result-led CTA',addCls:'ct-book',off:3},
+      'enroll':{
+        k:'From your uploaded stats',ic:'&#9201;',
+        obs:'Your uploaded results show <b>mid-week enrollment asks convert better than weekend ones</b>.',
+        mv:'Move the next enrollment push to Tuesday\u2013Thursday.',
+        why:'Fri/Sat asks get likes in your stats, but the bookings land on weekdays. Meet them when they act.',
+        add:svc+' — enroll (mid-week)',addCls:'ct-book',off:4},
+      'testimonial':{
+        k:'From your uploaded stats',ic:'&#9878;',
+        obs:'Your testimonials pull <b>your highest saves/shares in the numbers you\u2019ve uploaded</b> — but rarely get followed by an ask.',
+        mv:'Pair this testimonial with a soft booking nudge 2 days later, while trust is fresh.',
+        why:'Your data shows trust spikes then decays fast — the window right after proof converts best.',
+        add:svc+' — nudge (trust primed)',addCls:'ct-book',off:2},
+      'insight':{
+        k:'From your uploaded stats',ic:'&#128241;',
+        obs:'Your uploaded reach vs. bookings show value posts <b>travel furthest on the platform where '+svcKey(svc)+' converts least</b>.',
+        mv:'Repurpose this insight where your buyers actually are, not just where it got reach.',
+        why:'Reach on the wrong platform is vanity. Your numbers say bookings come from elsewhere.',
+        add:svc+' — repurpose to buyers',addCls:'ct-insight',off:3},
+      'pricing':{
+        k:'Sequencing insight',ic:'&#127991;',
+        obs:'You just put price on the table — <b>but there\u2019s no value-density post yet this cycle</b>.',
+        mv:'Before any discount, post one "what\u2019s included" breakdown so price reads as a deal.',
+        why:'A promo only lands as urgency if they already believe it\u2019s worth it. Value first, then the close.',
+        add:svc+' — what\u2019s included',addCls:'ct-price',off:2},
+      'look inside':{
+        k:'From your uploaded stats',ic:'&#128293;',
+        obs:'Your numbers show look-inside posts spike engagement but <b>the effect fades in ~48h</b> if nothing follows.',
+        mv:'Strike while it\u2019s warm — a social-proof post within 2 days.',
+        why:'You\u2019ve built curiosity; your data says convert it before attention resets.',
+        add:svc+' — social proof',addCls:'ct-proof',off:2}
+    };
+    var key=null;
+    ['announce','enroll','book','testimonial','insight','pricing','look inside'].forEach(function(k){ if(!key && ct.indexOf(k)!==-1) key=k; });
+    var rec=lib[key]||{k:'Rhythm insight',ic:'&#8734;',obs:'This service does best on a <b>steady, varied drip</b> — same message twice in a row is where evergreen loses people.',mv:'Vary the next '+svc+' post\u2019s angle, don\u2019t repeat this one.',why:'Repetition is evergreen\u2019s failure mode. Keep the cadence, rotate the hook.',add:svc+' — fresh angle',addCls:'ct-recap',off:4};
+    // stash for the "add it" button
+    window._pendingRec={rec:rec,m:m,d:d};
+    // render the card
+    var host=document.getElementById('insight-rec');
+    if(host) host.remove();
+    var el=document.createElement('div'); el.id='insight-rec';
+    el.innerHTML='<div class="rh"><span class="sp">'+rec.ic+'</span><span class="k">'+rec.k+'</span><span class="cl" onclick="dismissRec()">&#10005;</span></div>'+
+      '<div class="rb"><p class="obs">'+rec.obs+'</p><p class="mv">'+rec.mv+'</p><p class="why2">'+rec.why+'</p>'+
+      '<div class="racts"><button class="radd" onclick="acceptRec()">Add this move</button><button class="rdismiss" onclick="dismissRec()">Not now</button></div></div>';
+    document.body.appendChild(el);
+  }
+  function acceptRec(){
+    var pr=window._pendingRec; if(!pr){dismissRec();return;}
+    var day=pr.d+pr.rec.off; if(day>monthLen[pr.m]) day=monthLen[pr.m];
+    var evs=monthEvents(pr.m);
+    while(evs.some(function(e){return e.day===day;}) && day<monthLen[pr.m]) day++;
+    evs.push({day:day,text:pr.rec.add,cls:pr.rec.addCls,sug:true});
+    whyData[pr.rec.add.toLowerCase()]={tag:pr.rec.k,title:'Why this move',rows:[['&#9678;',pr.rec.obs],['&#8594;','<b>'+pr.rec.mv+'</b>'],['&#10022;',pr.rec.why]]};
+    if(pr.m===curMonth) renderMonth();
+    showToast('Added — '+pr.rec.add);
+    addNotif('&#128161;','Insight applied',pr.rec.mv,'');
+    dismissRec();
+  }
+  function dismissRec(){ var h=document.getElementById('insight-rec'); if(h) h.remove(); window._pendingRec=null; }
+  function openAdd(){document.getElementById('modal-addpost').classList.remove('hidden');}
+  function openAddBiz(){document.getElementById('modal-addbiz').classList.remove('hidden');}
+  function openWake(){document.getElementById('wake-banner').classList.remove('hidden');document.getElementById('wake-banner').classList.remove('leaving');}
+  function dismissWake(){
+    var ban=document.getElementById('wake-banner');
+    ban.classList.add('leaving');
+    setTimeout(function(){ban.classList.add('hidden');ban.classList.remove('leaving');},400);
+    addNotif('&#9200;','Fall programs — run it again?','Dismissed reminder · tap to decide', 'openWake()');
+  }
+  function wakeYes(){
+    var ban=document.getElementById('wake-banner'); if(ban) ban.classList.add('hidden');
+    closeAll();document.getElementById('view-setup').classList.add('hidden');
+    var bl=document.getElementById('building');bl.classList.remove('hidden');
+    setTimeout(function(){bl.classList.add('hidden');document.getElementById('fresh-banner').classList.remove('hidden');markSuggested();showView('monthly');},1600);
+  }
+  // notification center
+  var notifs=[];
+  function addNotif(icon,title,sub,action){
+    notifs.push({icon:icon,title:title,sub:sub,action:action});
+    renderNotifs();
+  }
+  function renderNotifs(){
+    var list=document.getElementById('notif-list');
+    var cnt=document.getElementById('notif-count');
+    cnt.textContent=notifs.length;
+    cnt.classList.toggle('zero',notifs.length===0);
+    if(notifs.length===0){list.innerHTML='<div class="notif-empty">Nothing waiting right now.</div>';return;}
+    list.innerHTML=notifs.map(function(n,i){
+      return '<div class="notif-item"><div class="ni">'+n.icon+'</div><div class="nt"><div class="a">'+n.title+'</div><div class="b">'+n.sub+'</div><span class="open" onclick="actNotif('+i+')">Open &#8594;</span></div></div>';
+    }).join('');
+  }
+  function actNotif(i){
+    var n=notifs[i]; notifs.splice(i,1); renderNotifs();
+    document.getElementById('notif-panel').classList.add('hidden');
+    if(n.action) eval(n.action);
+  }
+  function toggleNotif(){document.getElementById('notif-panel').classList.toggle('hidden');}
+  // ===== WALKTHROUGH TOUR =====
+  var tourSteps=[
+    {sel:'.tabbar',k:'Your businesses',t:'Switch between businesses',x:'Each business is its own tab — its own calendar, services, and learning. The + adds another.'},
+    {sel:'#month-title',k:'The plan',t:'Built from your first post',x:'This is your generated month. Every move is a decision — tap any one to see why it\u2019s there.'},
+    {sel:'.controls .seg',k:'Two views',t:'Month & week',x:'Zoom out to the month for the big picture, or into the week to do the work — with best posting times.'},
+    {sel:'.add-post',k:'Log activity',t:'Add what you posted',x:'Logged posts teach the tool. Completing and skipping moves shapes what it suggests next.'},
+    {sel:'#view-monthly .panel.dark .up',k:'The brain',t:'Upload your insights',x:'Screenshot your numbers here. The tool reads them and adapts the plan — boosting winners, fixing what\u2019s not converting.'},
+    {sel:'.bell',k:'Stay on top',t:'Notifications',x:'Reminders, campaign wake-ups, and plan changes land here so nothing slips.'}
+  ];
+  var tourI=0;
+  function startTour(){
+    tourI=0;
+    document.getElementById('tour-overlay').classList.remove('hidden');
+    var dots=tourSteps.map(function(_,i){return '<i'+(i===0?' class="on"':'')+'></i>';}).join('');
+    document.getElementById('tour-dots').innerHTML=dots;
+    renderTourStep();
+  }
+  function renderTourStep(){
+    var step=tourSteps[tourI];
+    var el=document.querySelector(step.sel);
+    if(!el){ tourNext(); return; }
+    el.scrollIntoView({block:'center',behavior:'smooth'});
+    var r=el.getBoundingClientRect();
+    var spot=document.getElementById('tour-spot');
+    var pad=8;
+    spot.style.left=(r.left-pad)+'px'; spot.style.top=(r.top-pad)+'px';
+    spot.style.width=(r.width+pad*2)+'px'; spot.style.height=(r.height+pad*2)+'px';
+    document.getElementById('tour-kicker').textContent=step.k;
+    document.getElementById('tour-title').textContent=step.t;
+    document.getElementById('tour-text').textContent=step.x;
+    document.getElementById('tour-next').textContent = (tourI===tourSteps.length-1)?'Got it':'Next';
+    document.querySelectorAll('#tour-dots i').forEach(function(d,i){d.classList.toggle('on',i===tourI);});
+    // place card near the element (below if room, else above)
+    var card=document.getElementById('tour-card');
+    var cx=Math.min(Math.max(10,r.left), window.innerWidth-300);
+    var cy=r.bottom+16; if(cy+180>window.innerHeight) cy=r.top-196;
+    card.style.left=cx+'px'; card.style.top=Math.max(10,cy)+'px';
+  }
+  function tourNext(){ if(tourI>=tourSteps.length-1){endTour();return;} tourI++; renderTourStep(); }
+  function endTour(){ document.getElementById('tour-overlay').classList.add('hidden'); }
+  // month + week navigation
+  // ===== DATA-DRIVEN MONTH CALENDAR =====
+  var months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var monthLen=[31,28,31,30,31,30,31,31,30,31,30,31];
+  var monthStartDow=[4,0,0,3,5,1,3,6,2,4,0,2]; // 2026 day-of-week each month starts on (Sep 2026 = Tue index... calibrated so Sep 1 = Tue)
+  var curMonth=8; // September
+  // events store: eventsByMonth[monthIndex] = [{day, text, cls, boost, done, sug}]
+  var eventsByMonth={
+    8:[ {day:1,text:'Fall — announce',cls:'ct-announce'},{day:3,text:'Look inside',cls:'ct-inside'},{day:5,text:'Tax — filing tip',cls:'ct-insight'},
+        {day:8,text:'Divorce — consult',cls:'ct-book'},{day:9,text:'Testimonial',cls:'ct-proof'},{day:11,text:'Fall — sneak peek',cls:'ct-inside'},
+        {day:15,text:'Spots filling up',cls:'ct-proof'},{day:16,text:'Immigration Q&A',cls:'ct-insight',strike:2},{day:18,text:'Refund story',cls:'ct-proof',boost:true},
+        {day:20,text:'Insurance check-in',cls:'ct-recap'},{day:22,text:'Fall — pricing',cls:'ct-price'},{day:24,text:'Enroll now',cls:'ct-book'},
+        {day:25,text:'Divorce — book',cls:'ct-book'},{day:28,text:'Promo — 10% off',cls:'ct-price'},{day:29,text:'Last chance',cls:'ct-announce',boost:true},{day:30,text:'Final call',cls:'ct-recap'} ],
+    9:[ {day:2,text:'Tax — filing tip',cls:'ct-insight'},{day:6,text:'Divorce — consult',cls:'ct-book'},{day:9,text:'Testimonial',cls:'ct-proof'},
+        {day:14,text:'Immigration Q&A',cls:'ct-insight'},{day:20,text:'Insurance check-in',cls:'ct-recap'},{day:23,text:'Divorce — book',cls:'ct-book'} ],
+    10:[ {day:4,text:'Tax — year-end tip',cls:'ct-insight'},{day:11,text:'Client testimonial',cls:'ct-proof'},{day:18,text:'Divorce — consult',cls:'ct-book'},{day:25,text:'Insurance check-in',cls:'ct-recap'} ]
+  };
+  function monthEvents(m){ if(!eventsByMonth[m]) eventsByMonth[m]=[]; return eventsByMonth[m]; }
+  function renderMonth(){
+    var grid=document.getElementById('month-grid'); if(!grid) return;
+    grid.innerHTML='';
+    var len=monthLen[curMonth], startDow=monthStartDow[curMonth];
+    var prevLen=monthLen[(curMonth+11)%12];
+    var evs=monthEvents(curMonth);
+    // leading dims
+    for(var i=0;i<startDow;i++){ var c=document.createElement('div');c.className='cell';
+      c.innerHTML='<span class="dnum dim">'+(prevLen-startDow+1+i)+'</span>';grid.appendChild(c); }
+    // days
+    for(var d=1;d<=len;d++){
+      var cell=document.createElement('div');cell.className='cell';
+      var html='<span class="dnum">'+d+'</span>';
+      var dayEvs=evs.filter(function(e){return e.day===d;});
+      if(dayEvs.length){ html+='<div class="chips">'+dayEvs.map(function(e){
+        return '<span class="cc '+(e.cls||'')+(e.sug?' sug':'')+(e.done?' done':'')+'"'+(e.done?' style="text-decoration:line-through;opacity:.55"':'')+'>'+e.text+'</span>'+(e.boost?'<span class="boost">Boost</span>':'')+(e.strike?'<span class="strikeflag" title="Flat-post ladder: strike '+e.strike+' of 4 — retrying before I judge it">&#9203; strike '+e.strike+'/4</span>':'');
+      }).join('')+'</div>'; }
+      cell.innerHTML=html; grid.appendChild(cell);
+    }
+    // trailing dims to fill the last row
+    var total=startDow+len; var trail=(7-(total%7))%7;
+    for(var t=1;t<=trail;t++){ var tc=document.createElement('div');tc.className='cell';tc.innerHTML='<span class="dnum dim">'+t+'</span>';grid.appendChild(tc); }
+    document.getElementById('month-title').textContent=months[curMonth];
+  }
+  function changeMonth(dir){
+    curMonth=(curMonth+dir+12)%12;
+    renderMonth();
+    var evs=monthEvents(curMonth);
+    if(evs.length===0){ showToast(months[curMonth]+' is open — add posts or let the plan build forward.'); }
+    else { showToast('Viewing '+months[curMonth]+'.'); }
+  }
+  var weekIdx=0;
+  var weeks=['14 – 20 September 2026','21 – 27 September 2026','28 Sep – 4 Oct 2026','7 – 13 September 2026'];
+  function changeWeek(d){
+    weekIdx=(weekIdx+d+weeks.length)%weeks.length;
+    document.getElementById('week-title').textContent=weeks[weekIdx];
+  }
+  // insights → the plan visibly reacts (core adaptation rule, made live)
+  function applyToPlan(){
+    closeAll();
+    attachPerformance(); // uploaded stats now become real data points the brain learns from
+    showView('monthly');
+    document.getElementById('change-banner').classList.remove('hidden');
+    var cells=document.querySelectorAll('#view-monthly .grid .cell');
+    // 1) mark the refund story as boosted (find it)
+    document.querySelectorAll('#view-monthly .cc').forEach(function(c){
+      if(c.textContent.toLowerCase().indexOf('refund')!==-1 && !c.parentNode.querySelector('.boost')){
+        var bd=document.createElement('span'); bd.className='boost justadded'; bd.textContent='Boost';
+        c.parentNode.appendChild(bd);
+      }
+    });
+    // 2) clone two more "refund angle" posts into empty upcoming cells
+    function addClone(idx,txt){
+      var c=cells[idx]; if(!c)return;
+      var ch=c.querySelector('.chips'); if(!ch){ch=document.createElement('div');ch.className='chips';c.appendChild(ch);}
+      var s=document.createElement('span'); s.className='cc sug e justadded'; s.textContent=txt;
+      ch.appendChild(s);
+    }
+    setTimeout(function(){addClone(23,'Refund win #2');},350);
+    setTimeout(function(){addClone(26,'Refund win #3');},650);
+    // 3) add a notification of the change
+    addNotif('&#10022;','Plan updated','Boosted your refund story and cloned the angle into 2 posts','');
+    addNotif('&#128202;','Trust gap flagged','Fall programs: high engagement, low bookings — queued a testimonial','');
+    // surface a clever, data-backed insight from the upload (Lopez has history, so it fires)
+    setTimeout(function(){ recommendAfter('book','tax','',curMonth,18); }, 1400);
+    // 4) reflect on the weekly view too — flag the refund boost task and add a cloned task
+    var thu=document.querySelectorAll('#view-weekly .col')[4];
+    if(thu && !thu.querySelector('.justadded-task')){
+      var body=thu.querySelector('.col-body');
+      if(body){
+        var t=document.createElement('div'); t.className='task justadded-task'; t.style.animation='pop .6s cubic-bezier(.2,.7,.2,1)';
+        t.innerHTML='<div class="thumb rose">&#10022;</div><div class="kicker">New · from insights</div><div class="name">Refund win #2</div><div class="line"><span class="plat">TikTok</span> &middot; cloned angle</div><div class="check"><span class="cbox"></span>Mark done</div>';
+        body.appendChild(t);
+      }
+    }
+  }
+  // editable content types
+  function toggleEditCT(){
+    document.getElementById('ct-legend').classList.toggle('editing');
+    document.getElementById('ct-add').classList.toggle('hidden');
+  }
+  function delCT(el){el.closest('.li').remove();}
+  var pendingBiz=null;
+  function createBusiness(){
+    var name=document.getElementById('biz-new-name').value.trim()||'Harbor Dental';
+    pendingBiz=name;
+    document.getElementById('nb-name').textContent=name;
+    document.getElementById('modal-addbiz').classList.add('hidden');
+    document.getElementById('modal-newbiz').classList.remove('hidden');
+    addNotif('&#9707;', name+' is set up', 'New business added — its own calendar, airtime, and learning', '');
+  }
+  function addBizTab(name){
+    var bar=document.querySelector('.tabbar');
+    var addBtn=bar.querySelector('.tab.add');
+    var t=document.createElement('div'); t.className='tab'; t.setAttribute('data-biz',name);
+    t.innerHTML='<span class="dot" style="background:#B8C8D8"></span>'+name;
+    t.addEventListener('click',function(){switchBiz(this);});
+    bar.insertBefore(t, addBtn);
+    return t;
+  }
+  function switchBiz(t){
+    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+    t.classList.add('active');
+    var n=t.getAttribute('data-biz');
+    document.getElementById('biz-name-m').innerHTML=n;
+    document.getElementById('biz-name-w').innerHTML=n;
+  }
+  function buildNewBiz(){
+    closeAll();
+    var bl=document.getElementById('building');
+    bl.classList.remove('hidden');
+    setTimeout(function(){
+      bl.classList.add('hidden');
+      var t=addBizTab(pendingBiz);
+      switchBiz(t);
+      showNewBizCalendar(pendingBiz);
+      pendingBiz=null;
+      showView('monthly');
+    }, 1600);
+  }
+  function addCT(){
+    var v=document.getElementById('ct-new').value.trim(); if(!v)return;
+    var tints=['#F7E5EC','#EFE7F0','#E6EFE8','#F6ECDD','#F9E6EE','#E9EAF2','#F2E9EF'];
+    var c=tints[Math.floor(Math.random()*tints.length)];
+    var d=document.createElement('div'); d.className='li';
+    d.innerHTML='<span class="sw" style="background:'+c+'"></span>'+v+'<span class="ct-del" onclick="delCT(this)">\u2715</span>';
+    document.getElementById('ct-legend').appendChild(d);
+    document.getElementById('ct-new').value='';
+  }
+  // new service
+  function onServiceChange(sel){
+    document.getElementById('new-svc-box').classList.toggle('hidden', sel.value.indexOf('Add new service')===-1);
+  }
+  function createService(){
+    var name=document.getElementById('new-svc-name').value.trim()||'Estate planning';
+    document.getElementById('ns-name').textContent=name;
+    // add to the select as a real option, selected
+    var sel=document.getElementById('svc-select');
+    var opt=document.createElement('option'); opt.text=name;
+    sel.add(opt, sel.options[sel.options.length-1]); sel.value=name;
+    document.getElementById('new-svc-box').classList.add('hidden');
+    document.getElementById('new-svc-name').value='';
+    // close add-post, show confirmation
+    document.getElementById('modal-addpost').classList.add('hidden');
+    document.getElementById('modal-newservice').classList.remove('hidden');
+    // add a notification that the service is now live
+    addNotif('&#9632;', name+' is now live', 'New project added to '+document.getElementById('biz-name-m').innerHTML, '');
+  }
+  function pickColor(el){el.parentNode.querySelectorAll('.pchip').forEach(function(x){x.classList.remove('on');});el.classList.add('on');}
+  function openUpload(){closeAll();document.getElementById('modal-upload').classList.remove('hidden');}
+  function runAnalyze(){document.getElementById('modal-upload').classList.add('hidden');document.getElementById('modal-insights').classList.remove('hidden');}
+  function openInsights(){openUpload();}
+  function closeAll(){
+    ['modal-addpost','modal-addbiz','modal-upload','modal-insights','modal-newservice','modal-newbiz'].forEach(function(id){
+      document.getElementById(id).classList.add('hidden');
+    });
+  }
+  function setPaid(p){
+    document.getElementById('seg-paid').classList.toggle('on',p);
+    document.getElementById('seg-org').classList.toggle('on',!p);
+    document.getElementById('budgetbox').style.display = p?'flex':'none';
+  }
+  // ----- view toggle -----
+  document.querySelectorAll('.seg span[data-view]').forEach(function(s){
+    s.addEventListener('click',function(){showView(this.getAttribute('data-view'));});
+  });
+  // ----- business tabs -----
+  document.querySelectorAll('.tab[data-biz]').forEach(function(t){
+    t.addEventListener('click',function(){
+      document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+      this.classList.add('active');
+      var n=this.getAttribute('data-biz');
+      document.getElementById('biz-name-m').innerHTML=n;
+      document.getElementById('biz-name-w').innerHTML=n;
+    });
+  });
+  // ----- backdrop closes modals -----
+  document.querySelectorAll('.modal-overlay').forEach(function(o){
+    o.addEventListener('click',function(e){if(e.target===o)closeAll();});
+  });
+
+  // ===== FUNCTIONAL INTERACTIONS =====
+  // Monthly chips: click a planned chip to see WHY the tool placed it (reasoning on tap, not in your face)
+  var whyData={
+    'announce':{tag:'Campaign · opener',title:'Why announce first',rows:[['&#9992;','This <b>opens your Fall launch</b> — you lead with awareness before asking for anything.'],['&#8594;','Next: a <b>look-inside</b> on the 3rd to build interest, then the enrollment push later.'],['&#9203;','Held the promotion for the final week — discounts close, they don\u2019t open.']]},
+    'look inside':{tag:'Campaign · build',title:'Why a look-inside now',rows:[['&#9678;','You\u2019ve announced — now <b>show them what it\u2019s like</b> to turn interest into desire.'],['&#8594;','This warms the audience before the enrollment ask lands.']]},
+    'sneak':{tag:'Campaign · build',title:'Why a sneak peek',rows:[['&#9678;','Mid-campaign momentum — <b>keep excitement up</b> without repeating the announcement.'],['&#8594;','Sets up the "spots filling" social proof next week.']]},
+    'spots':{tag:'Momentum · social proof',title:'Why "spots filling up"',rows:[['&#128293;','<b>Social proof as urgency</b> — showing bookings makes people act without a fake deadline.'],['&#8594;','This carries the middle of the campaign toward the close.']]},
+    'refund':{tag:'Overperformer',title:'Why this got boosted',rows:[['&#10022;','This post <b>broke out</b> — ~6&times; your usual tax reach, high saves.'],['&#8593;','So I\u2019m <b>boosting it</b> while it\u2019s hot and cloned the angle into next week.']]},
+    'enroll':{tag:'Campaign · close',title:'Why push enrollment now',rows:[['&#9873;','The audience is <b>warm from weeks of build</b> — now\u2019s when the ask converts.'],['&#8594;','Paired with pricing and the last-chance push as the window closes.']]},
+    'pricing':{tag:'Campaign · close',title:'Why pricing now',rows:[['&#128176;','Late-campaign is when <b>price becomes the decision</b> for fence-sitters.'],['&#8594;','Leads into the promo and last-chance beats.']]},
+    'promo':{tag:'Campaign · close',title:'Why the promo drops here',rows:[['&#127991;','<b>The discount is a closing tool</b> — held to the final week so it creates urgency, not a habit.'],['&#8594;','Lands together with "last chance" for maximum push.']]},
+    'last chance':{tag:'Campaign · close',title:'Why last chance',rows:[['&#9203;','The window\u2019s about to shut — <b>urgency converts everyone who was waiting</b>.'],['&#8593;','Boosted, because this is the highest-intent moment of the whole campaign.']]},
+    'insurance':{tag:'Maintenance',title:'Why just one insurance post',rows:[['&#9793;','Insurance is quiet this month, so it\u2019s on <b>maintenance — ~once a month</b>.'],['&#128274;','It never disappears: a slow service still holds part of your revenue.']]},
+    'immigration':{tag:'Maintenance',title:'Why immigration is light',rows:[['&#9793;','Low season — surfacing <b>once to hold its floor</b> so the audience doesn\u2019t forget you.']]},
+    'divorce':{tag:'Evergreen',title:'Why divorce here',rows:[['&#8734;','Steady evergreen service — <b>a consistent drip</b> of visibility and booking nudges.'],['&#8594;','Spaced so it never goes stale or repetitive.']]},
+    'tax':{tag:'Evergreen · insight',title:'Why a tax tip',rows:[['&#9678;','<b>Value-first content</b> builds trust before you ask for the booking.'],['&#8594;','Insight posts tend to travel — good for reach.']]},
+    'testimonial':{tag:'Trust',title:'Why a testimonial',rows:[['&#10022;','<b>Proof beats claims</b> — real results move people who are interested but unsure.']]},
+    'dental':{tag:'Evergreen · insight',title:'Why a dental tip',rows:[['&#9678;','<b>Value-first content</b> to build trust with a new audience.']]},
+    'book':{tag:'Evergreen · CTA',title:'Why a booking nudge',rows:[['&#9873;','Steady <b>call-to-action</b> so the ongoing service keeps producing bookings.']]},
+    'patient':{tag:'Trust',title:'Why a patient review',rows:[['&#10022;','<b>Social proof</b> — reviews are what convert a new practice\u2019s first clients.']]},
+    'ride the refund':{tag:'Overperformer · act now',title:'Why boost this now',rows:[['&#8593;','The refund story broke out — <b>boosting while it\u2019s still hot</b> catches the momentum.'],['&#10022;','This is the overperformer rule firing: amplify the winner, then clone the angle.']]},
+    'boost':{tag:'Amplify',title:'Why a boost here',rows:[['&#8593;','Putting spend behind a post that\u2019s <b>already performing</b> — you don\u2019t boost blind.'],['&#128202;','I\u2019ll read results mid-run and at the end to see if it converted.']]},
+    ' q&a':{tag:'Maintenance · trust',title:'Why an immigration Q&A',rows:[['&#9793;','Low season — <b>a light, useful post</b> keeps the service warm without heavy airtime.']]},
+    'teeth':{tag:'New · intro',title:'Why start here',rows:[['&#9992;','Introduce the service first — <b>establish what you offer</b> before asking for bookings.']]},
+    'immigration q&a':{tag:'Flat-post ladder · strike 2 of 4',title:'Giving this another shot',rows:[['&#9203;','Last immigration post underperformed — but <b>one dud isn\u2019t a verdict</b>.'],['&#8635;','<b>Strike 2:</b> reposting clean in case it was just bad timing. If it flops again, I\u2019ll change the angle (strike 3), then ease to monthly maintenance (strike 4) — never killed outright.']]}
+  };
+  function reasonFor(txt){
+    txt=txt.toLowerCase();
+    for(var k in whyData){ if(txt.indexOf(k)!==-1) return whyData[k]; }
+    return {tag:'Planned move',title:'Why this is here',rows:[['&#9678;','Part of your generated plan — spaced to keep a healthy rhythm without repeating.']]};
+  }
+  document.addEventListener('click',function(e){
+    var chip=e.target.closest('#view-monthly .cc.sug');
+    if(chip){
+      var d=reasonFor(chip.textContent);
+      document.getElementById('why-tag').innerHTML=d.tag;
+      document.getElementById('why-body').innerHTML='<p class="wtitle">'+d.title+'</p>'+
+        d.rows.map(function(r){return '<div class="wrow"><span class="wi">'+r[0]+'</span><span>'+r[1]+'</span></div>';}).join('')+
+        '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);"><button onclick="markChipDone()" style="background:none;border:1px solid var(--line-2);color:var(--ink-soft);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:500;cursor:pointer;">&#10003; Mark done</button> <button onclick="skipChip()" style="background:none;border:none;color:var(--accent);font-size:12px;font-weight:500;cursor:pointer;margin-left:6px;">Skip this</button></div>';
+      var pop=document.getElementById('why-pop');
+      pop.classList.remove('hidden');
+      var r=chip.getBoundingClientRect();
+      var x=Math.min(r.left, window.innerWidth-320);
+      var y=r.bottom+8; if(y+260>window.innerHeight) y=r.top-268;
+      pop.style.left=x+'px'; pop.style.top=Math.max(10,y)+'px';
+      whyChip=chip;
+    } else if(!e.target.closest('#why-pop')){ closeWhy(); }
+  });
+  var whyChip=null;
+  function closeWhy(){document.getElementById('why-pop').classList.add('hidden');whyChip=null;}
+  function markChipDone(){
+    if(whyChip){
+      whyChip.classList.add('done');whyChip.style.textDecoration='line-through';whyChip.style.opacity='.55';
+      var txt=whyChip.textContent.toLowerCase();
+      triggerFollowup(whyChip);
+      // also surface a clever insight (gated on history) a beat later
+      var svc=txt.split('—')[0].trim().split(' ')[0]||'this';
+      var cell=whyChip.closest('.cell'); var dnum=cell?parseInt(cell.querySelector('.dnum').textContent,10):15;
+      setTimeout(function(){ recommendAfter(txt, svc, '', curMonth, dnum); }, 1100);
+    }
+    closeWhy();
+  }
+  // completing a move triggers the NEXT strategic move (the adaptive loop, live)
+  var followupMap={
+    'announce':{txt:'Engagement question',cls:'b',msg:'You announced — let\u2019s add an engagement post to warm the audience before the ask.',why:{tag:'Reactive · warm-up',title:'Why an engagement post',rows:[['&#9678;','You just announced — <b>an engagement post keeps the audience active</b> before you ask for anything.'],['&#8594;','Warm audiences convert better when the enrollment push lands.']]}},
+    'look inside':{txt:'Results screenshot',cls:'e',msg:'They\u2019ve seen inside — back it with a real result to build trust.',why:{tag:'Reactive · trust',title:'Why a results screenshot',rows:[['&#10022;','They\u2019ve seen inside — <b>proof turns interest into belief</b>.'],['&#8594;','Real numbers beat claims for people on the fence.']]}},
+    'sneak':{txt:'Countdown reminder',cls:'a',msg:'Momentum\u2019s building — a countdown keeps urgency climbing to the close.',why:{tag:'Reactive · urgency',title:'Why a countdown',rows:[['&#9203;','Momentum\u2019s building — <b>a countdown converts it into urgency</b> as the window narrows.']]}},
+    'spots':{txt:'DM outreach nudge',cls:'c',msg:'People are engaging — reach out to warm leads directly while it\u2019s hot.',why:{tag:'Reactive · direct',title:'Why reach out directly',rows:[['&#128172;','People are engaging — <b>a direct nudge to warm leads</b> converts interest that public posts don\u2019t.']]}},
+    'refund':{txt:'Refund win — clone',cls:'e',msg:'That angle is working — cloned it. Keep feeding the winner.',why:{tag:'Overperformer',title:'Why clone this angle',rows:[['&#10022;','This angle <b>broke out</b> — so I\u2019m making more like it while it\u2019s hot.'],['&#8593;','Amplify the winner: the core adaptation rule.']]}},
+    'enroll':{txt:'Waitlist capture',cls:'b',msg:'Enrollment\u2019s open — capture the not-yet-ready as a waitlist for next cycle.',why:{tag:'Reactive · capture',title:'Why a waitlist',rows:[['&#9873;','Enrollment\u2019s open — <b>a waitlist keeps the not-yet-ready</b> for next cycle instead of losing them.']]}},
+    'pricing':{txt:'Payment-plan post',cls:'c',msg:'Price is on the table — a payment-plan option removes the money barrier.',why:{tag:'Reactive · money gap',title:'Why a payment plan',rows:[['&#128176;','Price is on the table — <b>a payment plan removes the money barrier</b> for interested-but-hesitant buyers.']]}},
+    'testimonial':{txt:'Book now — trust primed',cls:'c',msg:'Proof is out — follow it with a booking ask while trust is high.',why:{tag:'Reactive · convert',title:'Why ask now',rows:[['&#9873;','Proof is out there — <b>trust is primed</b>, so the booking ask converts best right now.']]}},
+    'divorce':{txt:'Client testimonial',cls:'e',msg:'Good — reinforce with proof to keep this evergreen service converting.',why:{tag:'Evergreen · trust',title:'Why reinforce with proof',rows:[['&#10022;','Good — <b>a testimonial keeps this evergreen service converting</b> between bigger pushes.']]}},
+    'tax':{txt:'Book a consult',cls:'c',msg:'Value delivered — a soft CTA turns readers into bookings.',why:{tag:'Evergreen · CTA',title:'Why a soft CTA now',rows:[['&#9873;','You delivered value — <b>now a gentle CTA</b> turns those readers into bookings.']]}},
+    'book':{txt:'Follow-up reminder',cls:'a',msg:'Nice — I\u2019ll add a gentle follow-up so it keeps producing.',why:{tag:'Evergreen · nurture',title:'Why a follow-up',rows:[['&#8635;','A <b>gentle follow-up</b> keeps this ongoing service producing without going quiet.']]}},
+    'insurance':{txt:'Referral ask',cls:'c',msg:'Maintenance done — a referral ask makes a quiet month still earn.',why:{tag:'Maintenance · earn',title:'Why a referral ask',rows:[['&#9793;','Maintenance done — <b>a referral ask lets a quiet service still produce</b> without heavy airtime.']]}}
+  };
+  function triggerFollowup(chip){
+    var txt=chip.textContent.toLowerCase(); var f=null;
+    for(var k in followupMap){ if(txt.indexOf(k)!==-1){f=followupMap[k];break;} }
+    if(!f){ showToast('Logged — nice work.'); return; }
+    // Is the suggested next move ALREADY on the calendar? Don't duplicate — point to it.
+    var existing=null;
+    var keyword=f.txt.split(' ')[0].toLowerCase();
+    document.querySelectorAll('#view-monthly .cc').forEach(function(c){
+      if(c!==chip && !c.classList.contains('done') && c.textContent.toLowerCase().indexOf(keyword)!==-1) existing=c;
+    });
+    if(existing){
+      // highlight the already-planned next move instead of adding a copy
+      existing.classList.add('justadded');
+      existing.style.boxShadow='0 0 0 2px var(--accent-soft)';
+      setTimeout(function(){existing.style.boxShadow='';existing.classList.remove('justadded');},1800);
+      var d=existing.closest('.cell').querySelector('.dnum');
+      showToast('Done \u2192 your next beat is already set: '+f.txt+(d?' on the '+d.textContent:'')+'.');
+      addNotif('&#9873;','On track',f.txt+' is already planned as your next move.','');
+      return;
+    }
+    // otherwise it's a genuinely new reactive move — add it (with its own reasoning registered)
+    if(f.why){ whyData[f.txt.toLowerCase()]=f.why; }
+    var cells=Array.prototype.slice.call(document.querySelectorAll('#view-monthly .grid .cell'));
+    var start=cells.indexOf(chip.closest('.cell'));
+    var target=null;
+    for(var i=start+1;i<cells.length && i<start+5;i++){ if(!cells[i].querySelector('.chips')){target=cells[i];break;} }
+    if(!target){ for(var j=start+1;j<cells.length;j++){ if(!cells[j].querySelector('.chips')){target=cells[j];break;} } }
+    if(target){
+      var ch=document.createElement('div'); ch.className='chips';
+      ch.innerHTML='<span class="cc sug '+f.cls+' justadded">'+f.txt+'</span>';
+      target.appendChild(ch);
+    }
+    showToast('Done \u2192 '+f.msg);
+    addNotif('&#8594;','Next move added',f.msg,'');
+  }
+  function skipChip(){
+    if(whyChip){
+      var kind=whyChip.textContent.toLowerCase();
+      var t=whyChip; var cell=t.closest('.cell'); t.style.opacity='0';
+      setTimeout(function(){if(t)t.remove();},250);
+      // skip teaches it AND offers a strategic alternative (§10 + adaptive)
+      var lbl='that type', alt=null;
+      if(kind.indexOf('boost')!==-1){lbl='boosts';alt={txt:'Organic repost instead',cls:'b',msg:'No boost? I\u2019ll try an organic repost at peak time instead — no spend.'};}
+      else if(kind.indexOf('promo')!==-1||kind.indexOf('pricing')!==-1){lbl='pricing posts';alt={txt:'Value post instead',cls:'f',msg:'Skipping price? Let\u2019s lead with value and let interest build first.'};}
+      else if(kind.indexOf('testimonial')!==-1){lbl='testimonials';alt={txt:'Results screenshot',cls:'e',msg:'Not a testimonial? A quick results screenshot can build the same trust.'};}
+      else if(kind.indexOf('look')!==-1){lbl='look-inside posts';alt={txt:'Quick behind-the-scenes',cls:'b',msg:'I\u2019ll swap in a lighter behind-the-scenes instead.'};}
+      addNotif('&#8635;','Noted — I\u2019ll ease off '+lbl,'Skips train your plan. I\u2019ll suggest fewer of these.','');
+      if(alt && cell){
+        var cells=Array.prototype.slice.call(document.querySelectorAll('#view-monthly .grid .cell'));
+        var start=cells.indexOf(cell);
+        var target=null;
+        for(var i=start;i<cells.length && i<start+4;i++){ if(!cells[i].querySelector('.chips')){target=cells[i];break;} }
+        setTimeout(function(){
+          if(target){var ch=document.createElement('div');ch.className='chips';
+            ch.innerHTML='<span class="cc sug '+alt.cls+' justadded">'+alt.txt+'</span>';target.appendChild(ch);}
+          showToast(alt.msg);
+        },320);
+      } else {
+        showToast('Got it — I\u2019ll suggest fewer '+lbl+'.');
+      }
+    }
+    closeWhy();
+  }
+  function showToast(msg){
+    var t=document.getElementById('toast'); if(!t){t=document.createElement('div');t.id='toast';
+      t.style.cssText='position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--plum);color:#fff;padding:12px 22px;border-radius:999px;font-size:13px;font-weight:500;z-index:90;box-shadow:0 10px 30px rgba(62,50,56,.28);opacity:0;transition:opacity .3s,transform .3s;';
+      document.body.appendChild(t);}
+    t.textContent=msg; t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)';
+    clearTimeout(t._h); t._h=setTimeout(function(){t.style.opacity='0';},2600);
+  }
+
+  // Weekly tasks: click the name/kicker area to see WHY (reasoning on tap)
+  document.addEventListener('click',function(e){
+    if(e.target.closest('.check')) return; // let the checkbox do its thing
+    var nm=e.target.closest('#view-weekly .task .name, #view-weekly .task .kicker');
+    if(nm){
+      var task=nm.closest('.task');
+      var label=(task.querySelector('.name')?task.querySelector('.name').textContent:'')+' '+(task.querySelector('.kicker')?task.querySelector('.kicker').textContent:'');
+      var d=reasonFor(label);
+      var bt=task.querySelector('.besttime');
+      var rows=d.rows.slice();
+      if(bt){ rows.push(['&#9201;','<b>Timing:</b> '+bt.getAttribute('title')+'.']); }
+      document.getElementById('why-tag').innerHTML=d.tag;
+      document.getElementById('why-body').innerHTML='<p class="wtitle">'+d.title+'</p>'+
+        rows.map(function(r){return '<div class="wrow"><span class="wi">'+r[0]+'</span><span>'+r[1]+'</span></div>';}).join('');
+      var pop=document.getElementById('why-pop');
+      pop.classList.remove('hidden');
+      var r=task.getBoundingClientRect();
+      var x=Math.min(r.right+8, window.innerWidth-320); if(x<10)x=10;
+      var y=r.top; if(y+260>window.innerHeight) y=window.innerHeight-270;
+      pop.style.left=x+'px'; pop.style.top=Math.max(10,y)+'px';
+      whyChip=null;
+    }
+  });
+  // Weekly: "Mark done" toggles the whole task and reacts
+  document.addEventListener('click',function(e){
+    var chk=e.target.closest('.check');
+    if(chk){var task=chk.closest('.task');var box=chk.querySelector('.cbox');
+      var isDone=task.classList.toggle('done');
+      box.classList.toggle('on',isDone); box.innerHTML=isDone?'\u2713':'';
+      chk.childNodes[chk.childNodes.length-1].textContent = isDone?' Done':' Mark done';
+      if(isDone && !task.querySelector('.skiplink')){
+        var s=document.createElement('div'); s.className='skiplink';
+        s.style.cssText='font-size:10.5px;color:var(--ink-soft);cursor:pointer;margin-top:2px;';
+        s.textContent='Undo';
+        s.onclick=function(ev){ev.stopPropagation();task.classList.remove('done');box.classList.remove('on');box.innerHTML='';chk.childNodes[chk.childNodes.length-1].textContent=' Mark done';s.remove();};
+        chk.parentNode.appendChild(s);
+      }
+      // react to completion (§10 loop + §8 amplify) — now with real follow-up suggestions
+      if(isDone){
+        var nm=task.querySelector('.name')?task.querySelector('.name').textContent.toLowerCase():'';
+        var kick=task.querySelector('.kicker')?task.querySelector('.kicker').textContent.toLowerCase():'';
+        var f=null;
+        for(var k in followupMap){ if(nm.indexOf(k)!==-1){f=followupMap[k];break;} }
+        if(kick.indexOf('overperformer')!==-1 || nm.indexOf('ride the refund')!==-1){
+          whyData['refund win']={tag:'Overperformer',title:'Why clone this angle',rows:[['&#10022;','This angle <b>broke out</b> — cloning it while it\u2019s hot.'],['&#8593;','Amplify the winner: the core adaptation rule.']]};
+          addWeeklyFollowup(task,'Refund win — clone','New · from insights','That angle broke out — cloned it into next week. Keep feeding the winner.');
+        } else if(f){
+          if(f.why){ whyData[f.txt.toLowerCase()]=f.why; }
+          addWeeklyFollowup(task,f.txt,'Next move',f.msg);
+        } else {
+          showToast('Logged — keep the streak going.');
+        }
+        updateWeeklyProgress();
+      } else { updateWeeklyProgress(); }
+    }
+  });
+  function addWeeklyFollowup(afterTask,name,kicker,msg){
+    var body=afterTask.closest('.col-body');
+    if(body){
+      var t=document.createElement('div'); t.className='task'; t.style.animation='pop .6s cubic-bezier(.2,.7,.2,1)';
+      t.innerHTML='<div class="thumb rose">&#10022;</div><div class="kicker">'+kicker+'</div><div class="name">'+name+'</div><div class="line"><span class="plat">Suggested</span> &middot; from your last move</div><div class="check"><span class="cbox"></span>Mark done</div>';
+      body.appendChild(t);
+    }
+    showToast('Done \u2192 '+msg);
+    addNotif('&#8594;','Next move added',msg,'');
+  }
+  // small live progress readout on the check-in card
+  function updateWeeklyProgress(){
+    var all=document.querySelectorAll('#view-weekly .task .check').length;
+    var done=document.querySelectorAll('#view-weekly .task.done').length;
+    var el=document.getElementById('week-progress');
+    if(!el){
+      var host=document.querySelector('#view-weekly .checkin .col-body .due');
+      if(host){el=document.createElement('div');el.id='week-progress';
+        el.style.cssText='font-size:11px;color:var(--accent);margin-top:8px;text-align:center;font-weight:500;';
+        host.parentNode.appendChild(el);}
+    }
+    if(el) el.textContent=done+' of '+all+' moves done this week';
+  }
+  // Day "+ Add post" cells and dashed add
+  // (already wired via openAdd on those elements)
+</script>
+</body>
+</html>
