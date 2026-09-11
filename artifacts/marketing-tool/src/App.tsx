@@ -65,7 +65,35 @@ const userPostsStorageKey = 'marketing-tool.user-posts';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
+// Phase 3 — the brain: what move naturally comes next after each content type
+const followUpMap: Record<string, Array<{ offset: number; contentType: string; label: string }>> = {
+  'Announcement': [
+    { offset: 2, contentType: 'Inside look', label: 'show them inside' },
+    { offset: 5, contentType: 'Book now', label: 'make the ask' },
+  ],
+  'Inside look': [
+    { offset: 2, contentType: 'Proof', label: 'back it with proof' },
+    { offset: 4, contentType: 'Book now', label: 'convert the interest' },
+  ],
+  'Book now': [
+    { offset: 3, contentType: 'Proof', label: 'reinforce trust' },
+  ],
+  'Proof': [
+    { offset: 3, contentType: 'Book now', label: 'ask while trust is high' },
+  ],
+  'Insight': [
+    { offset: 4, contentType: 'Book now', label: 'turn value into a booking' },
+  ],
+  'Recap': [
+    { offset: 5, contentType: 'Insight', label: 'keep the rhythm going' },
+  ],
+};
 
+function addDaysToDate(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 const businessData: Business[] = [
   {
     id: 'mosaic',
@@ -443,8 +471,27 @@ function CalendarSurface() {
       distribution: postForm.distribution,
       ...(postForm.distribution === 'paid' ? { budget, runLength } : {}),
     };
+    // create suggested follow-up posts based on what was just logged
+    const followUps = followUpMap[savedPost.contentType] ?? [];
+    const suggestions: UserPost[] = followUps
+      .map((f) => ({
+        id: createPostId(),
+        businessId: activeBusiness.id,
+        project: savedPost.project,
+        contentType: f.contentType,
+        title: `${savedPost.project}: ${f.label}`,
+        date: addDaysToDate(savedPost.date, f.offset),
+        platforms: savedPost.platforms,
+        distribution: 'organic' as Distribution,
+      }))
+      // anti-duplicate: skip if a post of that type already exists within a few days
+      .filter((sugg) => !userPosts.some(
+        (p) => p.businessId === activeBusiness.id
+          && p.contentType === sugg.contentType
+          && Math.abs(new Date(p.date).getTime() - new Date(sugg.date).getTime()) < 4 * 86400000,
+      ));
 
-    setUserPosts((current) => [...current, savedPost]);
+    setUserPosts((current) => [...current, savedPost, ...suggestions]);
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
     showActionMessage(`Added “${savedPost.title}” to the calendar.`);
@@ -933,3 +980,4 @@ function App() {
 }
 
 export default App;
+
