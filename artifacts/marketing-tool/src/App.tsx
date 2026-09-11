@@ -1,6 +1,6 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Activity, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -21,6 +21,34 @@ type CalendarEvent = {
   title: string;
   detail?: string;
   tone: EventTone;
+  id?: string;
+};
+
+type Distribution = 'organic' | 'paid';
+type Platform = 'Facebook' | 'Instagram' | 'TikTok';
+
+type UserPost = {
+  id: string;
+  businessId: string;
+  project: string;
+  contentType: string;
+  title: string;
+  date: string;
+  platforms: Platform[];
+  distribution: Distribution;
+  budget?: number;
+  runLength?: number;
+};
+
+type PostForm = {
+  project: string;
+  contentType: string;
+  title: string;
+  date: string;
+  platforms: Platform[];
+  distribution: Distribution;
+  budget: string;
+  runLength: string;
 };
 
 type Business = {
@@ -28,9 +56,14 @@ type Business = {
   name: string;
   descriptor: string;
   focus: string;
+  projects: string[];
   palette: Array<{ label: string; tone: EventTone }>;
   events: Record<string, CalendarEvent[]>;
 };
+
+const userPostsStorageKey = 'marketing-tool.user-posts';
+const platformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
+const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
 
 const businessData: Business[] = [
   {
@@ -38,6 +71,7 @@ const businessData: Business[] = [
     name: 'Mosaic Legal',
     descriptor: 'One calm view for every service line.',
     focus: 'Fall programs are carrying the month, with evergreen services kept warm.',
+    projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
     palette: [
       { label: 'Fall programs', tone: 'rose' },
       { label: 'Tax planning', tone: 'sand' },
@@ -83,6 +117,7 @@ const businessData: Business[] = [
     name: 'Northline Financial',
     descriptor: 'Keep the useful work in motion.',
     focus: 'Year-end planning is moving forward while the weekly rhythm stays visible.',
+    projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
     palette: [
       { label: 'Fall programs', tone: 'rose' },
       { label: 'Tax planning', tone: 'sand' },
@@ -115,6 +150,7 @@ const businessData: Business[] = [
     name: 'Harbor Coverage',
     descriptor: 'A steadier rhythm for the people you serve.',
     focus: 'Insurance leads the calendar, with a few useful cross-service reminders alongside it.',
+    projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
     palette: [
       { label: 'Fall programs', tone: 'rose' },
       { label: 'Tax planning', tone: 'sand' },
@@ -160,15 +196,107 @@ function makeCalendarDays(date: Date) {
   });
 }
 
+function formatDateInput(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function defaultPostDate(visibleMonth: Date) {
+  const today = new Date();
+  return today.getFullYear() === visibleMonth.getFullYear() && today.getMonth() === visibleMonth.getMonth()
+    ? formatDateInput(today)
+    : formatDateInput(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1));
+}
+
+function createPostForm(date: string): PostForm {
+  return {
+    project: '',
+    contentType: '',
+    title: '',
+    date,
+    platforms: [],
+    distribution: 'organic',
+    budget: '',
+    runLength: '',
+  };
+}
+
+function isUserPost(value: unknown): value is UserPost {
+  if (!value || typeof value !== 'object') return false;
+  const post = value as Partial<UserPost>;
+  return Boolean(
+    typeof post.id === 'string'
+      && typeof post.businessId === 'string'
+      && typeof post.project === 'string'
+      && typeof post.contentType === 'string'
+      && typeof post.title === 'string'
+      && typeof post.date === 'string'
+      && Array.isArray(post.platforms)
+      && post.platforms.every((platform) => platformOptions.includes(platform as Platform))
+      && (post.distribution === 'organic' || post.distribution === 'paid'),
+  );
+}
+
+function readUserPosts() {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const storedPosts = window.localStorage.getItem(userPostsStorageKey);
+    if (!storedPosts) return [];
+    const parsedPosts: unknown = JSON.parse(storedPosts);
+    return Array.isArray(parsedPosts) ? parsedPosts.filter(isUserPost) : [];
+  } catch (error) {
+    console.warn('Saved calendar posts could not be loaded.', error);
+    return [];
+  }
+}
+
+function getPostTone(project: string, business: Business): EventTone {
+  return business.palette.find((item) => item.label === project)?.tone ?? 'rose';
+}
+
+function createPostId() {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `post-${Date.now()}`;
+}
+
+function getPostDetail(post: UserPost) {
+  const channelText = post.platforms.join(', ');
+  const distributionText = post.distribution === 'paid'
+    ? `Paid · $${post.budget?.toLocaleString() ?? '0'} · ${post.runLength ?? 0}d`
+    : 'Organic';
+  return `${post.contentType} · ${channelText} · ${distributionText}`;
+}
+
 function CalendarSurface() {
   const [activeBusinessId, setActiveBusinessId] = useState('mosaic');
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
   const [statusMessage, setStatusMessage] = useState('');
+  const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
+  const [isPostFormOpen, setIsPostFormOpen] = useState(false);
+  const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
+  const [formError, setFormError] = useState('');
 
   const activeBusiness = businessData.find((business) => business.id === activeBusinessId) ?? businessData[0];
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
+  const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
+  const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
+  const calendarEvents = [
+    ...events,
+    ...monthPosts.map((post) => ({
+      id: post.id,
+      day: Number(post.date.slice(-2)),
+      title: post.title,
+      detail: getPostDetail(post),
+      tone: getPostTone(post.project, activeBusiness),
+    })),
+  ];
   const todayKey = '2026-09-10';
+
+  useEffect(() => {
+    window.localStorage.setItem(userPostsStorageKey, JSON.stringify(userPosts));
+  }, [userPosts]);
 
   const shiftMonth = (amount: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
@@ -178,6 +306,71 @@ function CalendarSurface() {
   const showActionMessage = (message: string) => {
     setStatusMessage(message);
     window.setTimeout(() => setStatusMessage(''), 3000);
+  };
+
+  const openPostForm = () => {
+    setPostForm(createPostForm(defaultPostDate(visibleMonth)));
+    setFormError('');
+    setStatusMessage('');
+    setIsPostFormOpen(true);
+  };
+
+  const closePostForm = () => {
+    setIsPostFormOpen(false);
+    setFormError('');
+  };
+
+  const updatePostForm = <K extends keyof PostForm>(field: K, value: PostForm[K]) => {
+    setPostForm((current) => ({ ...current, [field]: value }));
+    setFormError('');
+  };
+
+  const togglePlatform = (platform: Platform) => {
+    setPostForm((current) => ({
+      ...current,
+      platforms: current.platforms.includes(platform)
+        ? current.platforms.filter((item) => item !== platform)
+        : [...current.platforms, platform],
+    }));
+    setFormError('');
+  };
+
+  const handlePostSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!postForm.project || !postForm.contentType || !postForm.title.trim() || !postForm.date) {
+      setFormError('Complete the required fields before saving this post.');
+      return;
+    }
+
+    if (postForm.platforms.length === 0) {
+      setFormError('Choose at least one platform for this post.');
+      return;
+    }
+
+    const budget = Number(postForm.budget);
+    const runLength = Number(postForm.runLength);
+    if (postForm.distribution === 'paid' && (!Number.isFinite(budget) || budget <= 0 || !Number.isInteger(runLength) || runLength <= 0)) {
+      setFormError('Add a budget and a run length of at least one day for boosted posts.');
+      return;
+    }
+
+    const savedPost: UserPost = {
+      id: createPostId(),
+      businessId: activeBusiness.id,
+      project: postForm.project,
+      contentType: postForm.contentType,
+      title: postForm.title.trim(),
+      date: postForm.date,
+      platforms: postForm.platforms,
+      distribution: postForm.distribution,
+      ...(postForm.distribution === 'paid' ? { budget, runLength } : {}),
+    };
+
+    setUserPosts((current) => [...current, savedPost]);
+    setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
+    closePostForm();
+    showActionMessage(`Added “${savedPost.title}” to the calendar.`);
   };
 
   return (
@@ -191,6 +384,7 @@ function CalendarSurface() {
               onClick={() => {
                 setActiveBusinessId(business.id);
                 setStatusMessage('');
+                closePostForm();
               }}
               type="button"
             >
@@ -226,7 +420,7 @@ function CalendarSurface() {
                 <ChevronRight size={18} strokeWidth={1.7} />
               </button>
             </div>
-            <button className="add-post" onClick={() => showActionMessage('The calendar is ready for your next post.') } type="button">
+            <button className="add-post" onClick={openPostForm} type="button">
               <Plus size={15} strokeWidth={2.2} />
               Add post
             </button>
@@ -235,7 +429,7 @@ function CalendarSurface() {
 
         <div className="calendar-toolbar">
           <p className="toolbar-note">
-            <strong>{events.length} planned moments</strong> · {activeBusiness.name}
+            <strong>{calendarEvents.length} planned moments</strong> · {activeBusiness.name}
           </p>
           <div className="view-toggle" aria-label="Calendar view">
             <button className="view-option active" type="button">Month</button>
@@ -259,7 +453,7 @@ function CalendarSurface() {
               {days.map((day) => {
                 const dateKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}`;
                 const dayEvents = dateKey === monthKey(visibleMonth)
-                  ? events.filter((event) => event.day === day.getDate())
+                  ? calendarEvents.filter((event) => event.day === day.getDate())
                   : [];
                 const isOutside = day.getMonth() !== visibleMonth.getMonth();
                 const isToday = `${dateKey}-${String(day.getDate()).padStart(2, '0')}` === todayKey;
@@ -271,7 +465,11 @@ function CalendarSurface() {
                     </span>
                     <div className="day-events">
                       {dayEvents.map((event) => (
-                        <div className={`event-chip event-${event.tone}`} key={`${event.day}-${event.title}`}>
+                        <div
+                          className={`event-chip event-${event.tone}`}
+                          key={`${event.id ?? 'sample'}-${event.day}-${event.title}`}
+                          title={event.detail}
+                        >
                           {event.title}
                           {event.detail && <small>{event.detail}</small>}
                         </div>
@@ -319,6 +517,175 @@ function CalendarSurface() {
             </section>
           </aside>
         </div>
+
+        {isPostFormOpen && (
+          <div
+            className="post-modal-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closePostForm();
+            }}
+            role="presentation"
+          >
+            <section aria-labelledby="post-form-title" aria-modal="true" className="post-modal" role="dialog">
+              <div className="post-modal-header">
+                <div>
+                  <p className="post-modal-kicker">New calendar moment</p>
+                  <h2 id="post-form-title">Add a post</h2>
+                  <p className="post-modal-intro">Plan the next piece for {activeBusiness.name}.</p>
+                </div>
+                <button aria-label="Close add post form" className="modal-close" onClick={closePostForm} type="button">
+                  <X size={18} strokeWidth={1.8} />
+                </button>
+              </div>
+
+              <form className="post-form" onSubmit={handlePostSubmit}>
+                <div className="form-grid">
+                  <label className="form-field">
+                    <span>Service / project <b>*</b></span>
+                    <select
+                      onChange={(event) => updatePostForm('project', event.target.value)}
+                      required
+                      value={postForm.project}
+                    >
+                      <option value="">Choose a project</option>
+                      {activeBusiness.projects.map((project) => <option key={project} value={project}>{project}</option>)}
+                    </select>
+                  </label>
+
+                  <label className="form-field">
+                    <span>Content type <b>*</b></span>
+                    <select
+                      onChange={(event) => updatePostForm('contentType', event.target.value)}
+                      required
+                      value={postForm.contentType}
+                    >
+                      <option value="">Choose a type</option>
+                      {contentTypes.map((contentType) => <option key={contentType} value={contentType}>{contentType}</option>)}
+                    </select>
+                  </label>
+                </div>
+
+                <label className="form-field">
+                  <span>Post title / topic <b>*</b></span>
+                  <input
+                    onChange={(event) => updatePostForm('title', event.target.value)}
+                    placeholder="What should people know?"
+                    required
+                    type="text"
+                    value={postForm.title}
+                  />
+                </label>
+
+                <label className="form-field">
+                  <span>Date <b>*</b></span>
+                  <span className="date-input-wrap">
+                    <CalendarDays size={15} strokeWidth={1.8} />
+                    <input
+                      aria-label="Post date"
+                      onChange={(event) => updatePostForm('date', event.target.value)}
+                      required
+                      type="date"
+                      value={postForm.date}
+                    />
+                  </span>
+                </label>
+
+                <fieldset className="form-fieldset">
+                  <legend>Platforms <b>*</b></legend>
+                  <div className="platform-options">
+                    {platformOptions.map((platform) => {
+                      const selected = postForm.platforms.includes(platform);
+                      return (
+                        <label className={`platform-option ${selected ? 'selected' : ''}`} key={platform}>
+                          <input
+                            checked={selected}
+                            onChange={() => togglePlatform(platform)}
+                            type="checkbox"
+                          />
+                          <span className="platform-check">{selected && <Check size={13} strokeWidth={2.2} />}</span>
+                          {platform}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+
+                <fieldset className="form-fieldset">
+                  <legend>Distribution</legend>
+                  <div className="distribution-options">
+                    <label className={`distribution-option ${postForm.distribution === 'organic' ? 'selected' : ''}`}>
+                      <input
+                        checked={postForm.distribution === 'organic'}
+                        name="distribution"
+                        onChange={() => updatePostForm('distribution', 'organic')}
+                        type="radio"
+                        value="organic"
+                      />
+                      <span>
+                        <strong>Organic</strong>
+                        <small>Publish to your usual audience</small>
+                      </span>
+                    </label>
+                    <label className={`distribution-option ${postForm.distribution === 'paid' ? 'selected' : ''}`}>
+                      <input
+                        checked={postForm.distribution === 'paid'}
+                        name="distribution"
+                        onChange={() => updatePostForm('distribution', 'paid')}
+                        type="radio"
+                        value="paid"
+                      />
+                      <span>
+                        <strong>Paid / boosted</strong>
+                        <small>Put budget behind this post</small>
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+
+                {postForm.distribution === 'paid' && (
+                  <div className="form-grid paid-fields">
+                    <label className="form-field">
+                      <span>Budget <b>*</b></span>
+                      <span className="number-input-wrap">
+                        <span>$</span>
+                        <input
+                          min="0.01"
+                          onChange={(event) => updatePostForm('budget', event.target.value)}
+                          placeholder="250"
+                          required
+                          step="0.01"
+                          type="number"
+                          value={postForm.budget}
+                        />
+                      </span>
+                    </label>
+                    <label className="form-field">
+                      <span>Run length <b>*</b></span>
+                      <span className="number-input-wrap">
+                        <input
+                          min="1"
+                          onChange={(event) => updatePostForm('runLength', event.target.value)}
+                          placeholder="7"
+                          required
+                          type="number"
+                          value={postForm.runLength}
+                        />
+                        <span>days</span>
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                {formError && <p className="form-error" role="alert">{formError}</p>}
+
+                <div className="post-form-actions">
+                  <button className="cancel-button" onClick={closePostForm} type="button">Cancel</button>
+                  <button className="save-post-button" type="submit">Save post</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
       </div>
     </main>
   );
