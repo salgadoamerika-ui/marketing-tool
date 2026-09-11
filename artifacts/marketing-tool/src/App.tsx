@@ -291,6 +291,14 @@ function getPostDetail(post: UserPost) {
   return `${post.contentType} · ${channelText} · ${distributionText}`;
 }
 
+function formatPostDate(date: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(`${date}T12:00:00`));
+}
+
 function CalendarSurface() {
   const [activeBusinessId, setActiveBusinessId] = useState('mosaic');
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
@@ -303,12 +311,14 @@ function CalendarSurface() {
   const [isAddingPlatform, setIsAddingPlatform] = useState(false);
   const [newPlatformName, setNewPlatformName] = useState('');
   const [platformError, setPlatformError] = useState('');
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   const activeBusiness = businessData.find((business) => business.id === activeBusinessId) ?? businessData[0];
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
+  const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
   const calendarEvents = [
     ...events,
     ...monthPosts.map((post) => ({
@@ -357,6 +367,8 @@ function CalendarSurface() {
     setPlatformError('');
   };
 
+  const closeSelectedPost = () => setSelectedPostId(null);
+
   const updatePostForm = <K extends keyof PostForm>(field: K, value: PostForm[K]) => {
     setPostForm((current) => ({ ...current, [field]: value }));
     setFormError('');
@@ -372,8 +384,7 @@ function CalendarSurface() {
     setFormError('');
   };
 
-  const handleAddPlatform = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleAddPlatform = () => {
     const normalizedName = newPlatformName.trim();
 
     if (!normalizedName) {
@@ -439,6 +450,14 @@ function CalendarSurface() {
     showActionMessage(`Added “${savedPost.title}” to the calendar.`);
   };
 
+  const handleDeletePost = () => {
+    if (!selectedUserPost) return;
+
+    setUserPosts((current) => current.filter((post) => post.id !== selectedUserPost.id));
+    setSelectedPostId(null);
+    showActionMessage(`Deleted “${selectedUserPost.title}” from the calendar.`);
+  };
+
   return (
     <main className="calendar-page">
       <div className="calendar-shell">
@@ -450,6 +469,7 @@ function CalendarSurface() {
               onClick={() => {
                 setActiveBusinessId(business.id);
                 setStatusMessage('');
+                closeSelectedPost();
                 closePostForm();
               }}
               type="button"
@@ -530,16 +550,35 @@ function CalendarSurface() {
                       {day.getDate()}
                     </span>
                     <div className="day-events">
-                      {dayEvents.map((event) => (
-                        <div
-                          className={`event-chip event-${event.tone}`}
-                          key={`${event.id ?? 'sample'}-${event.day}-${event.title}`}
-                          title={event.detail}
-                        >
-                          {event.title}
-                          {event.detail && <small>{event.detail}</small>}
-                        </div>
-                      ))}
+                      {dayEvents.map((event) => {
+                        const eventContent = (
+                          <>
+                            {event.title}
+                            {event.detail && <small>{event.detail}</small>}
+                          </>
+                        );
+
+                        return event.id ? (
+                          <button
+                            aria-label={`Open saved post: ${event.title}`}
+                            className={`event-chip event-chip-button event-${event.tone}`}
+                            key={`${event.id}-${event.day}-${event.title}`}
+                            onClick={() => setSelectedPostId(event.id ?? null)}
+                            title="Select to view or delete this saved post"
+                            type="button"
+                          >
+                            {eventContent}
+                          </button>
+                        ) : (
+                          <div
+                            className={`event-chip event-${event.tone}`}
+                            key={`${event.day}-${event.title}`}
+                            title={event.detail}
+                          >
+                            {eventContent}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -674,7 +713,15 @@ function CalendarSurface() {
                       );
                     })}
                     {isAddingPlatform ? (
-                      <form className="platform-add-form" onSubmit={handleAddPlatform}>
+                      <div
+                        className="platform-add-form"
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            handleAddPlatform();
+                          }
+                        }}
+                      >
                         <input
                           aria-label="New platform name"
                           autoFocus
@@ -687,7 +734,7 @@ function CalendarSurface() {
                           type="text"
                           value={newPlatformName}
                         />
-                        <button className="platform-add-save" type="submit">Save</button>
+                        <button className="platform-add-save" onClick={handleAddPlatform} type="button">Save</button>
                         <button
                           aria-label="Cancel adding platform"
                           className="platform-add-cancel"
@@ -700,7 +747,7 @@ function CalendarSurface() {
                         >
                           <X size={14} strokeWidth={1.8} />
                         </button>
-                      </form>
+                      </div>
                     ) : (
                       <button
                         className="platform-add-option"
@@ -792,6 +839,62 @@ function CalendarSurface() {
                   <button className="save-post-button" type="submit">Save post</button>
                 </div>
               </form>
+            </section>
+          </div>
+        )}
+
+        {selectedUserPost && (
+          <div
+            className="post-modal-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeSelectedPost();
+            }}
+            role="presentation"
+          >
+            <section aria-labelledby="selected-post-title" aria-modal="true" className="post-modal post-detail-modal" role="dialog">
+              <div className="post-modal-header">
+                <div>
+                  <p className="post-modal-kicker">Saved calendar moment</p>
+                  <h2 id="selected-post-title">{selectedUserPost.title}</h2>
+                  <p className="post-modal-intro">Saved for {activeBusiness.name}.</p>
+                </div>
+                <button aria-label="Close saved post details" className="modal-close" onClick={closeSelectedPost} type="button">
+                  <X size={18} strokeWidth={1.8} />
+                </button>
+              </div>
+
+              <div className="post-detail-body">
+                <div className={`post-detail-project event-${getPostTone(selectedUserPost.project, activeBusiness)}`}>
+                  {selectedUserPost.project}
+                </div>
+                <div className="post-detail-list">
+                  <div>
+                    <span>Date</span>
+                    <strong>{formatPostDate(selectedUserPost.date)}</strong>
+                  </div>
+                  <div>
+                    <span>Content type</span>
+                    <strong>{selectedUserPost.contentType}</strong>
+                  </div>
+                  <div>
+                    <span>Platforms</span>
+                    <strong>{selectedUserPost.platforms.join(', ')}</strong>
+                  </div>
+                  <div>
+                    <span>Distribution</span>
+                    <strong>
+                      {selectedUserPost.distribution === 'paid'
+                        ? `Paid / boosted · $${selectedUserPost.budget?.toLocaleString() ?? '0'} · ${selectedUserPost.runLength ?? 0} days`
+                        : 'Organic'}
+                    </strong>
+                  </div>
+                </div>
+                <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
+                <div className="post-form-actions">
+                  <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
+                  <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>
+                </div>
+              </div>
             </section>
           </div>
         )}

@@ -312,6 +312,15 @@
   font-weight: 600;
   line-height: 1.28;
 }
+.event-chip-button {
+  width: 100%;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: filter .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.event-chip-button:hover { filter: saturate(1.08); box-shadow: 0 4px 10px rgba(68, 43, 56, .1); transform: translateY(-1px); }
 .event-chip small { display: block; margin-top: 3px; color: currentColor; font-size: 9px; font-weight: 500; opacity: .72; }
 .event-rose { background: #f7e5ec; color: #9e3f61; }
 .event-lavender { background: #efe7f0; color: #6e5580; }
@@ -409,6 +418,16 @@
   color: var(--muted-foreground);
   font-size: 12px;
 }
+
+.post-detail-body { display: flex; flex-direction: column; gap: 19px; padding: 24px 28px 27px; }
+.post-detail-project { align-self: flex-start; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 7px 11px; }
+.post-detail-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.post-detail-list > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.post-detail-list span { color: var(--muted-foreground); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.post-detail-list strong { color: var(--ink); font-size: 12px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.post-detail-note { margin: 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+.delete-post-button { min-height: 40px; border: 1px solid #d7a6b6; border-radius: 999px; background: #fff2f5; color: #963a5b; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 17px; }
+.delete-post-button:hover { border-color: #b95b78; background: #f9e1e8; }
 
 .modal-close {
   display: inline-flex;
@@ -590,8 +609,10 @@
   .post-modal-backdrop { align-items: flex-end; padding: 10px; }
   .post-modal { max-height: 94dvh; border-radius: 17px; }
   .post-modal-header, .post-form { padding-inline: 18px; }
+  .post-detail-body { padding-inline: 18px; }
   .form-grid { grid-template-columns: 1fr; }
   .platform-option { min-width: 0; }
+  .post-detail-list { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
