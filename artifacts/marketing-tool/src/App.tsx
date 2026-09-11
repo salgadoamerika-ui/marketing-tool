@@ -25,7 +25,7 @@ type CalendarEvent = {
 };
 
 type Distribution = 'organic' | 'paid';
-type Platform = 'Facebook' | 'Instagram' | 'TikTok';
+type Platform = string;
 
 type UserPost = {
   id: string;
@@ -62,7 +62,8 @@ type Business = {
 };
 
 const userPostsStorageKey = 'marketing-tool.user-posts';
-const platformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
+const platformOptionsStorageKey = 'marketing-tool.platform-options';
+const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
 
 const businessData: Business[] = [
@@ -220,6 +221,28 @@ function createPostForm(date: string): PostForm {
   };
 }
 
+function readAvailablePlatforms() {
+  if (typeof window === 'undefined') return defaultPlatformOptions;
+
+  try {
+    const storedPlatforms = window.localStorage.getItem(platformOptionsStorageKey);
+    if (!storedPlatforms) return defaultPlatformOptions;
+    const parsedPlatforms: unknown = JSON.parse(storedPlatforms);
+    if (!Array.isArray(parsedPlatforms)) return defaultPlatformOptions;
+
+    const customPlatforms = parsedPlatforms.filter(
+      (platform): platform is string => typeof platform === 'string' && platform.trim().length > 0,
+    );
+    return [...defaultPlatformOptions, ...customPlatforms.filter(
+      (platform, index) => customPlatforms.findIndex((item) => item.toLowerCase() === platform.toLowerCase()) === index
+        && !defaultPlatformOptions.some((defaultPlatform) => defaultPlatform.toLowerCase() === platform.toLowerCase()),
+    )];
+  } catch (error) {
+    console.warn('Saved platform options could not be loaded.', error);
+    return defaultPlatformOptions;
+  }
+}
+
 function isUserPost(value: unknown): value is UserPost {
   if (!value || typeof value !== 'object') return false;
   const post = value as Partial<UserPost>;
@@ -231,7 +254,7 @@ function isUserPost(value: unknown): value is UserPost {
       && typeof post.title === 'string'
       && typeof post.date === 'string'
       && Array.isArray(post.platforms)
-      && post.platforms.every((platform) => platformOptions.includes(platform as Platform))
+      && post.platforms.every((platform) => typeof platform === 'string' && platform.trim().length > 0)
       && (post.distribution === 'organic' || post.distribution === 'paid'),
   );
 }
@@ -276,6 +299,10 @@ function CalendarSurface() {
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
+  const [availablePlatforms, setAvailablePlatforms] = useState<Platform[]>(readAvailablePlatforms);
+  const [isAddingPlatform, setIsAddingPlatform] = useState(false);
+  const [newPlatformName, setNewPlatformName] = useState('');
+  const [platformError, setPlatformError] = useState('');
 
   const activeBusiness = businessData.find((business) => business.id === activeBusinessId) ?? businessData[0];
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
@@ -298,6 +325,10 @@ function CalendarSurface() {
     window.localStorage.setItem(userPostsStorageKey, JSON.stringify(userPosts));
   }, [userPosts]);
 
+  useEffect(() => {
+    window.localStorage.setItem(platformOptionsStorageKey, JSON.stringify(availablePlatforms));
+  }, [availablePlatforms]);
+
   const shiftMonth = (amount: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
     setStatusMessage('');
@@ -311,6 +342,9 @@ function CalendarSurface() {
   const openPostForm = () => {
     setPostForm(createPostForm(defaultPostDate(visibleMonth)));
     setFormError('');
+    setIsAddingPlatform(false);
+    setNewPlatformName('');
+    setPlatformError('');
     setStatusMessage('');
     setIsPostFormOpen(true);
   };
@@ -318,6 +352,9 @@ function CalendarSurface() {
   const closePostForm = () => {
     setIsPostFormOpen(false);
     setFormError('');
+    setIsAddingPlatform(false);
+    setNewPlatformName('');
+    setPlatformError('');
   };
 
   const updatePostForm = <K extends keyof PostForm>(field: K, value: PostForm[K]) => {
@@ -333,6 +370,35 @@ function CalendarSurface() {
         : [...current.platforms, platform],
     }));
     setFormError('');
+  };
+
+  const handleAddPlatform = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedName = newPlatformName.trim();
+
+    if (!normalizedName) {
+      setPlatformError('Enter a platform name first.');
+      return;
+    }
+
+    if (normalizedName.length > 40) {
+      setPlatformError('Keep the platform name under 40 characters.');
+      return;
+    }
+
+    const existingPlatform = availablePlatforms.find(
+      (platform) => platform.toLowerCase() === normalizedName.toLowerCase(),
+    );
+    if (existingPlatform) {
+      setPlatformError('That platform is already available.');
+      return;
+    }
+
+    setAvailablePlatforms((current) => [...current, normalizedName]);
+    setPostForm((current) => ({ ...current, platforms: [...current.platforms, normalizedName] }));
+    setNewPlatformName('');
+    setIsAddingPlatform(false);
+    setPlatformError('');
   };
 
   const handlePostSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -593,7 +659,7 @@ function CalendarSurface() {
                 <fieldset className="form-fieldset">
                   <legend>Platforms <b>*</b></legend>
                   <div className="platform-options">
-                    {platformOptions.map((platform) => {
+                    {availablePlatforms.map((platform) => {
                       const selected = postForm.platforms.includes(platform);
                       return (
                         <label className={`platform-option ${selected ? 'selected' : ''}`} key={platform}>
@@ -607,7 +673,50 @@ function CalendarSurface() {
                         </label>
                       );
                     })}
+                    {isAddingPlatform ? (
+                      <form className="platform-add-form" onSubmit={handleAddPlatform}>
+                        <input
+                          aria-label="New platform name"
+                          autoFocus
+                          maxLength={40}
+                          onChange={(event) => {
+                            setNewPlatformName(event.target.value);
+                            setPlatformError('');
+                          }}
+                          placeholder="Platform name"
+                          type="text"
+                          value={newPlatformName}
+                        />
+                        <button className="platform-add-save" type="submit">Save</button>
+                        <button
+                          aria-label="Cancel adding platform"
+                          className="platform-add-cancel"
+                          onClick={() => {
+                            setIsAddingPlatform(false);
+                            setNewPlatformName('');
+                            setPlatformError('');
+                          }}
+                          type="button"
+                        >
+                          <X size={14} strokeWidth={1.8} />
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        className="platform-add-option"
+                        onClick={() => {
+                          setIsAddingPlatform(true);
+                          setPlatformError('');
+                        }}
+                        type="button"
+                      >
+                        <Plus size={14} strokeWidth={2} />
+                        Add platform option
+                      </button>
+                    )}
                   </div>
+                    <p className="platform-note">Saved platform options stay available for future posts.</p>
+                    {platformError && <p className="form-error" role="alert">{platformError}</p>}
                 </fieldset>
 
                 <fieldset className="form-fieldset">
