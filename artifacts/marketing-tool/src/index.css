@@ -324,6 +324,8 @@
 .event-chip-suggestion { box-sizing: border-box; border: 1px dotted currentColor; }
 .event-chip-sequence-highlight { position: relative; z-index: 1; outline: 2px solid var(--rose-deep); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(168, 74, 110, .14); }
 .event-chip small { display: block; margin-top: 3px; color: currentColor; font-size: 9px; font-weight: 500; opacity: .72; }
+.event-best-time { display: inline-flex; max-width: 100%; align-items: center; margin-top: 5px; border-radius: 999px; background: #f8f0e5; color: #826648; padding: 3px 6px; font-size: 8px; font-weight: 700; line-height: 1.25; }
+.event-best-time-learned { background: #e8f0e8; color: #4f7058; }
 .event-post-status { display: inline-block; margin-top: 5px; border-radius: 999px; padding: 2px 6px; font-size: 9px; font-weight: 700; text-transform: capitalize; }
 .event-post-status-completed { background: #e1eee3; color: #426a50; }
 .event-post-status-skipped { background: #f3e8e4; color: #936a61; }
@@ -465,6 +467,11 @@
 .post-detail-status { align-self: flex-start; margin: -10px 0 0; border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 700; }
 .post-detail-status-completed { background: #e1eee3; color: #426a50; }
 .post-detail-status-skipped { background: #f3e8e4; color: #936a61; }
+.post-best-time { display: flex; flex-direction: column; gap: 6px; border: 1px solid #e9dfd0; border-radius: 11px; background: #fbf7f0; padding: 11px 13px; }
+.post-best-time-learned { border-color: #d7e4d8; background: #f4f8f4; }
+.post-best-time-label { align-self: flex-start; border-radius: 999px; background: #fffdfa; color: #806447; padding: 4px 8px; font-size: 10px; font-weight: 700; line-height: 1.35; }
+.post-best-time-learned .post-best-time-label { background: #e8f0e8; color: #4f7058; }
+.post-best-time p { margin: 0; color: var(--ink); font-size: 11px; line-height: 1.5; }
 .post-detail-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .post-detail-list > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .post-detail-list span { color: var(--muted-foreground); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
@@ -478,6 +485,8 @@
 .post-performance-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .post-performance-fields .form-field { min-width: 0; }
 .post-performance-fields input { box-sizing: border-box; }
+.post-performance-time { max-width: 235px; }
+.post-performance-time > small { color: var(--muted-foreground); font-size: 10px; line-height: 1.4; }
 .post-performance-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
 .post-performance-actions .save-post-button { min-height: 36px; padding: 7px 14px; }
 .post-performance-saved { margin: 0; color: #4f7058; font-size: 11px; font-weight: 600; }

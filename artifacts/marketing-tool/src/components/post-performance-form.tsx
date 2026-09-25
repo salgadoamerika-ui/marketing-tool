@@ -16,10 +16,12 @@ const metrics: { key: Metric; label: string }[] = [
 
 export function PostPerformanceForm({
   performance,
+  postedTime,
   onSave,
 }: {
   performance?: PostPerformance;
-  onSave: (performance: PostPerformance) => void;
+  postedTime?: string;
+  onSave: (performance: PostPerformance, postedTime?: string) => void;
 }) {
   const [draft, setDraft] = useState<Record<Metric, string>>({
     views: performance?.views?.toString() ?? '',
@@ -28,6 +30,7 @@ export function PostPerformanceForm({
   });
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [draftPostedTime, setDraftPostedTime] = useState(postedTime ?? '');
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,7 +48,7 @@ export function PostPerformanceForm({
       next[key] = count;
     }
 
-    onSave(next);
+    onSave(next, draftPostedTime || undefined);
     setError('');
     setSaved(true);
   };
@@ -75,6 +78,21 @@ export function PostPerformanceForm({
           </label>
         ))}
       </div>
+      <label className="form-field post-performance-time">
+        <span>Time posted</span>
+        <input
+          aria-describedby="post-performance-time-hint"
+          onChange={(event) => {
+            setDraftPostedTime(event.target.value);
+            setSaved(false);
+          }}
+          type="time"
+          value={draftPostedTime}
+        />
+        <small id="post-performance-time-hint">
+          Add the actual posting time to help learn timing patterns.
+        </small>
+      </label>
       <div className="post-performance-actions">
         {error && <p className="form-error" role="alert">{error}</p>}
         {saved && <p className="post-performance-saved" role="status">Results saved</p>}

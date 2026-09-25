@@ -13,6 +13,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
 import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
 import { getAirtimeAllocations } from '@/lib/airtime-allocation';
+import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
 import {
   findSeasonalityFinding,
   isNextSeasonPerformanceDate,
@@ -43,6 +44,7 @@ type CalendarEvent = {
   hasConversionGap?: boolean;
   isSequenceHighlight?: boolean;
   status?: 'completed' | 'skipped';
+  bestTime?: BestTimeRecommendation;
 };
 
 type Distribution = 'organic' | 'paid';
@@ -55,6 +57,7 @@ type UserPost = {
   contentType: string;
   title: string;
   date: string;
+  postedTime?: string;
   platforms: Platform[];
   distribution: Distribution;
   isSuggestion?: boolean;
@@ -337,6 +340,8 @@ function isUserPost(value: unknown): value is UserPost {
       && typeof post.contentType === 'string'
       && typeof post.title === 'string'
       && typeof post.date === 'string'
+      && (post.postedTime === undefined
+        || (typeof post.postedTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(post.postedTime)))
       && Array.isArray(post.platforms)
       && post.platforms.every((platform) => typeof platform === 'string' && platform.trim().length > 0)
       && (post.distribution === 'organic' || post.distribution === 'paid')
@@ -497,6 +502,14 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const selectedBestTime = selectedUserPost
+    ? getBestTimeRecommendation(
+      selectedUserPost.businessId,
+      selectedUserPost.project,
+      selectedUserPost.platforms,
+      userPosts,
+    )
+    : null;
   const selectedConversionAssessment = selectedUserPost ? assessConversionGap(selectedUserPost, userPosts) : null;
   const selectedOverperformer = selectedUserPost ? getOverperformer(selectedUserPost, userPosts) : null;
   const selectedConversionGap = selectedConversionAssessment?.status === 'detected'
@@ -527,6 +540,7 @@ function CalendarSurface() {
     ),
     hasConversionGap: getConversionGap(post, userPosts) !== null,
     status: post.status,
+    bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts),
   });
   const calendarEvents = [
     ...events.map((event) => ({
@@ -785,9 +799,9 @@ function CalendarSurface() {
     setSelectedPostId(null);
   };
 
-  const handleSaveResults = (performance: PostPerformance) => {
+  const handleSaveResults = (performance: PostPerformance, postedTime?: string) => {
     if (!selectedUserPost) return;
-    const updatedPost = { ...selectedUserPost, performance };
+    const updatedPost = { ...selectedUserPost, performance, postedTime: postedTime || undefined };
     const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
     setUserPosts(nextPosts);
     const postBusiness = businessData.find((business) => business.id === updatedPost.businessId) ?? activeBusiness;
@@ -974,6 +988,15 @@ function CalendarSurface() {
                           <>
                             {event.title}
                             {event.detail && <small>{event.detail}</small>}
+                            {event.bestTime && (
+                              <span
+                                aria-label={`${event.bestTime.label}. ${event.bestTime.detail}`}
+                                className={`event-best-time event-best-time-${event.bestTime.mode}`}
+                                title={`${event.bestTime.label}. ${event.bestTime.detail}`}
+                              >
+                                {event.bestTime.compactLabel}
+                              </span>
+                            )}
                             {event.status && <span className={`event-post-status event-post-status-${event.status}`}>{event.status}</span>}
                             {event.hasConversionGap && <span className="event-insight-tag">Conversion gap</span>}
                           </>
@@ -981,7 +1004,7 @@ function CalendarSurface() {
 
                         return event.id ? (
                           <button
-                            aria-label={`Open saved post: ${event.title}`}
+                            aria-label={`Open saved post: ${event.title}${event.bestTime ? `. ${event.bestTime.label}. ${event.bestTime.detail}` : ''}`}
                             className={`event-chip event-chip-button event-${event.tone}${event.isSuggestion ? ' event-chip-suggestion' : ''}${event.isSequenceHighlight ? ' event-chip-sequence-highlight' : ''}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
@@ -1281,6 +1304,15 @@ function CalendarSurface() {
                 <div className={`post-detail-project event-${getPostTone(selectedUserPost.project, activeBusiness)}`}>
                   {selectedUserPost.project}
                 </div>
+                {selectedBestTime && (
+                  <section
+                    aria-label="Best time recommendation"
+                    className={`post-best-time post-best-time-${selectedBestTime.mode}`}
+                  >
+                    <span className="post-best-time-label">{selectedBestTime.label}</span>
+                    <p>{selectedBestTime.detail}</p>
+                  </section>
+                )}
                 {selectedUserPost.status && (
                   <p className={`post-detail-status post-detail-status-${selectedUserPost.status}`}>
                     {selectedUserPost.status === 'completed' ? 'Completed' : 'Skipped'}
@@ -1317,6 +1349,7 @@ function CalendarSurface() {
                 <PostPerformanceForm
                   key={selectedUserPost.id}
                   performance={selectedUserPost.performance}
+                  postedTime={selectedUserPost.postedTime}
                   onSave={handleSaveResults}
                 />
                 {selectedConversionAssessment && selectedConversionAssessment.status !== 'detected' && (

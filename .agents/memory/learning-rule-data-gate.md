@@ -3,8 +3,8 @@ name: Learning-rule data gate
 description: The marketing tool's prerequisite for performance-based recommendations.
 ---
 
-Require at least three comparable posts with recorded performance before a learning rule triggers. Changing a rule's threshold must not remove that prerequisite.
+Require at least three comparable posts with recorded performance before a learning rule triggers. Changing a rule's threshold must not remove that prerequisite. Timing recommendations also need actual posting-time data for the top measured posts; never substitute suggested platform defaults as historical evidence.
 
 **Why:** The user explicitly corrected an earlier change that removed the three-post gate from the conversion-gap rule and said not to remove it from any rule.
 
-**How to apply:** When changing or adding a performance-based rule, keep the three-post gate in its detection logic, status text, and tests. Comparable posts should belong to the same business and service and have the metrics that rule needs.
+**How to apply:** When changing or adding a performance-based rule, keep the three-post gate in its detection logic, status text, and tests. Comparable posts should belong to the same business and service and have the metrics that rule needs. For best-time learning, keep the recommendation in suggested mode until the highest-view measured posts have recorded date and time values.
