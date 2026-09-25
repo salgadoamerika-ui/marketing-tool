@@ -7,11 +7,13 @@ import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ConversionGapRecommendation } from '@/components/conversion-gap-recommendation';
 import { OverperformerRecommendation } from '@/components/overperformer-recommendation';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
+import { SeasonalitySuggestionPopup } from '@/components/seasonality-suggestion-popup';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
 import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
 import { getAirtimeAllocations } from '@/lib/airtime-allocation';
+import { findSeasonalityFinding, type SeasonalityFinding } from '@/lib/seasonality';
 import { addDaysToDate, isSameSequenceType } from '@/lib/follow-ups';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
@@ -80,8 +82,19 @@ type Business = {
   events: Record<string, CalendarEvent[]>;
 };
 
+type SeasonalityPrompt = SeasonalityFinding & {
+  businessId: string;
+  service: string;
+};
+
+type SeasonalityDismissal = {
+  retryAfterYear: number;
+};
+
 const userPostsStorageKey = 'marketing-tool.user-posts';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
+const serviceSeasonsStorageKey = 'marketing-tool.service-seasons';
+const seasonalityDismissalsStorageKey = 'marketing-tool.seasonality-dismissals';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = [
   'Announcement', 'Inside look', 'Insight', 'Book now', 'Testimonial', 'Proof',
@@ -340,6 +353,74 @@ function readUserPosts() {
   }
 }
 
+function serviceSeasonKey(businessId: string, service: string) {
+  return `${businessId}::${service}`;
+}
+
+function seasonalityDismissalKey(businessId: string, service: string, month: number) {
+  return `${serviceSeasonKey(businessId, service)}::${month}`;
+}
+
+function validSeasonMonths(value: unknown): value is number[] {
+  return Array.isArray(value)
+    && value.every((month) => Number.isInteger(month) && month >= 1 && month <= 12);
+}
+
+function readServiceSeasons(): Record<string, number[]> {
+  const defaults: Record<string, number[]> = {};
+  for (const business of businessData) {
+    for (const service of business.projects) {
+      defaults[serviceSeasonKey(business.id, service)] = [...(serviceSeasonMonths[service] ?? [])];
+    }
+  }
+  if (typeof window === 'undefined') return defaults;
+
+  try {
+    const saved = window.localStorage.getItem(serviceSeasonsStorageKey);
+    if (!saved) return defaults;
+    const parsed: unknown = JSON.parse(saved);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return defaults;
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if (key in defaults && validSeasonMonths(value)) {
+        defaults[key] = [...new Set(value)];
+      }
+    }
+    return defaults;
+  } catch (error) {
+    console.warn('Saved service seasons could not be loaded.', error);
+    return defaults;
+  }
+}
+
+function readSeasonalityDismissals(): Record<string, SeasonalityDismissal> {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const saved = window.localStorage.getItem(seasonalityDismissalsStorageKey);
+    if (!saved) return {};
+    const parsed: unknown = JSON.parse(saved);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed).flatMap(([key, value]) => {
+        if (
+          value
+          && typeof value === 'object'
+          && Number.isInteger((value as SeasonalityDismissal).retryAfterYear)
+          && (value as SeasonalityDismissal).retryAfterYear > 0
+        ) {
+          return [[key, { retryAfterYear: (value as SeasonalityDismissal).retryAfterYear }]];
+        }
+        return [];
+      }),
+    );
+  } catch (error) {
+    console.warn('Saved seasonality choices could not be loaded.', error);
+    return {};
+  }
+}
+
 function getPostTone(project: string, business: Business): EventTone {
   return business.palette.find((item) => item.label === project)?.tone ?? 'rose';
 }
@@ -382,6 +463,10 @@ function CalendarSurface() {
   const [statusMessage, setStatusMessage] = useState('');
   const [actionInsight, setActionInsight] = useState<ActionInsight | null>(null);
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
+  const [serviceSeasons, setServiceSeasons] = useState<Record<string, number[]>>(readServiceSeasons);
+  const [seasonalityDismissals, setSeasonalityDismissals] =
+    useState<Record<string, SeasonalityDismissal>>(readSeasonalityDismissals);
+  const [seasonalityPrompt, setSeasonalityPrompt] = useState<SeasonalityPrompt | null>(null);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
@@ -397,12 +482,12 @@ function CalendarSurface() {
     activeBusiness.id,
     activeBusiness.projects.map((name) => ({
       name,
-      seasonMonths: serviceSeasonMonths[name] ?? [],
+      seasonMonths: serviceSeasons[serviceSeasonKey(activeBusiness.id, name)] ?? [],
     })),
     userPosts,
     visibleMonth.getFullYear(),
     visibleMonth.getMonth() + 1,
-  ), [activeBusiness, userPosts, visibleMonth]);
+  ), [activeBusiness, serviceSeasons, userPosts, visibleMonth]);
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
@@ -459,6 +544,14 @@ function CalendarSurface() {
     window.localStorage.setItem(platformOptionsStorageKey, JSON.stringify(availablePlatforms));
   }, [availablePlatforms]);
 
+  useEffect(() => {
+    window.localStorage.setItem(serviceSeasonsStorageKey, JSON.stringify(serviceSeasons));
+  }, [serviceSeasons]);
+
+  useEffect(() => {
+    window.localStorage.setItem(seasonalityDismissalsStorageKey, JSON.stringify(seasonalityDismissals));
+  }, [seasonalityDismissals]);
+
   const shiftMonth = (amount: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
     setStatusMessage('');
@@ -467,6 +560,54 @@ function CalendarSurface() {
   const showActionMessage = (message: string) => {
     setStatusMessage(message);
     window.setTimeout(() => setStatusMessage(''), 3000);
+  };
+
+  const handleToggleSeasonMonth = (service: string, month: number) => {
+    const key = serviceSeasonKey(activeBusiness.id, service);
+    setServiceSeasons((current) => {
+      const currentMonths = current[key] ?? serviceSeasonMonths[service] ?? [];
+      const nextMonths = currentMonths.includes(month)
+        ? currentMonths.filter((item) => item !== month)
+        : [...currentMonths, month].sort((left, right) => left - right);
+      return { ...current, [key]: nextMonths };
+    });
+  };
+
+  const handleAcceptSeasonality = () => {
+    if (!seasonalityPrompt) return;
+    const { businessId, service, month } = seasonalityPrompt;
+    const key = serviceSeasonKey(businessId, service);
+    setServiceSeasons((current) => {
+      const months = current[key] ?? serviceSeasonMonths[service] ?? [];
+      return months.includes(month)
+        ? current
+        : { ...current, [key]: [...months, month].sort((left, right) => left - right) };
+    });
+    setSeasonalityDismissals((current) => {
+      const next = { ...current };
+      delete next[seasonalityDismissalKey(businessId, service, month)];
+      return next;
+    });
+    setSeasonalityPrompt(null);
+    const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' })
+      .format(new Date(2026, month - 1, 1));
+    showActionMessage(`${monthName} is now part of ${service}’s season.`);
+  };
+
+  const handleAskNextSeason = () => {
+    if (!seasonalityPrompt) return;
+    const { businessId, service, month } = seasonalityPrompt;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const retryAfterYear = currentMonth < month ? now.getFullYear() : now.getFullYear() + 1;
+    setSeasonalityDismissals((current) => ({
+      ...current,
+      [seasonalityDismissalKey(businessId, service, month)]: { retryAfterYear },
+    }));
+    setSeasonalityPrompt(null);
+    const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' })
+      .format(new Date(2026, month - 1, 1));
+    showActionMessage(`I’ll ask about ${monthName} again next season.`);
   };
 
   const openPostForm = () => {
@@ -601,6 +742,35 @@ function CalendarSurface() {
     const updatedPost = { ...selectedUserPost, performance };
     const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
     setUserPosts(nextPosts);
+    const key = serviceSeasonKey(updatedPost.businessId, updatedPost.project);
+    const finding = findSeasonalityFinding(
+      updatedPost.businessId,
+      updatedPost.project,
+      nextPosts,
+      serviceSeasons[key] ?? serviceSeasonMonths[updatedPost.project] ?? [],
+    );
+    if (finding) {
+      const dismissalKey = seasonalityDismissalKey(
+        updatedPost.businessId,
+        updatedPost.project,
+        finding.month,
+      );
+      const dismissal = seasonalityDismissals[dismissalKey];
+      const postYear = Number(updatedPost.date.slice(0, 4));
+      const postMonth = Number(updatedPost.date.slice(5, 7));
+      const isNextSeason = Boolean(
+        dismissal
+        && postMonth === finding.month
+        && postYear >= dismissal.retryAfterYear,
+      );
+      if (!dismissal || isNextSeason) {
+        setSeasonalityPrompt((current) => current ?? {
+          ...finding,
+          businessId: updatedPost.businessId,
+          service: updatedPost.project,
+        });
+      }
+    }
     const postBusiness = businessData.find((business) => business.id === updatedPost.businessId) ?? activeBusiness;
     const insight = buildCalendarActionInsight(
       'results', updatedPost, nextPosts, postBusiness, formatDateInput(new Date()),
@@ -821,6 +991,11 @@ function CalendarSurface() {
             <AirtimeBalance
               allocations={airtime.allocations}
               getTone={(service) => getPostTone(service, activeBusiness)}
+              seasonMonthsByService={Object.fromEntries(activeBusiness.projects.map((service) => [
+                service,
+                serviceSeasons[serviceSeasonKey(activeBusiness.id, service)] ?? [],
+              ]))}
+              onToggleSeasonMonth={handleToggleSeasonMonth}
               monthLabel={new Intl.DateTimeFormat('en-US', {
                 month: 'long',
                 year: 'numeric',
@@ -1195,6 +1370,14 @@ function CalendarSurface() {
             insight={actionInsight}
             onAdd={handleAddInsightSuggestion}
             onSkip={() => setActionInsight(null)}
+          />
+        )}
+        {!actionInsight && seasonalityPrompt?.businessId === activeBusiness.id && (
+          <SeasonalitySuggestionPopup
+            service={seasonalityPrompt.service}
+            finding={seasonalityPrompt}
+            onAccept={handleAcceptSeasonality}
+            onAskNextSeason={handleAskNextSeason}
           />
         )}
       </div>
