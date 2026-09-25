@@ -436,17 +436,6 @@
 .post-rationale { border: 1px solid #eadcc9; border-radius: 12px; background: #fbf6ee; padding: 13px 15px; }
 .post-rationale h3 { margin: 0 0 5px; color: #8d6745; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .post-rationale p { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.55; }
-.follow-up-card { border: 1px solid #e6d6df; border-radius: 12px; background: #fdf5f8; padding: 15px; }
-.follow-up-card h3 { margin: 0; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 19px; font-weight: 500; }
-.follow-up-card > p { margin: 4px 0 12px; color: var(--plum-soft); font-size: 11px; line-height: 1.5; }
-.follow-up-card ul { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.follow-up-card li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; border: 1px solid #f0e4e9; border-radius: 9px; background: #fffdfb; padding: 10px 12px; }
-.follow-up-card li div { display: flex; flex-direction: column; gap: 4px; }
-.follow-up-card li strong { color: var(--ink); font-size: 11px; }
-.follow-up-card li span, .follow-up-card small { color: var(--muted-foreground); font-size: 10px; }
-.follow-up-card li button { border: 1px solid var(--rose-soft); border-radius: 99px; background: #fff8fa; color: var(--rose-deep); cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; padding: 7px 11px; }
-.follow-up-card li button:hover { background: #f7e5ec; }
-.follow-up-card small { display: block; margin-top: 11px; }
 .post-performance { display: flex; flex-direction: column; gap: 13px; border: 1px solid var(--line-strong); border-radius: 12px; background: #fffaf8; padding: 15px; }
 .post-performance h3 { margin: 0; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 500; }
 .post-performance-intro { margin: 4px 0 0; color: var(--muted-foreground); font-size: 11px; }

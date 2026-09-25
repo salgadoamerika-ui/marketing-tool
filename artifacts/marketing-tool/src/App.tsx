@@ -306,7 +306,7 @@ function getPostDetail(post: UserPost) {
   const distributionText = post.distribution === 'paid'
     ? `Paid · $${post.budget?.toLocaleString() ?? '0'} · ${post.runLength ?? 0}d`
     : 'Organic';
-  return `${post.contentType} · ${channelText} · ${distributionText}`;
+  return `${post.isSuggestion ? 'Suggested · ' : ''}${post.contentType} · ${channelText} · ${distributionText}`;
 }
 
 function makeAutomaticSuggestion(source: UserPost, plan: FollowUpPlan): UserPost {
@@ -353,9 +353,6 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
-  const selectedFollowUps = selectedUserPost && !selectedUserPost.isSuggestion
-    ? getFollowUpPlans(selectedUserPost, userPosts)
-    : [];
   const selectedOverperformer = selectedUserPost ? getOverperformer(selectedUserPost, userPosts) : null;
   const selectedConversionGap = selectedUserPost ? getConversionGap(selectedUserPost, userPosts) : null;
   const hasSuggestedFollowUp = selectedUserPost
@@ -367,16 +364,17 @@ function CalendarSurface() {
   const hasOfferSuggestion = selectedUserPost
     ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && post.suggestionKind === 'offer')
     : false;
+  const postAsEvent = (post: UserPost): CalendarEvent => ({
+    id: post.id,
+    day: Number(post.date.slice(-2)),
+    title: post.title,
+    detail: getPostDetail(post),
+    tone: getPostTone(post.project, activeBusiness),
+    isSuggestion: post.isSuggestion,
+  });
   const calendarEvents = [
     ...events,
-    ...monthPosts.map((post) => ({
-      id: post.id,
-      day: Number(post.date.slice(-2)),
-      title: post.title,
-      detail: getPostDetail(post),
-      tone: getPostTone(post.project, activeBusiness),
-      isSuggestion: post.isSuggestion,
-    })),
+    ...monthPosts.map(postAsEvent),
   ];
   const todayKey = '2026-09-10';
 
@@ -492,25 +490,19 @@ function CalendarSurface() {
       distribution: postForm.distribution,
       ...(postForm.distribution === 'paid' ? { budget, runLength } : {}),
     };
-    const suggestions = getFollowUpPlans(savedPost, userPosts)
+    const followUpPlans = getFollowUpPlans(savedPost, userPosts);
+    const suggestions = followUpPlans
       .filter((plan) => !plan.existingPostId)
       .map((plan) => makeAutomaticSuggestion(savedPost, plan));
 
     setUserPosts((current) => [...current, savedPost, ...suggestions]);
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
-    setSelectedPostId(savedPost.id);
-    showActionMessage(`Added “${savedPost.title}” to the calendar.`);
-  };
-
-  const handleAddAutomaticSuggestion = (contentType: string, date: string) => {
-    if (!selectedUserPost) return;
-    setUserPosts((current) => {
-      const plan = getFollowUpPlans(selectedUserPost, current)
-        .find((item) => item.contentType === contentType && item.date === date);
-      if (!plan || plan.existingPostId) return current;
-      return [...current, makeAutomaticSuggestion(selectedUserPost, plan)];
-    });
+    showActionMessage(suggestions.length
+      ? `Added “${savedPost.title}” and ${suggestions.length} suggested follow-up${suggestions.length === 1 ? '' : 's'} to the calendar.`
+      : followUpPlans.length
+        ? `Added “${savedPost.title}”. Its follow-ups are already on the calendar.`
+        : `Added “${savedPost.title}” to the calendar.`);
   };
 
   const handleDeletePost = () => {
@@ -652,7 +644,7 @@ function CalendarSurface() {
                 const dateKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}`;
                 const dayEvents = dateKey === monthKey(visibleMonth)
                   ? calendarEvents.filter((event) => event.day === day.getDate())
-                  : [];
+                  : activeBusinessPosts.filter((post) => post.date === formatDateInput(day)).map(postAsEvent);
                 const isOutside = day.getMonth() !== visibleMonth.getMonth();
                 const isToday = `${dateKey}-${String(day.getDate()).padStart(2, '0')}` === todayKey;
 
@@ -1005,38 +997,6 @@ function CalendarSurface() {
                   <section aria-labelledby="post-rationale-title" className="post-rationale">
                     <h3 id="post-rationale-title">Why this move</h3>
                     <p>{contentTypeRationales[selectedUserPost.contentType]}</p>
-                  </section>
-                )}
-                {selectedFollowUps.length > 0 && (
-                  <section aria-label="Suggested follow-up posts" className="follow-up-card">
-                    <h3>Suggested next</h3>
-                    <p>Based on this post, these are the next moves for {selectedUserPost.project}.</p>
-                    <ul>
-                      {selectedFollowUps.map((plan) => {
-                        const existingPost = userPosts.find((post) => post.id === plan.existingPostId);
-                        return (
-                          <li key={`${plan.contentType}-${plan.date}`}>
-                            <div>
-                              <strong>{plan.contentType}: {plan.label}</strong>
-                              <span>{existingPost
-                                ? `Already on the calendar · ${formatPostDate(existingPost.date)}`
-                                : `Suggested for ${formatPostDate(plan.date)}`}</span>
-                            </div>
-                            {existingPost ? (
-                              <button type="button" onClick={() => {
-                                setVisibleMonth(new Date(`${existingPost.date}T12:00:00`));
-                                setSelectedPostId(existingPost.id);
-                              }}>View post</button>
-                            ) : (
-                              <button type="button" onClick={() => handleAddAutomaticSuggestion(plan.contentType, plan.date)}>
-                                Add to calendar
-                              </button>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <small>Future dates may appear in a different calendar month.</small>
                   </section>
                 )}
                 <PostPerformanceForm
