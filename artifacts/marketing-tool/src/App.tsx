@@ -502,7 +502,7 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
-  const selectedBestTime = selectedUserPost
+  const selectedBestTime = selectedUserPost?.isSuggestion
     ? getBestTimeRecommendation(
       selectedUserPost.businessId,
       selectedUserPost.project,
@@ -540,7 +540,9 @@ function CalendarSurface() {
     ),
     hasConversionGap: getConversionGap(post, userPosts) !== null,
     status: post.status,
-    bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts),
+    bestTime: post.isSuggestion
+      ? getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts)
+      : undefined,
   });
   const calendarEvents = [
     ...events.map((event) => ({

@@ -79,7 +79,7 @@ export function PostPerformanceForm({
         ))}
       </div>
       <label className="form-field post-performance-time">
-        <span>Time posted</span>
+        <span>Time posted (optional)</span>
         <input
           aria-describedby="post-performance-time-hint"
           onChange={(event) => {
@@ -90,7 +90,7 @@ export function PostPerformanceForm({
           value={draftPostedTime}
         />
         <small id="post-performance-time-hint">
-          Add the actual posting time to help learn timing patterns.
+          Leave this blank if you don’t know it. A real time can help learn timing patterns.
         </small>
       </label>
       <div className="post-performance-actions">
