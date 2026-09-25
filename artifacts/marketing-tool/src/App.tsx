@@ -8,6 +8,7 @@ import { PostPerformanceForm, type PostPerformance } from '@/components/post-per
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
+import { getConversionSuggestionPlans } from '@/lib/conversion-gap-followups';
 import { addDaysToDate, getFollowUpPlans, type FollowUpPlan } from '@/lib/follow-ups';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
@@ -74,6 +75,7 @@ type Business = {
 };
 
 const userPostsStorageKey = 'marketing-tool.user-posts';
+const conversionSuggestionsMigratedKey = 'marketing-tool.conversion-suggestions-v1';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
@@ -326,6 +328,30 @@ function makeAutomaticSuggestion(source: UserPost, plan: FollowUpPlan): UserPost
   };
 }
 
+function appendConversionSuggestions(posts: UserPost[]): UserPost[] {
+  const plans = getConversionSuggestionPlans(posts);
+  if (plans.length === 0) return posts;
+
+  const suggestions: UserPost[] = plans.flatMap((plan) => {
+    const trigger = posts.find((post) => post.id === plan.triggerPostId);
+    if (!trigger) return [];
+    return [{
+      id: createPostId(),
+      businessId: trigger.businessId,
+      project: trigger.project,
+      contentType: plan.kind === 'trust' ? 'Proof' : 'Book now',
+      title: plan.title,
+      date: plan.date,
+      platforms: trigger.platforms,
+      distribution: 'organic' as Distribution,
+      isSuggestion: true,
+      sourcePostId: plan.sourcePostId,
+      suggestionKind: plan.kind,
+    }];
+  });
+  return [...posts, ...suggestions];
+}
+
 function formatPostDate(date: string) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'long',
@@ -372,12 +398,16 @@ function CalendarSurface() {
   const hasSuggestedFollowUp = selectedUserPost
     ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && (!post.suggestionKind || post.suggestionKind === 'overperformer'))
     : false;
-  const hasTrustSuggestion = selectedUserPost
-    ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && post.suggestionKind === 'trust')
-    : false;
-  const hasOfferSuggestion = selectedUserPost
-    ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && post.suggestionKind === 'offer')
-    : false;
+  const selectedTrustSuggestion = selectedUserPost
+    ? userPosts.find((post) =>
+      post.businessId === selectedUserPost.businessId
+      && post.project === selectedUserPost.project
+      && post.suggestionKind === 'trust')
+    : undefined;
+  const selectedOfferSuggestion = selectedTrustSuggestion
+    ? userPosts.find((post) =>
+      post.sourcePostId === selectedTrustSuggestion.sourcePostId && post.suggestionKind === 'offer')
+    : undefined;
   const postAsEvent = (post: UserPost): CalendarEvent => ({
     id: post.id,
     day: Number(post.date.slice(-2)),
@@ -396,6 +426,14 @@ function CalendarSurface() {
   useEffect(() => {
     window.localStorage.setItem(userPostsStorageKey, JSON.stringify(userPosts));
   }, [userPosts]);
+
+  useEffect(() => {
+    if (window.localStorage.getItem(conversionSuggestionsMigratedKey) === '1') return;
+    // Add the first step for existing measured posts once, without recreating
+    // a suggestion that the user later removes.
+    setUserPosts((current) => appendConversionSuggestions(current));
+    window.localStorage.setItem(conversionSuggestionsMigratedKey, '1');
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(platformOptionsStorageKey, JSON.stringify(availablePlatforms));
@@ -551,28 +589,6 @@ function CalendarSurface() {
         isSuggestion: true,
         sourcePostId: selectedUserPost.id,
         suggestionKind: 'overperformer',
-      }];
-    });
-  };
-
-  const handleConversionSuggestion = (kind: 'trust' | 'offer') => {
-    if (!selectedUserPost) return;
-    setUserPosts((current) => {
-      if (current.some((post) => post.sourcePostId === selectedUserPost.id && post.suggestionKind === kind)) return current;
-      return [...current, {
-        id: createPostId(),
-        businessId: selectedUserPost.businessId,
-        project: selectedUserPost.project,
-        contentType: kind === 'trust' ? 'Proof' : 'Book now',
-        title: kind === 'trust'
-          ? `${selectedUserPost.project}: a client testimonial`
-          : `${selectedUserPost.project}: referral offer to book`,
-        date: addDaysToDate(selectedUserPost.date, kind === 'trust' ? 2 : 4),
-        platforms: selectedUserPost.platforms,
-        distribution: 'organic',
-        isSuggestion: true,
-        sourcePostId: selectedUserPost.id,
-        suggestionKind: kind,
       }];
     });
   };
@@ -1019,27 +1035,34 @@ function CalendarSurface() {
                   key={selectedUserPost.id}
                   performance={selectedUserPost.performance}
                   onSave={(performance) => {
-                    setUserPosts((current) => current.map((post) => (
+                    setUserPosts((current) => appendConversionSuggestions(current.map((post) => (
                       post.id === selectedUserPost.id ? { ...post, performance } : post
-                    )));
+                    ))));
                   }}
                 />
                 {selectedConversionAssessment && selectedConversionAssessment.status !== 'detected' && (
                   <section aria-label="Conversion gap status" className="conversion-gap-hint">
                     <strong>Conversion gap</strong>
-                    <p>{conversionGapStatusText(selectedConversionAssessment, selectedUserPost.project)}</p>
+                    <p>{selectedUserPost.suggestionKind === 'trust' && selectedConversionAssessment.status === 'needs-results'
+                      ? 'This suggested testimonial is the trust step. Add its views, saves, and bookings to see whether a lower-barrier post is needed.'
+                      : selectedUserPost.suggestionKind === 'trust' && selectedConversionAssessment.status === 'not-detected'
+                        ? 'This testimonial did not meet the low-booking ratio, so no lower-barrier post was added.'
+                        : conversionGapStatusText(selectedConversionAssessment, selectedUserPost.project)}</p>
                   </section>
                 )}
                 {selectedConversionGap && (
                   <ConversionGapRecommendation
                     service={selectedUserPost.project}
                     result={selectedConversionGap}
-                    hasTrustSuggestion={hasTrustSuggestion}
-                    hasOfferSuggestion={hasOfferSuggestion}
-                    trustDate={formatPostDate(addDaysToDate(selectedUserPost.date, 2))}
-                    offerDate={formatPostDate(addDaysToDate(selectedUserPost.date, 4))}
-                    onBuildTrust={() => handleConversionSuggestion('trust')}
-                    onLowerBarrier={() => handleConversionSuggestion('offer')}
+                    stage={selectedUserPost.suggestionKind === 'trust'
+                      ? 'offer'
+                      : selectedUserPost.suggestionKind === 'offer' ? 'complete' : 'trust'}
+                    scheduledDate={selectedUserPost.suggestionKind === 'trust'
+                      ? selectedOfferSuggestion && formatPostDate(selectedOfferSuggestion.date)
+                      : selectedTrustSuggestion && formatPostDate(selectedTrustSuggestion.date)}
+                    laterOfferDate={selectedUserPost.suggestionKind !== 'trust' && selectedOfferSuggestion
+                      ? formatPostDate(selectedOfferSuggestion.date)
+                      : undefined}
                   />
                 )}
                 {selectedOverperformer && (

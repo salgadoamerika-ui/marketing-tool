@@ -4,31 +4,26 @@ import type { ConversionGapResult } from '@/lib/conversion-gap';
 type Props = {
   result: ConversionGapResult;
   service: string;
-  hasTrustSuggestion: boolean;
-  hasOfferSuggestion: boolean;
-  trustDate: string;
-  offerDate: string;
-  onBuildTrust: () => void;
-  onLowerBarrier: () => void;
+  stage: 'trust' | 'offer' | 'complete';
+  scheduledDate?: string;
+  laterOfferDate?: string;
 };
 
 export function ConversionGapRecommendation({
   result,
   service,
-  hasTrustSuggestion,
-  hasOfferSuggestion,
-  trustDate,
-  offerDate,
-  onBuildTrust,
-  onLowerBarrier,
+  stage,
+  scheduledDate,
+  laterOfferDate,
 }: Props) {
   return (
-    <section aria-label="Conversion gap recommendation" className="conversion-gap-card">
+    <section aria-label="Conversion gap recommendation" aria-live="polite" className="conversion-gap-card">
       <div className="conversion-gap-heading">
         <span aria-hidden="true" className="conversion-gap-icon"><HeartHandshake size={19} strokeWidth={1.8} /></span>
         <div>
           <p className="conversion-gap-kicker">Conversion gap</p>
-          <h3>Interest is there. Bookings aren't yet.</h3>
+          <h3>{stage === 'trust' ? 'Bookings are low. Build trust first.'
+            : stage === 'offer' ? 'Still low. Lower the barrier.' : 'Bookings are still low.'}</h3>
         </div>
       </div>
       <p className="conversion-gap-copy">
@@ -37,31 +32,28 @@ export function ConversionGapRecommendation({
         <strong>{result.bookings.toLocaleString()} bookings</strong> — bookings are below 20% of both.
       </p>
       <p className="conversion-gap-context">
-        People engaged with {service}, but few booked. Trust or cost may be a barrier.
+        {stage === 'trust'
+          ? `People engaged with ${service}, but few booked. A client testimonial can help build confidence before we try an offer.`
+          : stage === 'offer'
+            ? `Bookings on the ${service} testimonial are still below 20% of views and saves. An offer is the next step.`
+            : `The ${service} offer also has low bookings. No further automatic post will be added.`}
       </p>
-      <div className="conversion-gap-actions">
-        <button
-          className="conversion-gap-action conversion-gap-action-primary"
-          disabled={hasTrustSuggestion}
-          onClick={onBuildTrust}
-          type="button"
-        >
-          {hasTrustSuggestion ? 'Proof post added' : 'Build trust'}
-        </button>
-        <button
-          className="conversion-gap-action conversion-gap-action-secondary"
-          disabled={hasOfferSuggestion}
-          onClick={onLowerBarrier}
-          type="button"
-        >
-          {hasOfferSuggestion ? 'Offer post added' : 'Lower the barrier'}
-        </button>
-      </div>
-      {hasTrustSuggestion && (
-        <p className="conversion-gap-feedback" role="status">Proof / testimonial suggested for {trustDate}.</p>
+      {stage !== 'complete' && (
+        <div className="conversion-gap-step">
+          <span className="conversion-gap-step-label">
+            {stage === 'trust' ? 'Step 1 · Build trust' : 'Step 2 · Lower the barrier'}
+          </span>
+          <p>{scheduledDate
+            ? `Added a suggested ${stage === 'trust' ? 'Proof / client testimonial' : 'Book now / referral offer'} post to the calendar for ${scheduledDate}.`
+            : `A ${stage === 'trust' ? 'client testimonial' : 'referral offer'} is recommended, but no suggestion is currently on the calendar.`}</p>
+        </div>
       )}
-      {hasOfferSuggestion && (
-        <p className="conversion-gap-feedback" role="status">Book now / referral offer suggested for {offerDate}.</p>
+      {stage === 'trust' && (
+        <p className="conversion-gap-feedback">
+          {laterOfferDate
+            ? `Bookings remained low on the testimonial, so a lower-barrier offer was also added for ${laterOfferDate}.`
+            : 'We will only add a lower-barrier offer if the testimonial post’s results still meet the conversion-gap rule.'}
+        </p>
       )}
     </section>
   );

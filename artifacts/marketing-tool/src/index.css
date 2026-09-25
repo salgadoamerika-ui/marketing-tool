@@ -495,14 +495,10 @@
 .conversion-gap-copy { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.6; }
 .conversion-gap-copy strong { color: var(--rose-deep); font-weight: 700; }
 .conversion-gap-context { margin: -4px 0 0; color: var(--plum-soft); font-size: 11px; line-height: 1.55; }
-.conversion-gap-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 3px; }
-.conversion-gap-action { min-height: 37px; border-radius: 999px; cursor: pointer; font-size: 11px; font-weight: 700; padding: 8px 14px; }
-.conversion-gap-action-primary { border: 1px solid var(--rose); background: var(--rose); color: #fffdfb; }
-.conversion-gap-action-primary:hover:not(:disabled) { background: var(--rose-deep); }
-.conversion-gap-action-secondary { border: 1px solid #ddbbca; background: #fffdfb; color: var(--rose-deep); }
-.conversion-gap-action-secondary:hover:not(:disabled) { background: #f9e9ee; }
-.conversion-gap-action:disabled { cursor: default; opacity: .65; }
-.conversion-gap-feedback { margin: 0; color: var(--rose-deep); font-size: 11px; font-weight: 600; }
+.conversion-gap-step { border: 1px solid #e7c7d2; border-radius: 11px; background: #fffdfb; padding: 12px 14px; }
+.conversion-gap-step-label { color: var(--rose-deep); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.conversion-gap-step p { margin: 5px 0 0; color: var(--ink); font-size: 12px; line-height: 1.5; font-weight: 600; }
+.conversion-gap-feedback { margin: 0; color: var(--plum-soft); font-size: 11px; line-height: 1.55; }
 .post-detail-note { margin: 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .delete-post-button { min-height: 40px; border: 1px solid #d7a6b6; border-radius: 999px; background: #fff2f5; color: #963a5b; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 17px; }
 .delete-post-button:hover { border-color: #b95b78; background: #f9e1e8; }
