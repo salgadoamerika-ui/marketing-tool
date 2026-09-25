@@ -16,6 +16,7 @@ export type AirtimeSignal = 'insufficient-data' | 'flat' | 'above-average' | 'co
 
 export type ServiceAirtimeAllocation = {
   service: string;
+  status: 'active' | 'maintenance';
   airtimeScore: number;
   postsPerWeek: number;
   sharePercent: number;
@@ -114,15 +115,16 @@ export function getAirtimeAllocations(
         : consistentlyWeak ? 'consistently-weak'
           : 'flat';
 
-    const tryNewAngle = inSeason && signal !== 'insufficient-data' && signal !== 'above-average';
+    const status = consistentlyWeak ? 'maintenance' : 'active';
+    const tryNewAngle = inSeason && signal === 'flat';
     const rawScore = AIRTIME_RULES.baseScore
       + (inSeason ? AIRTIME_RULES.seasonBoost : 0)
       + (signal === 'above-average' ? AIRTIME_RULES.attentionBoost : 0)
-      // Season wins the volume tie: keep its boost and change the creative angle.
-      - (signal === 'consistently-weak' && !inSeason ? AIRTIME_RULES.underperformancePenalty : 0);
+      - (signal === 'consistently-weak' ? AIRTIME_RULES.underperformancePenalty : 0);
 
     return {
       service: service.name,
+      status,
       airtimeScore: Math.max(rawScore, AIRTIME_RULES.scoreFloor),
       postsPerWeek: weeklyFloor,
       sharePercent: 0,
@@ -137,10 +139,14 @@ export function getAirtimeAllocations(
   });
 
   const remainingWeeklySlots = Math.max(0, weeklyCapacity - weeklyFloor * scored.length);
-  const scoreTotal = scored.reduce((sum, allocation) => sum + allocation.airtimeScore, 0);
+  const activeScoreTotal = scored
+    .filter((allocation) => allocation.status !== 'maintenance')
+    .reduce((sum, allocation) => sum + allocation.airtimeScore, 0);
   const allocations = scored.map((allocation) => {
-    const postsPerWeek = allocation.postsPerWeek
-      + (scoreTotal > 0 ? remainingWeeklySlots * allocation.airtimeScore / scoreTotal : 0);
+    const postsPerWeek = allocation.status === 'maintenance'
+      ? allocation.postsPerWeek
+      : allocation.postsPerWeek
+        + (activeScoreTotal > 0 ? remainingWeeklySlots * allocation.airtimeScore / activeScoreTotal : 0);
     return {
       ...allocation,
       postsPerWeek,
