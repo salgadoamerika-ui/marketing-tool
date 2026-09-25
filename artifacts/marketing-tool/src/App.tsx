@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 're
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -40,6 +41,7 @@ type UserPost = {
   isSuggestion?: boolean;
   budget?: number;
   runLength?: number;
+  performance?: PostPerformance;
 };
 
 type PostForm = {
@@ -954,6 +956,15 @@ function CalendarSurface() {
                     <p>{contentTypeRationales[selectedUserPost.contentType]}</p>
                   </section>
                 )}
+                <PostPerformanceForm
+                  key={selectedUserPost.id}
+                  performance={selectedUserPost.performance}
+                  onSave={(performance) => {
+                    setUserPosts((current) => current.map((post) => (
+                      post.id === selectedUserPost.id ? { ...post, performance } : post
+                    )));
+                  }}
+                />
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
