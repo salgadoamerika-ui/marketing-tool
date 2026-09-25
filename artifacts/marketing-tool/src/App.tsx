@@ -615,15 +615,12 @@ function CalendarSurface() {
     window.setTimeout(() => setStatusMessage(''), 3000);
   };
 
-  const handleToggleSeasonMonth = (service: string, month: number) => {
+  const handleSaveSeasonMonths = (service: string, months: number[]) => {
     const key = serviceSeasonKey(activeBusiness.id, service);
-    setServiceSeasons((current) => {
-      const currentMonths = current[key] ?? serviceSeasonMonths[service] ?? [];
-      const nextMonths = currentMonths.includes(month)
-        ? currentMonths.filter((item) => item !== month)
-        : [...currentMonths, month].sort((left, right) => left - right);
-      return { ...current, [key]: nextMonths };
-    });
+    const validMonths = [...new Set(months.filter((month) =>
+      Number.isInteger(month) && month >= 1 && month <= 12
+    ))].sort((left, right) => left - right);
+    setServiceSeasons((current) => ({ ...current, [key]: validMonths }));
   };
 
   const handleAcceptSeasonality = () => {
@@ -1018,7 +1015,7 @@ function CalendarSurface() {
                 service,
                 serviceSeasons[serviceSeasonKey(activeBusiness.id, service)] ?? [],
               ]))}
-              onToggleSeasonMonth={handleToggleSeasonMonth}
+              onSaveSeasonMonths={handleSaveSeasonMonths}
               monthLabel={new Intl.DateTimeFormat('en-US', {
                 month: 'long',
                 year: 'numeric',
