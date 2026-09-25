@@ -26,23 +26,39 @@ export type InsightProposal = {
   date: string;
 };
 
+export type InsightSequenceBeat = {
+  state: 'suggested' | 'scheduled' | 'blocked';
+  contentType: string;
+  title: string;
+  date: string;
+  existingPostId?: string;
+  proposal?: InsightProposal;
+};
+
 export type ActionInsight = {
   action: InsightAction;
   title: string;
   evidence: string;
   recommendation: string;
-  proposal?: InsightProposal;
+  beats: InsightSequenceBeat[];
+  proposals: InsightProposal[];
 };
 
 const sequenceReasons: Record<string, string> = {
-  'Announcement→Insight': 'An announcement introduces the service. A useful insight gives people context before asking them to book.',
-  'Announcement→Book now': 'The insight step is already planned. A clear booking ask is the next step.',
-  'Insight→Book now': 'After sharing something useful, make it easy for interested people to book.',
-  'Inside look→Proof': 'An inside look shows the process; real proof can back it up before the booking ask.',
+  'Announcement→Inside look': 'An announcement introduces the service. Show people inside the experience next.',
+  'Announcement→Book now': 'The inside look is already planned. Follow it with a clear booking ask.',
+  'Inside look→Testimonial': 'An inside look shows the process; a testimonial adds real proof and trust.',
+  'Inside look→Proof': 'An inside look shows the process; proof backs it up before the booking ask.',
   'Inside look→Book now': 'The proof step is already planned. Now make the next action clear.',
-  'Proof→Book now': 'After showing proof, give interested people a clear way to book.',
-  'Book now→Proof': 'After a booking ask, real proof can help answer remaining hesitation.',
-  'Recap→Insight': 'Follow a recap with something useful to keep the conversation going.',
+  'Book now→Testimonial': 'After the booking ask, a client testimonial can address hesitation.',
+  'Book now→Pricing': 'After building trust, clear pricing helps people decide.',
+  'Enrollment→Testimonial': 'After the enrollment ask, a client testimonial can address hesitation.',
+  'Enrollment→Pricing': 'After building trust, clear pricing helps people decide.',
+  'Pricing→Promo': 'Once pricing is clear, a focused offer gives people a reason to act.',
+  'Testimonial→Book now': 'A testimonial builds trust; follow it with a clear booking ask.',
+  'Proof→Book now': 'Proof builds trust; follow it with a clear booking ask.',
+  'Insight→Book now': 'After sharing something useful, offer a soft way to book.',
+  'Insight→Insight': 'Follow the booking prompt with more useful content to keep the value rhythm.',
 };
 
 function uploadedNumbers(performance?: PostPerformance): string {
@@ -62,6 +78,7 @@ export function buildActionInsight(
   post: InsightPost,
   posts: InsightPost[],
   today = post.date,
+  occupiedDates: string[] = [],
 ): ActionInsight {
   const evidence = `“${post.title}” is a ${post.contentType} post for ${post.project}.${uploadedNumbers(post.performance)}`;
 
@@ -74,6 +91,21 @@ export function buildActionInsight(
     const alreadyRescheduled = posts.some((item) =>
       item.sourcePostId === post.id && item.suggestionKind === 'reschedule'
     );
+    const proposal = !hasResults && !alreadyRescheduled ? {
+      kind: 'reschedule' as const,
+      triggerPostId: post.id,
+      sourcePostId: post.id,
+      contentType: post.contentType,
+      title: `${post.project}: revisit ${post.title}`,
+      date: addDaysToDate(post.date > today ? post.date : today, 2),
+    } : undefined;
+    const beats = proposal ? [{
+      state: 'suggested' as const,
+      contentType: proposal.contentType,
+      title: proposal.title,
+      date: proposal.date,
+      proposal,
+    }] : [];
     return {
       action,
       title: 'Keep this step in the sequence',
@@ -81,48 +113,79 @@ export function buildActionInsight(
       recommendation: hasResults
         ? 'This post also has saved results. Check whether it actually ran before deciding what to schedule next.'
         : `Since this ${post.contentType.toLowerCase()} was skipped, revisit it before moving to the next content step.`,
-      ...(!hasResults && !alreadyRescheduled ? {
-        proposal: {
-          kind: 'reschedule' as const,
-          triggerPostId: post.id,
-          sourcePostId: post.id,
-          contentType: post.contentType,
-          title: `${post.project}: revisit ${post.title}`,
-          date: addDaysToDate(post.date > today ? post.date : today, 2),
-        },
-      } : {}),
+      beats,
+      proposals: proposal ? [proposal] : [],
     };
   }
 
-  // The sequence is a content plan, not a performance-learning rule. It does
-  // not need three measured posts; performance rules enforce their own gate.
-  const anchor = post.date > today ? post.date : today;
-  const plans = getFollowUpPlans({ ...post, date: anchor }, posts.filter((item) => item.status !== 'skipped'));
-  const next = plans.find((plan) => !plan.existingPostId);
-
-  if (!next) {
-    return {
-      action,
-      title: plans.length ? 'The next steps are already planned' : 'No follow-up mapped yet',
-      evidence,
-      recommendation: plans.length
-        ? `Your ${post.project} follow-up${plans.length === 1 ? ' is' : 's are'} already on the calendar. There is no need to add a duplicate.`
-        : `There is no next content step mapped for ${post.contentType}. No calendar post was added.`,
-    };
-  }
-
-  return {
-    action,
-    title: `${next.contentType} is next in the sequence`,
-    evidence,
-    recommendation: `${sequenceReasons[`${post.contentType}→${next.contentType}`] ?? `Follow this ${post.contentType.toLowerCase()} with a ${next.contentType.toLowerCase()} post.`} This is a content-sequence suggestion, not a claim about performance.`,
-    proposal: {
+  const plans = getFollowUpPlans(post, posts, occupiedDates);
+  const beats: InsightSequenceBeat[] = plans.map((plan) => {
+    if (plan.existingPostId) {
+      return {
+        state: 'scheduled',
+        contentType: plan.contentType,
+        title: plan.existingPostTitle ?? `${post.project}: ${plan.label}`,
+        date: plan.date,
+        existingPostId: plan.existingPostId,
+      };
+    }
+    if (plan.blocked) {
+      return {
+        state: 'blocked',
+        contentType: plan.contentType,
+        title: `${post.project}: ${plan.label}`,
+        date: plan.date,
+      };
+    }
+    const proposal: InsightProposal = {
       kind: 'automatic',
       triggerPostId: post.id,
       sourcePostId: post.id,
-      contentType: next.contentType,
-      title: `${post.project}: ${next.label}`,
-      date: next.date,
-    },
+      contentType: plan.contentType,
+      title: `${post.project}: ${plan.label}`,
+      date: plan.date,
+    };
+    return {
+      state: 'suggested',
+      contentType: plan.contentType,
+      title: proposal.title,
+      date: proposal.date,
+      proposal,
+    };
+  });
+  const proposals = beats.flatMap((beat) => beat.proposal ? [beat.proposal] : []);
+  const firstBeat = beats[0];
+  const scheduledBeat = beats.find((beat) => beat.state === 'scheduled');
+  const nextSuggestion = beats.find((beat) => beat.state === 'suggested');
+  const reasonKey = nextSuggestion
+    ? `${post.contentType}→${nextSuggestion.contentType}`
+    : firstBeat ? `${post.contentType}→${firstBeat.contentType}` : '';
+
+  return {
+    action,
+    title: firstBeat?.state === 'scheduled'
+      ? 'Your next beat is already set'
+      : firstBeat?.state === 'blocked'
+        ? 'Your sequence needs an open date'
+      : scheduledBeat && proposals.length > 0 ? 'Next moves in your sequence'
+        : proposals.length > 1 ? 'Next moves in your sequence' : proposals.length === 1
+          ? `${proposals[0].contentType} is next in the sequence`
+          : 'Your sequence is on the calendar',
+    evidence,
+    recommendation: [
+      scheduledBeat
+        ? `Your next beat is already set: “${scheduledBeat.title}” is on the calendar, so it will not be added again.`
+        : '',
+      nextSuggestion
+        ? sequenceReasons[reasonKey] ?? `Follow this ${post.contentType.toLowerCase()} with a ${nextSuggestion.contentType.toLowerCase()} post.`
+        : '',
+      beats.some((beat) => beat.state === 'blocked')
+        ? 'A suggested move has no open date within the next week, so it was not added.'
+        : '',
+      proposals.length ? 'These are content-sequence suggestions, not claims about performance.' : '',
+      !beats.length ? 'No follow-up beat is mapped for this content type.' : '',
+    ].filter(Boolean).join(' '),
+    beats,
+    proposals,
   };
 }

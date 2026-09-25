@@ -14,7 +14,7 @@ type SequenceStep = {
   label: string;
 };
 
-export type FollowUpPlan = SequenceStep & {
+export type FollowUpPlan = Omit<SequenceStep, 'offset'> & {
   date: string;
   existingPostId?: string;
   existingPostTitle?: string;
@@ -63,7 +63,7 @@ export function addDaysToDate(dateStr: string, days: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function isSameSequenceType(actual: string, expected: string): boolean {
+export function isSameSequenceType(actual: string, expected: string): boolean {
   if (testimonialTypes.has(actual) && testimonialTypes.has(expected)) return true;
   if (bookingTypes.has(actual) && bookingTypes.has(expected)) return true;
   return actual === expected;
@@ -86,7 +86,8 @@ export function getFollowUpPlans(
   ]);
 
   return steps.map((step) => {
-    const duplicateSearchEnd = addDaysToDate(post.date, Math.max(7, step.offset + 7));
+    const { offset, ...plannedStep } = step;
+    const duplicateSearchEnd = addDaysToDate(post.date, Math.max(7, offset));
     const existingPost = servicePosts
       .filter((candidate) =>
         candidate.id !== post.id
@@ -99,22 +100,22 @@ export function getFollowUpPlans(
 
     if (existingPost) {
       return {
-        ...step,
+        ...plannedStep,
         date: existingPost.date,
         existingPostId: existingPost.id,
         existingPostTitle: existingPost.title,
       };
     }
 
-    const intendedDate = addDaysToDate(post.date, step.offset);
+    const intendedDate = addDaysToDate(post.date, offset);
     for (let nudge = 0; nudge <= 7; nudge += 1) {
       const candidateDate = addDaysToDate(intendedDate, nudge);
       if (!reservedDates.has(candidateDate)) {
         reservedDates.add(candidateDate);
-        return { ...step, date: candidateDate };
+        return { ...plannedStep, date: candidateDate };
       }
     }
 
-    return { ...step, date: intendedDate, blocked: true };
+    return { ...plannedStep, date: intendedDate, blocked: true };
   });
 }

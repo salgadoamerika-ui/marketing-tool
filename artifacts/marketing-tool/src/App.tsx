@@ -8,9 +8,9 @@ import { OverperformerRecommendation } from '@/components/overperformer-recommen
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
+import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
 import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
-import { addDaysToDate } from '@/lib/follow-ups';
+import { addDaysToDate, isSameSequenceType } from '@/lib/follow-ups';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
 import {
@@ -32,6 +32,7 @@ type CalendarEvent = {
   id?: string;
   isSuggestion?: boolean;
   hasConversionGap?: boolean;
+  isSequenceHighlight?: boolean;
   status?: 'completed' | 'skipped';
 };
 
@@ -80,14 +81,22 @@ type Business = {
 const userPostsStorageKey = 'marketing-tool.user-posts';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
-const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
+const contentTypes = [
+  'Announcement', 'Inside look', 'Insight', 'Book now', 'Testimonial', 'Proof',
+  'Pricing', 'Promo', 'Enrollment', 'Recap', 'Fresh angle',
+];
 const contentTypeRationales: Record<string, string> = {
   Announcement: 'Opens the campaign. You lead with awareness before asking for anything.',
   'Inside look': "You've announced — now show them inside to turn interest into desire.",
   'Book now': "The audience is warm. Now's when the ask converts.",
+  Enrollment: 'A direct enrollment invitation for people ready to take the next step.',
+  Testimonial: 'A real client story builds trust with people who are interested but unsure.',
   Proof: 'Proof beats claims — real results move people who are interested but unsure.',
+  Pricing: 'Clear pricing helps interested people make a confident decision.',
+  Promo: 'A focused promotion gives people a reason to act now.',
   Insight: 'Value-first content builds trust before you ask for the booking.',
   Recap: 'Keeps the service visible and reinforces what you offer.',
+  'Fresh angle': 'A fresh creative angle keeps the content sequence moving.',
 };
 const businessData: Business[] = [
   {
@@ -202,6 +211,33 @@ const businessData: Business[] = [
     },
   },
 ];
+
+function getBuiltInInsightPosts(business: Business): InsightPost[] {
+  return Object.entries(business.events).flatMap(([month, events]) =>
+    events.map((event, index) => ({
+      id: `calendar-${business.id}-${month}-${index}`,
+      businessId: business.id,
+      project: business.palette.find((item) => item.tone === event.tone)?.label ?? '',
+      title: event.title,
+      contentType: event.detail ?? 'Announcement',
+      date: `${month}-${String(event.day).padStart(2, '0')}`,
+    }))
+  );
+}
+
+function buildCalendarActionInsight(
+  action: InsightAction,
+  post: UserPost,
+  posts: UserPost[],
+  business: Business,
+  today: string,
+): ActionInsight {
+  const calendarContext = [...posts, ...getBuiltInInsightPosts(business)];
+  const occupiedDates = calendarContext
+    .filter((item) => item.businessId === business.id && item.status !== 'skipped')
+    .map((item) => item.date);
+  return buildActionInsight(action, post, calendarContext, today, occupiedDates);
+}
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
@@ -379,11 +415,21 @@ function CalendarSurface() {
     detail: getPostDetail(post),
     tone: getPostTone(post.project, activeBusiness),
     isSuggestion: post.isSuggestion,
+    isSequenceHighlight: actionInsight?.beats.some((beat) =>
+      beat.state === 'scheduled' && beat.existingPostId === post.id
+    ),
     hasConversionGap: getConversionGap(post, userPosts) !== null,
     status: post.status,
   });
   const calendarEvents = [
-    ...events,
+    ...events.map((event) => ({
+      ...event,
+      isSequenceHighlight: actionInsight?.beats.some((beat) =>
+        beat.state === 'scheduled'
+        && beat.title === event.title
+        && beat.date === `${monthKey(visibleMonth)}-${String(event.day).padStart(2, '0')}`
+      ),
+    })),
     ...monthPosts.map(postAsEvent),
   ];
   const todayKey = '2026-09-10';
@@ -502,8 +548,11 @@ function CalendarSurface() {
     };
     const nextPosts = [...userPosts, savedPost];
     setUserPosts(nextPosts);
-    setActionInsight(buildActionInsight('logged', savedPost, nextPosts, formatDateInput(new Date())));
-    setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
+    const insight = buildCalendarActionInsight(
+      'logged', savedPost, nextPosts, activeBusiness, formatDateInput(new Date()),
+    );
+    setActionInsight(insight);
+    setVisibleMonth(new Date(`${(insight.beats[0]?.date ?? savedPost.date)}T12:00:00`));
     closePostForm();
     showActionMessage(`Added “${savedPost.title}” to the calendar.`);
   };
@@ -521,7 +570,12 @@ function CalendarSurface() {
     const updatedPost = { ...selectedUserPost, status };
     const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
     setUserPosts(nextPosts);
-    setActionInsight(buildActionInsight(status, updatedPost, nextPosts, formatDateInput(new Date())));
+    const postBusiness = businessData.find((business) => business.id === updatedPost.businessId) ?? activeBusiness;
+    const insight = buildCalendarActionInsight(
+      status, updatedPost, nextPosts, postBusiness, formatDateInput(new Date()),
+    );
+    setActionInsight(insight);
+    if (insight.beats[0]) setVisibleMonth(new Date(`${insight.beats[0].date}T12:00:00`));
     setSelectedPostId(null);
   };
 
@@ -530,26 +584,29 @@ function CalendarSurface() {
     const updatedPost = { ...selectedUserPost, performance };
     const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
     setUserPosts(nextPosts);
-    setActionInsight(buildActionInsight('results', updatedPost, nextPosts, formatDateInput(new Date())));
+    const postBusiness = businessData.find((business) => business.id === updatedPost.businessId) ?? activeBusiness;
+    const insight = buildCalendarActionInsight(
+      'results', updatedPost, nextPosts, postBusiness, formatDateInput(new Date()),
+    );
+    setActionInsight(insight);
+    if (insight.beats[0]) setVisibleMonth(new Date(`${insight.beats[0].date}T12:00:00`));
     setSelectedPostId(null);
   };
 
   const handleAddInsightSuggestion = () => {
-    const proposal = actionInsight?.proposal;
-    if (!proposal) return;
-    const trigger = userPosts.find((post) => post.id === proposal.triggerPostId);
-    if (!trigger) {
+    const proposals = actionInsight?.proposals ?? [];
+    if (proposals.length === 0) return;
+    const missingTrigger = proposals.some((proposal) =>
+      !userPosts.some((post) => post.id === proposal.triggerPostId)
+    );
+    if (missingTrigger) {
       setActionInsight(null);
       showActionMessage('That source post is no longer available. The suggestion was not added.');
       return;
     }
-    setUserPosts((current) => {
-      if (current.some((post) =>
-        post.sourcePostId === proposal.sourcePostId
-          && post.suggestionKind === proposal.kind
-          && (proposal.kind !== 'automatic' || post.contentType === proposal.contentType)
-      )) return current;
-      return [...current, {
+    const proposedPosts: UserPost[] = proposals.flatMap((proposal) => {
+      const trigger = userPosts.find((post) => post.id === proposal.triggerPostId);
+      return trigger ? [{
         id: createPostId(),
         businessId: trigger.businessId,
         project: trigger.project,
@@ -557,14 +614,33 @@ function CalendarSurface() {
         title: proposal.title,
         date: proposal.date,
         platforms: trigger.platforms,
-        distribution: 'organic',
+        distribution: 'organic' as const,
         isSuggestion: true,
         sourcePostId: proposal.sourcePostId,
         suggestionKind: proposal.kind,
-      }];
+      }] : [];
+    });
+    setUserPosts((current) => {
+      const additions = proposedPosts.filter((candidate) => {
+        const source = current.find((post) => post.id === candidate.sourcePostId);
+        if (!source) return false;
+        const duplicateEnd = addDaysToDate(candidate.date, 7);
+        return !current.some((post) =>
+          post.businessId === candidate.businessId
+          && post.project === candidate.project
+          && post.status !== 'skipped'
+          && isSameSequenceType(post.contentType, candidate.contentType)
+          && post.date > source.date
+          && post.date <= duplicateEnd
+        );
+      });
+      return additions.length ? [...current, ...additions] : current;
     });
     setActionInsight(null);
-    showActionMessage(`Added suggested “${proposal.title}” to the calendar.`);
+    setVisibleMonth(new Date(`${proposals[0].date}T12:00:00`));
+    showActionMessage(proposals.length === 1
+      ? `Added suggested “${proposals[0].title}” to the calendar.`
+      : 'Added the missing suggested moves to the calendar.');
   };
 
   const handleBoostPost = (budget: number, runLength: number) => {
@@ -699,7 +775,7 @@ function CalendarSurface() {
                         return event.id ? (
                           <button
                             aria-label={`Open saved post: ${event.title}`}
-                            className={`event-chip event-chip-button event-${event.tone}${event.isSuggestion ? ' event-chip-suggestion' : ''}`}
+                            className={`event-chip event-chip-button event-${event.tone}${event.isSuggestion ? ' event-chip-suggestion' : ''}${event.isSequenceHighlight ? ' event-chip-sequence-highlight' : ''}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
                             title="Select to view or delete this saved post"
@@ -709,7 +785,7 @@ function CalendarSurface() {
                           </button>
                         ) : (
                           <div
-                            className={`event-chip event-${event.tone}`}
+                            className={`event-chip event-${event.tone}${event.isSequenceHighlight ? ' event-chip-sequence-highlight' : ''}`}
                             key={`${event.day}-${event.title}`}
                             title={event.detail}
                           >
