@@ -65,6 +65,14 @@ const userPostsStorageKey = 'marketing-tool.user-posts';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
+const contentTypeRationales: Record<string, string> = {
+  Announcement: 'Opens the campaign. You lead with awareness before asking for anything.',
+  'Inside look': "You've announced — now show them inside to turn interest into desire.",
+  'Book now': "The audience is warm. Now's when the ask converts.",
+  Proof: 'Proof beats claims — real results move people who are interested but unsure.',
+  Insight: 'Value-first content builds trust before you ask for the booking.',
+  Recap: 'Keeps the service visible and reinforces what you offer.',
+};
 // Phase 3 — the brain: what move naturally comes next after each content type
 const followUpMap: Record<string, Array<{ offset: number; contentType: string; label: string }>> = {
   'Announcement': [
@@ -936,6 +944,12 @@ function CalendarSurface() {
                     </strong>
                   </div>
                 </div>
+                {contentTypeRationales[selectedUserPost.contentType] && (
+                  <section aria-labelledby="post-rationale-title" className="post-rationale">
+                    <h3 id="post-rationale-title">Why this move</h3>
+                    <p>{contentTypeRationales[selectedUserPost.contentType]}</p>
+                  </section>
+                )}
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>

@@ -425,6 +425,9 @@
 .post-detail-list > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .post-detail-list span { color: var(--muted-foreground); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .post-detail-list strong { color: var(--ink); font-size: 12px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.post-rationale { border: 1px solid #eadcc9; border-radius: 12px; background: #fbf6ee; padding: 13px 15px; }
+.post-rationale h3 { margin: 0 0 5px; color: #8d6745; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.post-rationale p { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.55; }
 .post-detail-note { margin: 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .delete-post-button { min-height: 40px; border: 1px solid #d7a6b6; border-radius: 999px; background: #fff2f5; color: #963a5b; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 17px; }
 .delete-post-button:hover { border-color: #b95b78; background: #f9e1e8; }
