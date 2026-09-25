@@ -321,7 +321,7 @@
   text-align: left;
 }
 .event-chip-button:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
-.event-chip-suggestion { border: 1px dotted currentColor; }
+.event-chip-suggestion { box-sizing: border-box; border: 1px dotted currentColor; }
 .event-chip small { display: block; margin-top: 3px; color: currentColor; font-size: 9px; font-weight: 500; opacity: .72; }
 .event-rose { background: #f7e5ec; color: #9e3f61; }
 .event-lavender { background: #efe7f0; color: #6e5580; }
