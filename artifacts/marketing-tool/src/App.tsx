@@ -334,11 +334,14 @@ function formatPostDate(date: string) {
   }).format(new Date(`${date}T12:00:00`));
 }
 
-function conversionGapStatusText(assessment: ConversionGapAssessment): string {
+function conversionGapStatusText(assessment: ConversionGapAssessment, service: string): string {
   if (assessment.status === 'needs-results') {
-    return 'Add views, saves, and bookings for this post to check for a conversion gap. No other posts are needed.';
+    return `Add views, saves, and bookings for this post. ${assessment.postCount} ${service} posts in this business have complete results; at least 3 are needed.`;
   }
-  return 'No conversion gap for this post. It appears when views and saves are both above zero and bookings are below 20% of each.';
+  if (assessment.status === 'needs-history') {
+    return `${assessment.postCount} of 3 ${service} posts in this business have complete results. Add results to ${3 - assessment.postCount} more to check for a conversion gap.`;
+  }
+  return 'No conversion gap for this post. Once at least 3 posts have complete results, it appears when views and saves are both above zero and bookings are below 20% of each.';
 }
 
 function CalendarSurface() {
@@ -361,7 +364,7 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
-  const selectedConversionAssessment = selectedUserPost ? assessConversionGap(selectedUserPost) : null;
+  const selectedConversionAssessment = selectedUserPost ? assessConversionGap(selectedUserPost, userPosts) : null;
   const selectedOverperformer = selectedUserPost ? getOverperformer(selectedUserPost, userPosts) : null;
   const selectedConversionGap = selectedConversionAssessment?.status === 'detected'
     ? selectedConversionAssessment.result
@@ -382,7 +385,7 @@ function CalendarSurface() {
     detail: getPostDetail(post),
     tone: getPostTone(post.project, activeBusiness),
     isSuggestion: post.isSuggestion,
-    hasConversionGap: getConversionGap(post) !== null,
+    hasConversionGap: getConversionGap(post, userPosts) !== null,
   });
   const calendarEvents = [
     ...events,
@@ -1024,7 +1027,7 @@ function CalendarSurface() {
                 {selectedConversionAssessment && selectedConversionAssessment.status !== 'detected' && (
                   <section aria-label="Conversion gap status" className="conversion-gap-hint">
                     <strong>Conversion gap</strong>
-                    <p>{conversionGapStatusText(selectedConversionAssessment)}</p>
+                    <p>{conversionGapStatusText(selectedConversionAssessment, selectedUserPost.project)}</p>
                   </section>
                 )}
                 {selectedConversionGap && (

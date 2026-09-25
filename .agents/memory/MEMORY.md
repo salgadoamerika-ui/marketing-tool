@@ -1,1 +1,2 @@
 - [GitHub branch sync](github-branch-sync.md) — re-read the remote ref after a failed update; Replit may sync local commits while an API push is in progress.
+- [Learning-rule data gate](learning-rule-data-gate.md) — keep a three-post performance prerequisite for every learning rule, even when its trigger threshold changes.
