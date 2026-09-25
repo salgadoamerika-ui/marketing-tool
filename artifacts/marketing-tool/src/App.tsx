@@ -2,9 +2,11 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 're
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { OverperformerRecommendation } from '@/components/overperformer-recommendation';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -39,6 +41,7 @@ type UserPost = {
   platforms: Platform[];
   distribution: Distribution;
   isSuggestion?: boolean;
+  sourcePostId?: string;
   budget?: number;
   runLength?: number;
   performance?: PostPerformance;
@@ -359,6 +362,10 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const selectedOverperformer = selectedUserPost ? getOverperformer(selectedUserPost, userPosts) : null;
+  const hasSuggestedFollowUp = selectedUserPost
+    ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id)
+    : false;
   const calendarEvents = [
     ...events,
     ...monthPosts.map((post) => ({
@@ -517,6 +524,32 @@ function CalendarSurface() {
     setUserPosts((current) => current.filter((post) => post.id !== selectedUserPost.id));
     setSelectedPostId(null);
     showActionMessage(`Deleted “${selectedUserPost.title}” from the calendar.`);
+  };
+
+  const handleBoostPost = (budget: number, runLength: number) => {
+    if (!selectedUserPost) return;
+    setUserPosts((current) => current.map((post) => (
+      post.id === selectedUserPost.id ? { ...post, distribution: 'paid', budget, runLength } : post
+    )));
+  };
+
+  const handleMakeMoreLikeIt = () => {
+    if (!selectedUserPost) return;
+    setUserPosts((current) => {
+      if (current.some((post) => post.sourcePostId === selectedUserPost.id)) return current;
+      return [...current, {
+        id: createPostId(),
+        businessId: selectedUserPost.businessId,
+        project: selectedUserPost.project,
+        contentType: selectedUserPost.contentType,
+        title: `More like: ${selectedUserPost.title}`,
+        date: addDaysToDate(selectedUserPost.date, 3),
+        platforms: selectedUserPost.platforms,
+        distribution: 'organic',
+        isSuggestion: true,
+        sourcePostId: selectedUserPost.id,
+      }];
+    });
   };
 
   return (
@@ -965,6 +998,20 @@ function CalendarSurface() {
                     )));
                   }}
                 />
+                {selectedOverperformer && (
+                  <OverperformerRecommendation
+                    key={selectedUserPost.id}
+                    service={selectedUserPost.project}
+                    result={selectedOverperformer}
+                    boost={selectedUserPost.distribution === 'paid'
+                      ? { budget: selectedUserPost.budget, runLength: selectedUserPost.runLength }
+                      : undefined}
+                    hasFollowUp={hasSuggestedFollowUp}
+                    followUpDate={formatPostDate(addDaysToDate(selectedUserPost.date, 3))}
+                    onBoost={handleBoostPost}
+                    onSuggest={handleMakeMoreLikeIt}
+                  />
+                )}
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
