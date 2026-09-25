@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { findSeasonalityFinding } from '../src/lib/seasonality.ts';
+import {
+  findSeasonalityFinding,
+  isNextSeasonPerformanceDate,
+  nextSeasonOccurrenceYear,
+} from '../src/lib/seasonality.ts';
 
 const post = (businessId, project, date, views, extra = {}) => ({
   businessId,
@@ -77,4 +81,13 @@ test('ignores skipped posts, other businesses, other services, and invalid dates
   ];
 
   assert.equal(findSeasonalityFinding('mosaic', 'Tax planning', posts, [])?.month, 1);
+});
+
+test('a declined season prompt can return only when new results arrive in that month next season', () => {
+  assert.equal(nextSeasonOccurrenceYear(1, new Date(2026, 8, 25)), 2027);
+  assert.equal(nextSeasonOccurrenceYear(12, new Date(2026, 8, 25)), 2026);
+  assert.equal(nextSeasonOccurrenceYear(1, new Date(2026, 0, 10)), 2027);
+  assert.equal(isNextSeasonPerformanceDate(1, '2026-01-12', 2027), false);
+  assert.equal(isNextSeasonPerformanceDate(1, '2027-01-12', 2027), true);
+  assert.equal(isNextSeasonPerformanceDate(1, '2027-02-12', 2027), false);
 });

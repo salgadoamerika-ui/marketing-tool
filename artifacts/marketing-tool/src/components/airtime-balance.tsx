@@ -4,7 +4,14 @@ type Props = {
   monthLabel: string;
   allocations: ServiceAirtimeAllocation[];
   getTone: (service: string) => string;
+  seasonMonthsByService: Record<string, number[]>;
+  onToggleSeasonMonth: (service: string, month: number) => void;
 };
+
+const months = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 function signalLabel(signal: ServiceAirtimeAllocation['signal']): string {
   if (signal === 'above-average') return 'Above average';
@@ -24,7 +31,13 @@ function signalDetail(allocation: ServiceAirtimeAllocation): string {
   return 'More measured posts are needed before performance changes airtime';
 }
 
-export function AirtimeBalance({ monthLabel, allocations, getTone }: Props) {
+export function AirtimeBalance({
+  monthLabel,
+  allocations,
+  getTone,
+  seasonMonthsByService,
+  onToggleSeasonMonth,
+}: Props) {
   return (
     <section aria-labelledby="airtime-balance-title" className="insight-card tint airtime-card">
       <p className="insight-eyebrow">{monthLabel} allocation</p>
@@ -82,6 +95,41 @@ export function AirtimeBalance({ monthLabel, allocations, getTone }: Props) {
           3 measured posts. Consistently weak services enter maintenance and hold one post per
           month; active services share the remaining weekly slots by score.
         </p>
+      </details>
+      <details className="airtime-method airtime-season-settings">
+        <summary>Set service seasons</summary>
+        <p>
+          Choose each service’s expected peak months. I’ll also suggest a month when results show
+          a repeated spike of at least 50% across two years.
+        </p>
+        <div className="airtime-season-setup">
+          {allocations.map((allocation) => {
+            const selectedMonths = seasonMonthsByService[allocation.service] ?? [];
+            return (
+              <fieldset className="airtime-season-service" key={allocation.service}>
+                <legend>{allocation.service}</legend>
+                <div className="airtime-month-grid">
+                  {months.map((month, index) => {
+                    const monthNumber = index + 1;
+                    const selected = selectedMonths.includes(monthNumber);
+                    return (
+                      <button
+                        aria-label={`${selected ? 'Remove' : 'Add'} ${month} ${selected ? 'from' : 'to'} ${allocation.service} season`}
+                        aria-pressed={selected}
+                        className="airtime-month-toggle"
+                        key={month}
+                        onClick={() => onToggleSeasonMonth(allocation.service, monthNumber)}
+                        type="button"
+                      >
+                        {month.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            );
+          })}
+        </div>
       </details>
     </section>
   );

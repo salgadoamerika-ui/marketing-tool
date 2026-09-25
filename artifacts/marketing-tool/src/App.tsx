@@ -13,7 +13,12 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
 import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
 import { getAirtimeAllocations } from '@/lib/airtime-allocation';
-import { findSeasonalityFinding, type SeasonalityFinding } from '@/lib/seasonality';
+import {
+  findSeasonalityFinding,
+  isNextSeasonPerformanceDate,
+  nextSeasonOccurrenceYear,
+  type SeasonalityFinding,
+} from '@/lib/seasonality';
 import { addDaysToDate, isSameSequenceType } from '@/lib/follow-ups';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
@@ -552,6 +557,54 @@ function CalendarSurface() {
     window.localStorage.setItem(seasonalityDismissalsStorageKey, JSON.stringify(seasonalityDismissals));
   }, [seasonalityDismissals]);
 
+  useEffect(() => {
+    if (seasonalityPrompt) {
+      const promptMonths = serviceSeasons[
+        serviceSeasonKey(seasonalityPrompt.businessId, seasonalityPrompt.service)
+      ] ?? [];
+      if (promptMonths.includes(seasonalityPrompt.month)) setSeasonalityPrompt(null);
+      return;
+    }
+
+    for (const service of activeBusiness.projects) {
+      const seasonsKey = serviceSeasonKey(activeBusiness.id, service);
+      const finding = findSeasonalityFinding(
+        activeBusiness.id,
+        service,
+        userPosts,
+        serviceSeasons[seasonsKey] ?? [],
+      );
+      if (!finding) continue;
+
+      const dismissal = seasonalityDismissals[
+        seasonalityDismissalKey(activeBusiness.id, service, finding.month)
+      ];
+      const hasResultsFromNextSeason = dismissal && userPosts.some((post) =>
+        post.businessId === activeBusiness.id
+        && post.project === service
+        && post.status !== 'skipped'
+        && typeof post.performance?.views === 'number'
+        && Number.isSafeInteger(post.performance.views)
+        && post.performance.views >= 0
+        && isNextSeasonPerformanceDate(finding.month, post.date, dismissal.retryAfterYear)
+      );
+      if (!dismissal || hasResultsFromNextSeason) {
+        setSeasonalityPrompt({
+          ...finding,
+          businessId: activeBusiness.id,
+          service,
+        });
+        return;
+      }
+    }
+  }, [
+    activeBusiness,
+    seasonalityDismissals,
+    seasonalityPrompt,
+    serviceSeasons,
+    userPosts,
+  ]);
+
   const shiftMonth = (amount: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
     setStatusMessage('');
@@ -597,9 +650,7 @@ function CalendarSurface() {
   const handleAskNextSeason = () => {
     if (!seasonalityPrompt) return;
     const { businessId, service, month } = seasonalityPrompt;
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const retryAfterYear = currentMonth < month ? now.getFullYear() : now.getFullYear() + 1;
+    const retryAfterYear = nextSeasonOccurrenceYear(month, new Date());
     setSeasonalityDismissals((current) => ({
       ...current,
       [seasonalityDismissalKey(businessId, service, month)]: { retryAfterYear },
@@ -742,35 +793,6 @@ function CalendarSurface() {
     const updatedPost = { ...selectedUserPost, performance };
     const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
     setUserPosts(nextPosts);
-    const key = serviceSeasonKey(updatedPost.businessId, updatedPost.project);
-    const finding = findSeasonalityFinding(
-      updatedPost.businessId,
-      updatedPost.project,
-      nextPosts,
-      serviceSeasons[key] ?? serviceSeasonMonths[updatedPost.project] ?? [],
-    );
-    if (finding) {
-      const dismissalKey = seasonalityDismissalKey(
-        updatedPost.businessId,
-        updatedPost.project,
-        finding.month,
-      );
-      const dismissal = seasonalityDismissals[dismissalKey];
-      const postYear = Number(updatedPost.date.slice(0, 4));
-      const postMonth = Number(updatedPost.date.slice(5, 7));
-      const isNextSeason = Boolean(
-        dismissal
-        && postMonth === finding.month
-        && postYear >= dismissal.retryAfterYear,
-      );
-      if (!dismissal || isNextSeason) {
-        setSeasonalityPrompt((current) => current ?? {
-          ...finding,
-          businessId: updatedPost.businessId,
-          service: updatedPost.project,
-        });
-      }
-    }
     const postBusiness = businessData.find((business) => business.id === updatedPost.businessId) ?? activeBusiness;
     const insight = buildCalendarActionInsight(
       'results', updatedPost, nextPosts, postBusiness, formatDateInput(new Date()),
@@ -867,6 +889,7 @@ function CalendarSurface() {
               key={business.id}
               onClick={() => {
                 setActiveBusinessId(business.id);
+                setSeasonalityPrompt(null);
                 setStatusMessage('');
                 closeSelectedPost();
                 closePostForm();

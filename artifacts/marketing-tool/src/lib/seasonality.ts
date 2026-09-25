@@ -58,6 +58,27 @@ function isConsistentSpike(monthAverage: number, comparisonAverage: number): boo
       && monthAverage > comparisonAverage;
 }
 
+export function nextSeasonOccurrenceYear(month: number, fromDate: Date): number {
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    throw new RangeError('Season month must be an integer from 1 to 12.');
+  }
+  const currentMonth = fromDate.getMonth() + 1;
+  return month > currentMonth ? fromDate.getFullYear() : fromDate.getFullYear() + 1;
+}
+
+export function isNextSeasonPerformanceDate(
+  month: number,
+  postDate: string,
+  retryAfterYear: number,
+): boolean {
+  const dateParts = validDateParts(postDate);
+  return Boolean(
+    dateParts
+    && dateParts.month === month
+    && dateParts.year >= retryAfterYear,
+  );
+}
+
 export function findSeasonalityFinding(
   businessId: string,
   service: string,
