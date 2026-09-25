@@ -2,91 +2,87 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildActionInsight } from '../src/lib/action-insight.ts';
 
-const post = (id, performance, extra = {}) => ({
+const post = (id, contentType = 'Announcement', extra = {}) => ({
   id,
   businessId: 'mosaic',
   project: 'Insurance',
   title: `Post ${id}`,
-  contentType: 'Insight',
-  date: '2026-09-22',
-  ...(performance ? { performance } : {}),
+  contentType,
+  date: '2026-09-28',
   ...extra,
 });
-const measured = (views, saves, bookings) => ({ views, saves, bookings });
-const peers = [post('a', measured(100, 10, 4)), post('b', measured(100, 10, 4))];
 
-test('thin data cites the actual sample and offers no invented performance suggestion', () => {
-  const next = post('new');
-  const logged = buildActionInsight('logged', next, [peers[0], next]);
-  assert.match(logged.evidence, /1 Insurance post has complete results/);
-  assert.match(logged.recommendation, /at least 3 posts/);
-  assert.equal(logged.proposal, undefined);
-
-  const low = post('low', measured(100, 10, 0));
-  const results = buildActionInsight('results', low, [peers[0], low]);
-  assert.match(results.evidence, /100 views, 10 saves, and 0 bookings/);
-  assert.equal(results.proposal, undefined);
-});
-
-test('a logged post with three measured peers can offer one experimental follow-up', () => {
-  const next = post('new');
-  const insight = buildActionInsight('logged', next, [
-    ...peers,
-    post('best', measured(250, 15, 3)),
-    post('other', measured(900, 90, 12), { project: 'Divorce' }),
-    next,
-  ], '2026-09-25');
-  assert.match(insight.evidence, /3 Insurance posts/);
-  assert.match(insight.evidence, /Post best.*250 views/);
-  assert.doesNotMatch(insight.evidence, /900/);
-  assert.match(insight.recommendation, /experiment—not a guaranteed pattern/);
-  assert.equal(insight.proposal?.kind, 'insight');
-  assert.equal(insight.proposal?.date, '2026-09-28');
-});
-
-test('conversion gap recommends a testimonial but never claims it was already added', () => {
-  const low = post('low', measured(100, 10, 0));
-  const insight = buildActionInsight('results', low, [...peers, low], '2026-09-25');
-  assert.match(insight.evidence, /below 20% of both views and saves/);
-  assert.match(insight.recommendation, /client testimonial/);
-  assert.doesNotMatch(insight.recommendation, /was added/);
+test('a newly logged announcement recommends the next Insight without any results or peers', () => {
+  const announcement = post('first');
+  const insight = buildActionInsight('logged', announcement, [announcement], '2026-09-28');
+  assert.equal(insight.title, 'Insight is next in the sequence');
+  assert.match(insight.evidence, /Post first.*Announcement.*Insurance/);
+  assert.match(insight.recommendation, /useful insight.*before asking them to book/);
+  assert.match(insight.recommendation, /not a claim about performance/);
   assert.deepEqual(insight.proposal, {
-    kind: 'trust',
-    triggerPostId: low.id,
-    sourcePostId: low.id,
-    contentType: 'Proof',
-    title: 'Insurance: a client testimonial',
-    date: '2026-09-27',
+    kind: 'automatic',
+    triggerPostId: 'first',
+    sourcePostId: 'first',
+    contentType: 'Insight',
+    title: 'Insurance: share a useful insight',
+    date: '2026-09-30',
   });
 });
 
-test('only after the testimonial also has a low-booking result does it offer the second stage', () => {
-  const source = post('original', measured(100, 10, 0));
-  const trust = post('trust', undefined, { suggestionKind: 'trust', sourcePostId: source.id });
-  assert.equal(buildActionInsight('completed', trust, [source, ...peers, trust]).proposal, undefined);
-
-  const measuredTrust = { ...trust, performance: measured(100, 10, 0) };
-  const insight = buildActionInsight('results', measuredTrust, [source, ...peers, measuredTrust]);
-  assert.equal(insight.proposal?.kind, 'offer');
-  assert.match(insight.recommendation, /testimonials? drew engagement|testimonial drew engagement/);
-  const offer = post('offer', undefined, { suggestionKind: 'offer', sourcePostId: source.id });
-  assert.equal(buildActionInsight('results', measuredTrust, [source, ...peers, measuredTrust, offer]).proposal, undefined);
+test('an Insight recommends a booking post without the three-post performance gate', () => {
+  const source = post('useful', 'Insight');
+  const suggestion = buildActionInsight('completed', source, [source], '2026-09-28');
+  assert.equal(suggestion.proposal?.contentType, 'Book now');
+  assert.equal(suggestion.proposal?.title, 'Insurance: turn value into a booking');
+  assert.equal(suggestion.proposal?.date, '2026-10-02');
 });
 
-test('skipping a post can offer a reschedule without counting it as poor performance', () => {
-  const skipped = post('skip', undefined, { status: 'skipped' });
-  const insight = buildActionInsight('skipped', skipped, [skipped], '2026-09-25');
-  assert.match(insight.evidence, /0 Insurance posts have complete results/);
-  assert.match(insight.recommendation, /missed date tells us nothing/);
+test('saving results cites real numbers but does not replace the content sequence with a performance rule', () => {
+  const source = post('low', 'Announcement', { performance: { views: 100, saves: 10, bookings: 0 } });
+  const insight = buildActionInsight('results', source, [source], '2026-09-29');
+  assert.match(insight.evidence, /100 views, 10 saves, 0 bookings/);
+  assert.equal(insight.proposal?.contentType, 'Insight');
+  assert.notEqual(insight.proposal?.contentType, 'Proof');
+  assert.equal(insight.proposal?.date, '2026-10-01');
+});
+
+test('when the first step is already scheduled, offer the next unplanned step, not a duplicate', () => {
+  const announcement = post('first');
+  const existingInsight = post('already-planned', 'Insight', { date: '2026-09-30' });
+  const suggestion = buildActionInsight('logged', announcement, [announcement, existingInsight]);
+  assert.equal(suggestion.proposal?.contentType, 'Book now');
+  assert.equal(suggestion.proposal?.date, '2026-10-03');
+  const existingBooking = post('already-booking', 'Book now', { date: '2026-10-03' });
+  const noDuplicate = buildActionInsight('results', announcement, [announcement, existingInsight, existingBooking]);
+  assert.equal(noDuplicate.proposal, undefined);
+  assert.match(noDuplicate.recommendation, /already on the calendar/);
+});
+
+test('follow-ups for another service or business do not consume this sequence', () => {
+  const announcement = post('first');
+  const otherService = post('divorce', 'Insight', { project: 'Divorce', date: '2026-09-30' });
+  const otherBusiness = post('harbor', 'Insight', { businessId: 'harbor', date: '2026-09-30' });
+  const insight = buildActionInsight('logged', announcement, [announcement, otherService, otherBusiness]);
+  assert.equal(insight.proposal?.contentType, 'Insight');
+});
+
+test('skipped posts offer to revisit the same step instead of falsely advancing the sequence', () => {
+  const skipped = post('skip', 'Announcement', { status: 'skipped' });
+  const insight = buildActionInsight('skipped', skipped, [skipped], '2026-09-30');
+  assert.match(insight.recommendation, /revisit it before moving/);
+  assert.equal(insight.proposal?.contentType, 'Announcement');
   assert.equal(insight.proposal?.kind, 'reschedule');
-  assert.equal(insight.proposal?.date, '2026-09-27');
-  const existing = post('reschedule', undefined, { sourcePostId: skipped.id, suggestionKind: 'reschedule' });
+  assert.equal(insight.proposal?.date, '2026-10-02');
+  const existing = post('reschedule', 'Announcement', { sourcePostId: skipped.id, suggestionKind: 'reschedule' });
   assert.equal(buildActionInsight('skipped', skipped, [skipped, existing]).proposal, undefined);
 });
 
-test('completing without results suggests measurement, not another calendar post', () => {
-  const completed = post('done', undefined, { status: 'completed' });
-  const insight = buildActionInsight('completed', completed, [completed]);
-  assert.match(insight.evidence, /does not yet have views, saves, and bookings/);
+test('a skipped post with saved results asks for status review, not another post', () => {
+  const skipped = post('skip', 'Insight', {
+    status: 'skipped',
+    performance: { views: 100, saves: 10, bookings: 0 },
+  });
+  const insight = buildActionInsight('skipped', skipped, [skipped]);
+  assert.match(insight.evidence, /100 views, 10 saves, 0 bookings/);
   assert.equal(insight.proposal, undefined);
 });

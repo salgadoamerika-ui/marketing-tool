@@ -15,7 +15,7 @@ export type FollowUpPlan = {
 
 const followUpMap: Record<string, Array<{ offset: number; contentType: string; label: string }>> = {
   Announcement: [
-    { offset: 2, contentType: 'Inside look', label: 'show them inside' },
+    { offset: 2, contentType: 'Insight', label: 'share a useful insight' },
     { offset: 5, contentType: 'Book now', label: 'make the ask' },
   ],
   'Inside look': [

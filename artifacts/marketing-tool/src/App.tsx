@@ -545,7 +545,9 @@ function CalendarSurface() {
     }
     setUserPosts((current) => {
       if (current.some((post) =>
-        post.sourcePostId === proposal.sourcePostId && post.suggestionKind === proposal.kind
+        post.sourcePostId === proposal.sourcePostId
+          && post.suggestionKind === proposal.kind
+          && (proposal.kind !== 'automatic' || post.contentType === proposal.contentType)
       )) return current;
       return [...current, {
         id: createPostId(),
