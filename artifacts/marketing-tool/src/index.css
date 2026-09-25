@@ -321,6 +321,7 @@
   text-align: left;
 }
 .event-chip-button:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+.event-chip-suggestion { border: 1px dotted currentColor; }
 .event-chip small { display: block; margin-top: 3px; color: currentColor; font-size: 9px; font-weight: 500; opacity: .72; }
 .event-rose { background: #f7e5ec; color: #9e3f61; }
 .event-lavender { background: #efe7f0; color: #6e5580; }
@@ -329,6 +330,13 @@
 .event-blue { background: #e9eaf2; color: #565e7c; }
 .event-blush { background: #f9e6ee; color: #a6486e; }
 .event-muted { background: #f2e9ef; color: #6e5a6a; }
+.event-chip-suggestion.event-rose { background: #fbf2f6; color: #b57b91; }
+.event-chip-suggestion.event-lavender { background: #f6f1f7; color: #897794; }
+.event-chip-suggestion.event-sage { background: #f1f6f2; color: #718b76; }
+.event-chip-suggestion.event-sand { background: #faf5ed; color: #a18b65; }
+.event-chip-suggestion.event-blue { background: #f3f4f8; color: #777e98; }
+.event-chip-suggestion.event-blush { background: #fdf2f6; color: #b77b96; }
+.event-chip-suggestion.event-muted { background: #f8f2f6; color: #867583; }
 .event-more { color: var(--muted-foreground); font-size: 10px; padding: 2px 3px; }
 
 .sidebar { display: flex; flex-direction: column; gap: 15px; }

@@ -22,6 +22,7 @@ type CalendarEvent = {
   detail?: string;
   tone: EventTone;
   id?: string;
+  isSuggestion?: boolean;
 };
 
 type Distribution = 'organic' | 'paid';
@@ -364,6 +365,7 @@ function CalendarSurface() {
       title: post.title,
       detail: getPostDetail(post),
       tone: getPostTone(post.project, activeBusiness),
+      isSuggestion: post.isSuggestion,
     })),
   ];
   const todayKey = '2026-09-10';
@@ -618,7 +620,7 @@ function CalendarSurface() {
                         return event.id ? (
                           <button
                             aria-label={`Open saved post: ${event.title}`}
-                            className={`event-chip event-chip-button event-${event.tone}`}
+                            className={`event-chip event-chip-button event-${event.tone}${event.isSuggestion ? ' event-chip-suggestion' : ''}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
                             title="Select to view or delete this saved post"
