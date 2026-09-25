@@ -8,6 +8,7 @@ import { PostPerformanceForm, type PostPerformance } from '@/components/post-per
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getConversionGap } from '@/lib/conversion-gap';
+import { addDaysToDate, getFollowUpPlans, type FollowUpPlan } from '@/lib/follow-ups';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
 import {
@@ -44,7 +45,7 @@ type UserPost = {
   distribution: Distribution;
   isSuggestion?: boolean;
   sourcePostId?: string;
-  suggestionKind?: 'overperformer' | 'trust' | 'offer';
+  suggestionKind?: 'automatic' | 'overperformer' | 'trust' | 'offer';
   budget?: number;
   runLength?: number;
   performance?: PostPerformance;
@@ -83,35 +84,6 @@ const contentTypeRationales: Record<string, string> = {
   Insight: 'Value-first content builds trust before you ask for the booking.',
   Recap: 'Keeps the service visible and reinforces what you offer.',
 };
-// Phase 3 — the brain: what move naturally comes next after each content type
-const followUpMap: Record<string, Array<{ offset: number; contentType: string; label: string }>> = {
-  'Announcement': [
-    { offset: 2, contentType: 'Inside look', label: 'show them inside' },
-    { offset: 5, contentType: 'Book now', label: 'make the ask' },
-  ],
-  'Inside look': [
-    { offset: 2, contentType: 'Proof', label: 'back it with proof' },
-    { offset: 4, contentType: 'Book now', label: 'convert the interest' },
-  ],
-  'Book now': [
-    { offset: 3, contentType: 'Proof', label: 'reinforce trust' },
-  ],
-  'Proof': [
-    { offset: 3, contentType: 'Book now', label: 'ask while trust is high' },
-  ],
-  'Insight': [
-    { offset: 4, contentType: 'Book now', label: 'turn value into a booking' },
-  ],
-  'Recap': [
-    { offset: 5, contentType: 'Insight', label: 'keep the rhythm going' },
-  ],
-};
-
-function addDaysToDate(dateStr: string, days: number): string {
-  const d = new Date(`${dateStr}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 const businessData: Business[] = [
   {
     id: 'mosaic',
@@ -337,6 +309,22 @@ function getPostDetail(post: UserPost) {
   return `${post.contentType} · ${channelText} · ${distributionText}`;
 }
 
+function makeAutomaticSuggestion(source: UserPost, plan: FollowUpPlan): UserPost {
+  return {
+    id: createPostId(),
+    businessId: source.businessId,
+    project: source.project,
+    contentType: plan.contentType,
+    title: `${source.project}: ${plan.label}`,
+    date: plan.date,
+    platforms: source.platforms,
+    distribution: 'organic',
+    isSuggestion: true,
+    sourcePostId: source.id,
+    suggestionKind: 'automatic',
+  };
+}
+
 function formatPostDate(date: string) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'long',
@@ -365,6 +353,9 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const selectedFollowUps = selectedUserPost && !selectedUserPost.isSuggestion
+    ? getFollowUpPlans(selectedUserPost, userPosts)
+    : [];
   const selectedOverperformer = selectedUserPost ? getOverperformer(selectedUserPost, userPosts) : null;
   const selectedConversionGap = selectedUserPost ? getConversionGap(selectedUserPost, userPosts) : null;
   const hasSuggestedFollowUp = selectedUserPost
@@ -501,31 +492,25 @@ function CalendarSurface() {
       distribution: postForm.distribution,
       ...(postForm.distribution === 'paid' ? { budget, runLength } : {}),
     };
-    // create suggested follow-up posts based on what was just logged
-    const followUps = followUpMap[savedPost.contentType] ?? [];
-    const suggestions: UserPost[] = followUps
-      .map((f) => ({
-        id: createPostId(),
-        businessId: activeBusiness.id,
-        project: savedPost.project,
-        contentType: f.contentType,
-        title: `${savedPost.project}: ${f.label}`,
-        date: addDaysToDate(savedPost.date, f.offset),
-        platforms: savedPost.platforms,
-        distribution: 'organic' as Distribution,
-        isSuggestion: true,
-      }))
-      // anti-duplicate: skip if a post of that type already exists within a few days
-      .filter((sugg) => !userPosts.some(
-        (p) => p.businessId === activeBusiness.id
-          && p.contentType === sugg.contentType
-          && Math.abs(new Date(p.date).getTime() - new Date(sugg.date).getTime()) < 4 * 86400000,
-      ));
+    const suggestions = getFollowUpPlans(savedPost, userPosts)
+      .filter((plan) => !plan.existingPostId)
+      .map((plan) => makeAutomaticSuggestion(savedPost, plan));
 
     setUserPosts((current) => [...current, savedPost, ...suggestions]);
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
+    setSelectedPostId(savedPost.id);
     showActionMessage(`Added “${savedPost.title}” to the calendar.`);
+  };
+
+  const handleAddAutomaticSuggestion = (contentType: string, date: string) => {
+    if (!selectedUserPost) return;
+    setUserPosts((current) => {
+      const plan = getFollowUpPlans(selectedUserPost, current)
+        .find((item) => item.contentType === contentType && item.date === date);
+      if (!plan || plan.existingPostId) return current;
+      return [...current, makeAutomaticSuggestion(selectedUserPost, plan)];
+    });
   };
 
   const handleDeletePost = () => {
@@ -1020,6 +1005,38 @@ function CalendarSurface() {
                   <section aria-labelledby="post-rationale-title" className="post-rationale">
                     <h3 id="post-rationale-title">Why this move</h3>
                     <p>{contentTypeRationales[selectedUserPost.contentType]}</p>
+                  </section>
+                )}
+                {selectedFollowUps.length > 0 && (
+                  <section aria-label="Suggested follow-up posts" className="follow-up-card">
+                    <h3>Suggested next</h3>
+                    <p>Based on this post, these are the next moves for {selectedUserPost.project}.</p>
+                    <ul>
+                      {selectedFollowUps.map((plan) => {
+                        const existingPost = userPosts.find((post) => post.id === plan.existingPostId);
+                        return (
+                          <li key={`${plan.contentType}-${plan.date}`}>
+                            <div>
+                              <strong>{plan.contentType}: {plan.label}</strong>
+                              <span>{existingPost
+                                ? `Already on the calendar · ${formatPostDate(existingPost.date)}`
+                                : `Suggested for ${formatPostDate(plan.date)}`}</span>
+                            </div>
+                            {existingPost ? (
+                              <button type="button" onClick={() => {
+                                setVisibleMonth(new Date(`${existingPost.date}T12:00:00`));
+                                setSelectedPostId(existingPost.id);
+                              }}>View post</button>
+                            ) : (
+                              <button type="button" onClick={() => handleAddAutomaticSuggestion(plan.contentType, plan.date)}>
+                                Add to calendar
+                              </button>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <small>Future dates may appear in a different calendar month.</small>
                   </section>
                 )}
                 <PostPerformanceForm
