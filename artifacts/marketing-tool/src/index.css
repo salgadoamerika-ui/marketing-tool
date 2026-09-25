@@ -350,25 +350,40 @@
 .insight-eyebrow { margin: 0 0 9px; color: var(--rose-deep); font-size: 9px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
 .insight-card h2 { margin: 0 0 10px; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 21px; font-style: italic; font-weight: 500; line-height: 1.1; }
 .insight-card p { margin: 0; color: var(--muted-foreground); font-size: 11.5px; line-height: 1.55; }
-.focus-list { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
-.focus-row { display: flex; align-items: center; gap: 9px; color: var(--plum-soft); font-size: 11.5px; }
 .focus-dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
 .focus-dot.rose { background: #d88ca7; }
 .focus-dot.sage { background: #8fb89c; }
 .focus-dot.sand { background: #d2b98c; }
 .focus-dot.lavender { background: #bba4c0; }
 .focus-dot.blue { background: #9ca3c3; }
-.heartbeat {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 15px;
-  padding-top: 14px;
-  border-top: 1px solid var(--rose-soft);
-}
-.heartbeat-mark { width: 25px; height: 25px; border-radius: 8px; background: var(--surface); color: var(--rose); display: inline-flex; align-items: center; justify-content: center; flex: none; animation: soft-pulse 2.5s ease-in-out infinite; }
-.heartbeat strong { display: block; color: var(--ink); font-size: 11.5px; font-weight: 700; }
-.heartbeat span { display: block; margin-top: 2px; color: var(--muted-foreground); font-size: 10.5px; line-height: 1.4; }
+.airtime-intro { margin-top: -3px !important; }
+.airtime-list { display: grid; gap: 11px; margin-top: 15px; }
+.airtime-service { min-width: 0; }
+.airtime-service-heading { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.airtime-service-heading strong { overflow: hidden; color: var(--ink); font-size: 10.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.airtime-weekly { color: var(--ink); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.airtime-weekly small { margin-left: 3px; color: var(--muted-foreground); font-size: 9px; font-weight: 500; }
+.airtime-track { height: 4px; margin: 5px 0 5px 16px; overflow: hidden; border-radius: 99px; background: rgba(95, 66, 78, .11); }
+.airtime-fill { display: block; height: 100%; border-radius: inherit; }
+.airtime-fill.event-rose { background: #d88ca7; }
+.airtime-fill.event-lavender { background: #bba4c0; }
+.airtime-fill.event-sage { background: #8fb89c; }
+.airtime-fill.event-sand { background: #d2b98c; }
+.airtime-fill.event-blue { background: #9ca3c3; }
+.airtime-fill.event-blush { background: #d98cab; }
+.airtime-fill.event-muted { background: #b5a4b2; }
+.airtime-service-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 16px; }
+.airtime-score, .airtime-season, .airtime-new-angle, .airtime-signal { border-radius: 999px; padding: 2px 5px; font-size: 8px; line-height: 1.25; }
+.airtime-score { color: var(--plum-soft); background: rgba(255, 255, 255, .58); }
+.airtime-season { color: #7c5522; background: #f4e6ce; font-weight: 650; }
+.airtime-new-angle { color: #89506b; background: #f3dfe8; font-weight: 700; }
+.airtime-signal { color: var(--plum-soft); background: rgba(255, 255, 255, .58); }
+.airtime-signal-above-average { color: #426a50; background: #e1eee3; }
+.airtime-signal-consistently-weak { color: #91615b; background: #f3e5e1; }
+.airtime-evidence { display: block; margin: 4px 0 0 16px; color: var(--muted-foreground); font-size: 8.5px; line-height: 1.35; }
+.airtime-method { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--rose-soft); }
+.airtime-method summary { color: var(--rose-deep); cursor: pointer; font-size: 9px; font-weight: 700; }
+.airtime-method p { margin-top: 7px; font-size: 9px; line-height: 1.45; }
 .legend-title { margin: 0 0 12px; color: var(--ink); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 7px; }
 .legend-item { display: flex; align-items: center; gap: 7px; color: var(--plum-soft); font-size: 10.5px; }

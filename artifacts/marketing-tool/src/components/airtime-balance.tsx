@@ -60,11 +60,9 @@ export function AirtimeBalance({ monthLabel, allocations, weeklyCapacity, getTon
               <span className="airtime-score">Score {allocation.airtimeScore.toFixed(2)}</span>
               {allocation.inSeason && <span className="airtime-season">In season</span>}
               {allocation.tryNewAngle && <span className="airtime-new-angle">Try a new angle</span>}
-              {!allocation.inSeason && (
-                <span className={`airtime-signal airtime-signal-${allocation.signal}`}>
-                  {signalLabel(allocation.signal)}
-                </span>
-              )}
+              <span className={`airtime-signal airtime-signal-${allocation.signal}`}>
+                {signalLabel(allocation.signal)}
+              </span>
             </div>
             <small className="airtime-evidence">{signalDetail(allocation)}</small>
           </article>
