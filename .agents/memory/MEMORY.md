@@ -1,0 +1,1 @@
+- [GitHub branch sync](github-branch-sync.md) — re-read the remote ref after a failed update; Replit may sync local commits while an API push is in progress.
