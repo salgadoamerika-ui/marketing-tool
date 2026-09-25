@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { getConversionGap } from '../src/lib/conversion-gap.ts';
+import { assessConversionGap, getConversionGap } from '../src/lib/conversion-gap.ts';
 
 const post = (views, saves, bookings, project = 'Insurance', businessId = 'mosaic') => ({
   project,
@@ -43,4 +43,17 @@ test('does not flag weak views, weak saves, or empty engagement', () => {
   assert.equal(getConversionGap(weakSaves, [weakSaves, post(100, 10, 3), post(100, 10, 3)]), null);
   const empty = post(0, 0, 0);
   assert.equal(getConversionGap(empty, [empty, empty, empty]), null);
+});
+
+test('explains why the conversion gap card is not shown', () => {
+  const target = post(300, 30, 0);
+  assert.deepEqual(assessConversionGap(target, [target, post(100, 10, 3)]), {
+    status: 'needs-history', postCount: 2,
+  });
+  assert.deepEqual(assessConversionGap({ ...target, performance: { views: 300 } }, [target]), {
+    status: 'needs-results', postCount: 1,
+  });
+  assert.deepEqual(assessConversionGap(post(100, 10, 3), [
+    post(100, 10, 3), post(100, 10, 3), post(100, 10, 3),
+  ]), { status: 'not-detected', postCount: 3 });
 });

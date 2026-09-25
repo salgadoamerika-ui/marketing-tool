@@ -323,6 +323,7 @@
 .event-chip-button:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
 .event-chip-suggestion { box-sizing: border-box; border: 1px dotted currentColor; }
 .event-chip small { display: block; margin-top: 3px; color: currentColor; font-size: 9px; font-weight: 500; opacity: .72; }
+.event-insight-tag { display: inline-block; margin-top: 5px; border: 1px solid currentColor; border-radius: 999px; padding: 2px 5px; font-size: 9px; font-weight: 700; }
 .event-rose { background: #f7e5ec; color: #9e3f61; }
 .event-lavender { background: #efe7f0; color: #6e5580; }
 .event-sage { background: #e6efe8; color: #4f7058; }
@@ -445,6 +446,9 @@
 .post-performance-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
 .post-performance-actions .save-post-button { min-height: 36px; padding: 7px 14px; }
 .post-performance-saved { margin: 0; color: #4f7058; font-size: 11px; font-weight: 600; }
+.conversion-gap-hint { border: 1px solid #e8d7dd; border-radius: 12px; background: #fdf6f8; padding: 12px 15px; }
+.conversion-gap-hint strong { color: var(--rose-deep); font-size: 11px; }
+.conversion-gap-hint p { margin: 5px 0 0; color: var(--plum-soft); font-size: 11px; line-height: 1.5; }
 .overperformer-card {
   display: flex;
   flex-direction: column;

@@ -7,7 +7,7 @@ import { OverperformerRecommendation } from '@/components/overperformer-recommen
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { getConversionGap } from '@/lib/conversion-gap';
+import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
 import { addDaysToDate, getFollowUpPlans, type FollowUpPlan } from '@/lib/follow-ups';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
@@ -29,6 +29,7 @@ type CalendarEvent = {
   tone: EventTone;
   id?: string;
   isSuggestion?: boolean;
+  hasConversionGap?: boolean;
 };
 
 type Distribution = 'organic' | 'paid';
@@ -333,6 +334,16 @@ function formatPostDate(date: string) {
   }).format(new Date(`${date}T12:00:00`));
 }
 
+function conversionGapStatusText(assessment: ConversionGapAssessment, service: string): string {
+  if (assessment.status === 'needs-results') {
+    return `Add views, saves, and bookings for this post to check for a conversion gap. ${assessment.postCount} ${service} posts in this business have complete results so far; at least 3 are needed.`;
+  }
+  if (assessment.status === 'needs-history') {
+    return `${assessment.postCount} of 3 ${service} posts in this business have complete results. Add results to ${3 - assessment.postCount} more to check for a conversion gap.`;
+  }
+  return 'No conversion gap for this post. It appears when views and saves meet or exceed the service averages, but bookings are zero or at most half the average.';
+}
+
 function CalendarSurface() {
   const [activeBusinessId, setActiveBusinessId] = useState('mosaic');
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
@@ -353,8 +364,11 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const selectedConversionAssessment = selectedUserPost ? assessConversionGap(selectedUserPost, userPosts) : null;
   const selectedOverperformer = selectedUserPost ? getOverperformer(selectedUserPost, userPosts) : null;
-  const selectedConversionGap = selectedUserPost ? getConversionGap(selectedUserPost, userPosts) : null;
+  const selectedConversionGap = selectedConversionAssessment?.status === 'detected'
+    ? selectedConversionAssessment.result
+    : null;
   const hasSuggestedFollowUp = selectedUserPost
     ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && (!post.suggestionKind || post.suggestionKind === 'overperformer'))
     : false;
@@ -371,6 +385,7 @@ function CalendarSurface() {
     detail: getPostDetail(post),
     tone: getPostTone(post.project, activeBusiness),
     isSuggestion: post.isSuggestion,
+    hasConversionGap: getConversionGap(post, userPosts) !== null,
   });
   const calendarEvents = [
     ...events,
@@ -659,6 +674,7 @@ function CalendarSurface() {
                           <>
                             {event.title}
                             {event.detail && <small>{event.detail}</small>}
+                            {event.hasConversionGap && <span className="event-insight-tag">Conversion gap</span>}
                           </>
                         );
 
@@ -1008,6 +1024,24 @@ function CalendarSurface() {
                     )));
                   }}
                 />
+                {selectedConversionAssessment && selectedConversionAssessment.status !== 'detected' && (
+                  <section aria-label="Conversion gap status" className="conversion-gap-hint">
+                    <strong>Conversion gap</strong>
+                    <p>{conversionGapStatusText(selectedConversionAssessment, selectedUserPost.project)}</p>
+                  </section>
+                )}
+                {selectedConversionGap && (
+                  <ConversionGapRecommendation
+                    service={selectedUserPost.project}
+                    result={selectedConversionGap}
+                    hasTrustSuggestion={hasTrustSuggestion}
+                    hasOfferSuggestion={hasOfferSuggestion}
+                    trustDate={formatPostDate(addDaysToDate(selectedUserPost.date, 2))}
+                    offerDate={formatPostDate(addDaysToDate(selectedUserPost.date, 4))}
+                    onBuildTrust={() => handleConversionSuggestion('trust')}
+                    onLowerBarrier={() => handleConversionSuggestion('offer')}
+                  />
+                )}
                 {selectedOverperformer && (
                   <OverperformerRecommendation
                     key={`overperformer-${selectedUserPost.id}`}
@@ -1020,18 +1054,6 @@ function CalendarSurface() {
                     followUpDate={formatPostDate(addDaysToDate(selectedUserPost.date, 3))}
                     onBoost={handleBoostPost}
                     onSuggest={handleMakeMoreLikeIt}
-                  />
-                )}
-                {selectedConversionGap && (
-                  <ConversionGapRecommendation
-                    service={selectedUserPost.project}
-                    result={selectedConversionGap}
-                    hasTrustSuggestion={hasTrustSuggestion}
-                    hasOfferSuggestion={hasOfferSuggestion}
-                    trustDate={formatPostDate(addDaysToDate(selectedUserPost.date, 2))}
-                    offerDate={formatPostDate(addDaysToDate(selectedUserPost.date, 4))}
-                    onBuildTrust={() => handleConversionSuggestion('trust')}
-                    onLowerBarrier={() => handleConversionSuggestion('offer')}
                   />
                 )}
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
