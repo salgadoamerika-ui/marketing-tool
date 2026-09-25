@@ -10,8 +10,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
 import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
-import { getConversionSuggestionPlans } from '@/lib/conversion-gap-followups';
-import { addDaysToDate, getFollowUpPlans, type FollowUpPlan } from '@/lib/follow-ups';
+import { addDaysToDate } from '@/lib/follow-ups';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
 import {
@@ -50,7 +49,7 @@ type UserPost = {
   distribution: Distribution;
   isSuggestion?: boolean;
   sourcePostId?: string;
-  suggestionKind?: 'automatic' | 'overperformer' | 'trust' | 'offer';
+  suggestionKind?: 'automatic' | 'overperformer' | 'trust' | 'offer' | 'insight' | 'reschedule';
   budget?: number;
   runLength?: number;
   performance?: PostPerformance;
@@ -79,7 +78,6 @@ type Business = {
 };
 
 const userPostsStorageKey = 'marketing-tool.user-posts';
-const conversionSuggestionsMigratedKey = 'marketing-tool.conversion-suggestions-v1';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
@@ -317,46 +315,6 @@ function getPostDetail(post: UserPost) {
   return `${post.isSuggestion ? 'Suggested · ' : ''}${post.contentType} · ${channelText} · ${distributionText}`;
 }
 
-function makeAutomaticSuggestion(source: UserPost, plan: FollowUpPlan): UserPost {
-  return {
-    id: createPostId(),
-    businessId: source.businessId,
-    project: source.project,
-    contentType: plan.contentType,
-    title: `${source.project}: ${plan.label}`,
-    date: plan.date,
-    platforms: source.platforms,
-    distribution: 'organic',
-    isSuggestion: true,
-    sourcePostId: source.id,
-    suggestionKind: 'automatic',
-  };
-}
-
-function appendConversionSuggestions(posts: UserPost[]): UserPost[] {
-  const plans = getConversionSuggestionPlans(posts);
-  if (plans.length === 0) return posts;
-
-  const suggestions: UserPost[] = plans.flatMap((plan) => {
-    const trigger = posts.find((post) => post.id === plan.triggerPostId);
-    if (!trigger) return [];
-    return [{
-      id: createPostId(),
-      businessId: trigger.businessId,
-      project: trigger.project,
-      contentType: plan.kind === 'trust' ? 'Proof' : 'Book now',
-      title: plan.title,
-      date: plan.date,
-      platforms: trigger.platforms,
-      distribution: 'organic' as Distribution,
-      isSuggestion: true,
-      sourcePostId: plan.sourcePostId,
-      suggestionKind: plan.kind,
-    }];
-  });
-  return [...posts, ...suggestions];
-}
-
 function formatPostDate(date: string) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'long',
@@ -433,14 +391,6 @@ function CalendarSurface() {
   useEffect(() => {
     window.localStorage.setItem(userPostsStorageKey, JSON.stringify(userPosts));
   }, [userPosts]);
-
-  useEffect(() => {
-    if (window.localStorage.getItem(conversionSuggestionsMigratedKey) === '1') return;
-    // Add the first step for existing measured posts once, without recreating
-    // a suggestion that the user later removes.
-    setUserPosts((current) => appendConversionSuggestions(current));
-    window.localStorage.setItem(conversionSuggestionsMigratedKey, '1');
-  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(platformOptionsStorageKey, JSON.stringify(availablePlatforms));
@@ -550,21 +500,12 @@ function CalendarSurface() {
       distribution: postForm.distribution,
       ...(postForm.distribution === 'paid' ? { budget, runLength } : {}),
     };
-    const followUpPlans = getFollowUpPlans(savedPost, userPosts);
-    const suggestions = followUpPlans
-      .filter((plan) => !plan.existingPostId)
-      .map((plan) => makeAutomaticSuggestion(savedPost, plan));
-
-    const nextPosts = [...userPosts, savedPost, ...suggestions];
+    const nextPosts = [...userPosts, savedPost];
     setUserPosts(nextPosts);
-    setActionInsight(buildActionInsight('logged', savedPost, nextPosts));
+    setActionInsight(buildActionInsight('logged', savedPost, nextPosts, formatDateInput(new Date())));
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
-    showActionMessage(suggestions.length
-      ? `Added “${savedPost.title}” and ${suggestions.length} suggested follow-up${suggestions.length === 1 ? '' : 's'} to the calendar.`
-      : followUpPlans.length
-        ? `Added “${savedPost.title}”. Its follow-ups are already on the calendar.`
-        : `Added “${savedPost.title}” to the calendar.`);
+    showActionMessage(`Added “${savedPost.title}” to the calendar.`);
   };
 
   const handleDeletePost = () => {
@@ -580,19 +521,48 @@ function CalendarSurface() {
     const updatedPost = { ...selectedUserPost, status };
     const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
     setUserPosts(nextPosts);
-    setActionInsight(buildActionInsight(status, updatedPost, nextPosts));
+    setActionInsight(buildActionInsight(status, updatedPost, nextPosts, formatDateInput(new Date())));
     setSelectedPostId(null);
   };
 
   const handleSaveResults = (performance: PostPerformance) => {
     if (!selectedUserPost) return;
     const updatedPost = { ...selectedUserPost, performance };
-    const nextPosts = appendConversionSuggestions(
-      userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post),
-    );
+    const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
     setUserPosts(nextPosts);
-    setActionInsight(buildActionInsight('results', updatedPost, nextPosts));
+    setActionInsight(buildActionInsight('results', updatedPost, nextPosts, formatDateInput(new Date())));
     setSelectedPostId(null);
+  };
+
+  const handleAddInsightSuggestion = () => {
+    const proposal = actionInsight?.proposal;
+    if (!proposal) return;
+    const trigger = userPosts.find((post) => post.id === proposal.triggerPostId);
+    if (!trigger) {
+      setActionInsight(null);
+      showActionMessage('That source post is no longer available. The suggestion was not added.');
+      return;
+    }
+    setUserPosts((current) => {
+      if (current.some((post) =>
+        post.sourcePostId === proposal.sourcePostId && post.suggestionKind === proposal.kind
+      )) return current;
+      return [...current, {
+        id: createPostId(),
+        businessId: trigger.businessId,
+        project: trigger.project,
+        contentType: proposal.contentType,
+        title: proposal.title,
+        date: proposal.date,
+        platforms: trigger.platforms,
+        distribution: 'organic',
+        isSuggestion: true,
+        sourcePostId: proposal.sourcePostId,
+        suggestionKind: proposal.kind,
+      }];
+    });
+    setActionInsight(null);
+    showActionMessage(`Added suggested “${proposal.title}” to the calendar.`);
   };
 
   const handleBoostPost = (budget: number, runLength: number) => {
@@ -1138,7 +1108,11 @@ function CalendarSurface() {
           </div>
         )}
         {actionInsight && (
-          <ActionInsightPopup insight={actionInsight} onClose={() => setActionInsight(null)} />
+          <ActionInsightPopup
+            insight={actionInsight}
+            onAdd={handleAddInsightSuggestion}
+            onSkip={() => setActionInsight(null)}
+          />
         )}
       </div>
     </main>

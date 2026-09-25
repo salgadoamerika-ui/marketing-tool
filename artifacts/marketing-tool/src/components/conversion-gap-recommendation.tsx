@@ -51,8 +51,8 @@ export function ConversionGapRecommendation({
       {stage === 'trust' && (
         <p className="conversion-gap-feedback">
           {laterOfferDate
-            ? `Bookings remained low on the testimonial, so a lower-barrier offer was also added for ${laterOfferDate}.`
-            : 'We will only add a lower-barrier offer if the testimonial post’s results still meet the conversion-gap rule.'}
+            ? `A lower-barrier offer is also on the calendar for ${laterOfferDate}.`
+            : 'If testimonial results still meet the conversion-gap rule, you can choose whether to add a lower-barrier offer.'}
         </p>
       )}
     </section>
