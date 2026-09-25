@@ -475,6 +475,30 @@
 .overperformer-boost-form .form-field { min-width: 0; }
 .overperformer-boost-form .form-field input { box-sizing: border-box; }
 .overperformer-boost-form .save-post-button { align-self: flex-start; }
+.conversion-gap-card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  border: 1px solid #e8d7dd;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fcf0f3, #fffaf5);
+  padding: 18px;
+}
+.conversion-gap-heading { display: flex; align-items: center; gap: 11px; }
+.conversion-gap-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: none; border-radius: 11px; background: #f4dfe8; color: var(--rose-deep); }
+.conversion-gap-kicker { margin: 0 0 3px; color: var(--rose-deep); font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.conversion-gap-heading h3 { margin: 0; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 500; }
+.conversion-gap-copy { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.6; }
+.conversion-gap-copy strong { color: var(--rose-deep); font-weight: 700; }
+.conversion-gap-context { margin: -4px 0 0; color: var(--plum-soft); font-size: 11px; line-height: 1.55; }
+.conversion-gap-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 3px; }
+.conversion-gap-action { min-height: 37px; border-radius: 999px; cursor: pointer; font-size: 11px; font-weight: 700; padding: 8px 14px; }
+.conversion-gap-action-primary { border: 1px solid var(--rose); background: var(--rose); color: #fffdfb; }
+.conversion-gap-action-primary:hover:not(:disabled) { background: var(--rose-deep); }
+.conversion-gap-action-secondary { border: 1px solid #ddbbca; background: #fffdfb; color: var(--rose-deep); }
+.conversion-gap-action-secondary:hover:not(:disabled) { background: #f9e9ee; }
+.conversion-gap-action:disabled { cursor: default; opacity: .65; }
+.conversion-gap-feedback { margin: 0; color: var(--rose-deep); font-size: 11px; font-weight: 600; }
 .post-detail-note { margin: 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .delete-post-button { min-height: 40px; border: 1px solid #d7a6b6; border-radius: 999px; background: #fff2f5; color: #963a5b; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 17px; }
 .delete-post-button:hover { border-color: #b95b78; background: #f9e1e8; }

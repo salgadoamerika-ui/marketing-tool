@@ -2,10 +2,12 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 're
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { ConversionGapRecommendation } from '@/components/conversion-gap-recommendation';
 import { OverperformerRecommendation } from '@/components/overperformer-recommendation';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { getConversionGap } from '@/lib/conversion-gap';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
 import {
@@ -42,6 +44,7 @@ type UserPost = {
   distribution: Distribution;
   isSuggestion?: boolean;
   sourcePostId?: string;
+  suggestionKind?: 'overperformer' | 'trust' | 'offer';
   budget?: number;
   runLength?: number;
   performance?: PostPerformance;
@@ -363,8 +366,15 @@ function CalendarSurface() {
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
   const selectedOverperformer = selectedUserPost ? getOverperformer(selectedUserPost, userPosts) : null;
+  const selectedConversionGap = selectedUserPost ? getConversionGap(selectedUserPost, userPosts) : null;
   const hasSuggestedFollowUp = selectedUserPost
-    ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id)
+    ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && (!post.suggestionKind || post.suggestionKind === 'overperformer'))
+    : false;
+  const hasTrustSuggestion = selectedUserPost
+    ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && post.suggestionKind === 'trust')
+    : false;
+  const hasOfferSuggestion = selectedUserPost
+    ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && post.suggestionKind === 'offer')
     : false;
   const calendarEvents = [
     ...events,
@@ -536,7 +546,7 @@ function CalendarSurface() {
   const handleMakeMoreLikeIt = () => {
     if (!selectedUserPost) return;
     setUserPosts((current) => {
-      if (current.some((post) => post.sourcePostId === selectedUserPost.id)) return current;
+      if (current.some((post) => post.sourcePostId === selectedUserPost.id && (!post.suggestionKind || post.suggestionKind === 'overperformer'))) return current;
       return [...current, {
         id: createPostId(),
         businessId: selectedUserPost.businessId,
@@ -548,6 +558,29 @@ function CalendarSurface() {
         distribution: 'organic',
         isSuggestion: true,
         sourcePostId: selectedUserPost.id,
+        suggestionKind: 'overperformer',
+      }];
+    });
+  };
+
+  const handleConversionSuggestion = (kind: 'trust' | 'offer') => {
+    if (!selectedUserPost) return;
+    setUserPosts((current) => {
+      if (current.some((post) => post.sourcePostId === selectedUserPost.id && post.suggestionKind === kind)) return current;
+      return [...current, {
+        id: createPostId(),
+        businessId: selectedUserPost.businessId,
+        project: selectedUserPost.project,
+        contentType: kind === 'trust' ? 'Proof' : 'Book now',
+        title: kind === 'trust'
+          ? `${selectedUserPost.project}: a client testimonial`
+          : `${selectedUserPost.project}: referral offer to book`,
+        date: addDaysToDate(selectedUserPost.date, kind === 'trust' ? 2 : 4),
+        platforms: selectedUserPost.platforms,
+        distribution: 'organic',
+        isSuggestion: true,
+        sourcePostId: selectedUserPost.id,
+        suggestionKind: kind,
       }];
     });
   };
@@ -1000,7 +1033,7 @@ function CalendarSurface() {
                 />
                 {selectedOverperformer && (
                   <OverperformerRecommendation
-                    key={selectedUserPost.id}
+                    key={`overperformer-${selectedUserPost.id}`}
                     service={selectedUserPost.project}
                     result={selectedOverperformer}
                     boost={selectedUserPost.distribution === 'paid'
@@ -1010,6 +1043,18 @@ function CalendarSurface() {
                     followUpDate={formatPostDate(addDaysToDate(selectedUserPost.date, 3))}
                     onBoost={handleBoostPost}
                     onSuggest={handleMakeMoreLikeIt}
+                  />
+                )}
+                {selectedConversionGap && (
+                  <ConversionGapRecommendation
+                    service={selectedUserPost.project}
+                    result={selectedConversionGap}
+                    hasTrustSuggestion={hasTrustSuggestion}
+                    hasOfferSuggestion={hasOfferSuggestion}
+                    trustDate={formatPostDate(addDaysToDate(selectedUserPost.date, 2))}
+                    offerDate={formatPostDate(addDaysToDate(selectedUserPost.date, 4))}
+                    onBuildTrust={() => handleConversionSuggestion('trust')}
+                    onLowerBarrier={() => handleConversionSuggestion('offer')}
                   />
                 )}
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
