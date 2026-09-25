@@ -1,7 +1,8 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { AirtimeBalance } from '@/components/airtime-balance';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ConversionGapRecommendation } from '@/components/conversion-gap-recommendation';
 import { OverperformerRecommendation } from '@/components/overperformer-recommendation';
@@ -10,6 +11,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
 import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
+import { getAirtimeAllocations } from '@/lib/airtime-allocation';
 import { addDaysToDate, isSameSequenceType } from '@/lib/follow-ups';
 import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
@@ -97,6 +99,11 @@ const contentTypeRationales: Record<string, string> = {
   Insight: 'Value-first content builds trust before you ask for the booking.',
   Recap: 'Keeps the service visible and reinforces what you offer.',
   'Fresh angle': 'A fresh creative angle keeps the content sequence moving.',
+};
+const serviceSeasonMonths: Record<string, number[]> = {
+  'Fall programs': [8, 9, 10],
+  'Tax planning': [1, 2, 3, 4, 11, 12],
+  Insurance: [10, 11, 12, 1],
 };
 const businessData: Business[] = [
   {
@@ -386,6 +393,16 @@ function CalendarSurface() {
 
   const activeBusiness = businessData.find((business) => business.id === activeBusinessId) ?? businessData[0];
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
+  const airtime = useMemo(() => getAirtimeAllocations(
+    activeBusiness.id,
+    activeBusiness.projects.map((name) => ({
+      name,
+      seasonMonths: serviceSeasonMonths[name] ?? [],
+    })),
+    userPosts,
+    visibleMonth.getFullYear(),
+    visibleMonth.getMonth() + 1,
+  ), [activeBusiness, userPosts, visibleMonth]);
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
@@ -801,26 +818,15 @@ function CalendarSurface() {
           </section>
 
           <aside className="sidebar">
-            <section className="insight-card tint">
-              <p className="insight-eyebrow">This month at a glance</p>
-              <h2>Keep the signal warm.</h2>
-              <p>{activeBusiness.focus}</p>
-              <div className="focus-list">
-                {activeBusiness.palette.map((item) => (
-                  <div className="focus-row" key={item.label}>
-                    <span className={`focus-dot ${item.tone}`} />
-                    {item.label}
-                  </div>
-                ))}
-              </div>
-              <div className="heartbeat">
-                <span className="heartbeat-mark"><Activity size={14} strokeWidth={1.8} /></span>
-                <div>
-                  <strong>Weekly heartbeat</strong>
-                  <span>One check-in keeps every service moving.</span>
-                </div>
-              </div>
-            </section>
+            <AirtimeBalance
+              allocations={airtime.allocations}
+              getTone={(service) => getPostTone(service, activeBusiness)}
+              monthLabel={new Intl.DateTimeFormat('en-US', {
+                month: 'long',
+                year: 'numeric',
+              }).format(visibleMonth)}
+              weeklyCapacity={airtime.weeklyCapacity}
+            />
 
             <section className="insight-card">
               <p className="legend-title">Content threads</p>
