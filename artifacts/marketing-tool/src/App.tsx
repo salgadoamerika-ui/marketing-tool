@@ -36,6 +36,7 @@ type UserPost = {
   date: string;
   platforms: Platform[];
   distribution: Distribution;
+  isSuggestion?: boolean;
   budget?: number;
   runLength?: number;
 };
@@ -491,6 +492,7 @@ function CalendarSurface() {
         date: addDaysToDate(savedPost.date, f.offset),
         platforms: savedPost.platforms,
         distribution: 'organic' as Distribution,
+        isSuggestion: true,
       }))
       // anti-duplicate: skip if a post of that type already exists within a few days
       .filter((sugg) => !userPosts.some(
