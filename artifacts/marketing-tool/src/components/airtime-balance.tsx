@@ -55,11 +55,22 @@ export function AirtimeBalance({ monthLabel, allocations, getTone }: Props) {
             <div className="airtime-service-meta">
               {allocation.inSeason && <span className="airtime-season">In season</span>}
               {allocation.tryNewAngle && <span className="airtime-new-angle">Try a new angle</span>}
-              <span className={`airtime-signal airtime-signal-${allocation.signal}`}>
-                {signalLabel(allocation.signal)}
-              </span>
+              {allocation.status === 'maintenance' ? (
+                <span className="airtime-signal airtime-signal-maintenance">Maintenance</span>
+              ) : allocation.signal !== 'insufficient-data' ? (
+                <span className={`airtime-signal airtime-signal-${allocation.signal}`}>
+                  {signalLabel(allocation.signal)}
+                </span>
+              ) : null}
             </div>
-            <small className="airtime-evidence">{signalDetail(allocation)}</small>
+            {allocation.status === 'maintenance' ? (
+              <small className="airtime-evidence airtime-maintenance-evidence">
+                <strong>Holding its floor</strong>
+                <span>A slow service still holds part of your revenue.</span>
+              </small>
+            ) : allocation.signal !== 'insufficient-data' ? (
+              <small className="airtime-evidence">{signalDetail(allocation)}</small>
+            ) : null}
           </article>
         ))}
       </div>
@@ -67,9 +78,9 @@ export function AirtimeBalance({ monthLabel, allocations, getTone }: Props) {
         <summary>How the score works</summary>
         <p>
           Base 1 point; in-season +0.75; recent views above the prior average +0.5; three
-          consecutive results below the service average −0.85. Performance adjustments need
-          3 measured posts. In-season volume wins over weak results, with “Try a new angle”
-          instead. Scores have a 0.25 floor; weekly slots are then shared by score.
+          consecutive results below the service average −0.85. Performance rules need
+          3 measured posts. Consistently weak services enter maintenance and hold one post per
+          month; active services share the remaining weekly slots by score.
         </p>
       </details>
     </section>

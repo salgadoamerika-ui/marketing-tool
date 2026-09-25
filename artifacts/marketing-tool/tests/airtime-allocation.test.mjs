@@ -58,7 +58,7 @@ test('performance does not adjust the score before three results', () => {
   assert.equal(divorce.airtimeScore, AIRTIME_RULES.baseScore);
 });
 
-test('three consecutive below-average results lower airtime to, but not below, the floor', () => {
+test('three consecutive below-average results enter maintenance at the one-post monthly floor', () => {
   const posts = [
     post('a', 'Divorce', 120, '2026-04-01'),
     post('b', 'Divorce', 110, '2026-05-01'),
@@ -70,12 +70,13 @@ test('three consecutive below-average results lower airtime to, but not below, t
   const divorce = result.allocations.find((item) => item.service === 'Divorce');
 
   assert.equal(divorce.signal, 'consistently-weak');
+  assert.equal(divorce.status, 'maintenance');
   assert.equal(divorce.averageViews, 64);
   assert.equal(divorce.airtimeScore, AIRTIME_RULES.scoreFloor);
-  assert.ok(divorce.postsPerWeek >= AIRTIME_RULES.monthlyFloor / 4);
+  assert.equal(divorce.postsPerWeek, AIRTIME_RULES.monthlyFloor / 4);
 });
 
-test('in-season flat or weak results preserve seasonal volume and flag a new angle', () => {
+test('in-season flat results stay active while weak results enter maintenance', () => {
   const flatPosts = [
     post('a', 'Fall programs', 100, '2026-06-01'),
     post('b', 'Fall programs', 100, '2026-07-01'),
@@ -84,6 +85,7 @@ test('in-season flat or weak results preserve seasonal volume and flag a new ang
   const flat = getAirtimeAllocations('mosaic', services, flatPosts, 2026, 9)
     .allocations.find((item) => item.service === 'Fall programs');
   assert.equal(flat.signal, 'flat');
+  assert.equal(flat.status, 'active');
   assert.equal(flat.airtimeScore, AIRTIME_RULES.baseScore + AIRTIME_RULES.seasonBoost);
   assert.equal(flat.tryNewAngle, true);
 
@@ -97,8 +99,13 @@ test('in-season flat or weak results preserve seasonal volume and flag a new ang
   const weak = getAirtimeAllocations('mosaic', services, weakPosts, 2026, 9)
     .allocations.find((item) => item.service === 'Fall programs');
   assert.equal(weak.signal, 'consistently-weak');
-  assert.equal(weak.airtimeScore, AIRTIME_RULES.baseScore + AIRTIME_RULES.seasonBoost);
-  assert.equal(weak.tryNewAngle, true);
+  assert.equal(weak.status, 'maintenance');
+  assert.equal(
+    weak.airtimeScore,
+    AIRTIME_RULES.baseScore + AIRTIME_RULES.seasonBoost - AIRTIME_RULES.underperformancePenalty,
+  );
+  assert.equal(weak.postsPerWeek, AIRTIME_RULES.monthlyFloor / 4);
+  assert.equal(weak.tryNewAngle, false);
 });
 
 test('skipped results and results after the selected month do not influence allocation', () => {
@@ -120,6 +127,24 @@ test('weekly shares sum to capacity and keep every service at the monthly minimu
 
   assert.ok(Math.abs(result.allocations.reduce((sum, item) => sum + item.postsPerWeek, 0) - result.weeklyCapacity) < 1e-9);
   assert.ok(result.allocations.every((item) => item.postsPerWeek >= result.monthlyFloor / 4));
+});
+
+test('maintenance services hold a nonzero floor while active services receive extra slots', () => {
+  const weakPosts = [
+    post('a', 'Divorce', 120, '2026-04-01'),
+    post('b', 'Divorce', 110, '2026-05-01'),
+    post('c', 'Divorce', 40, '2026-06-01'),
+    post('d', 'Divorce', 30, '2026-07-01'),
+    post('e', 'Divorce', 20, '2026-08-01'),
+  ];
+  const result = getAirtimeAllocations('mosaic', services, weakPosts, 2026, 9);
+  const maintenance = result.allocations.find((item) => item.service === 'Divorce');
+  const active = result.allocations.find((item) => item.service === 'Fall programs');
+
+  assert.equal(maintenance.status, 'maintenance');
+  assert.equal(maintenance.postsPerWeek, result.monthlyFloor / 4);
+  assert.ok(maintenance.postsPerWeek > 0);
+  assert.ok(active.postsPerWeek > result.monthlyFloor / 4);
 });
 
 test('rejects an invalid month instead of silently choosing a season', () => {

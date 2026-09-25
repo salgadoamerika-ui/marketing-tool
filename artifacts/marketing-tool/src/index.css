@@ -377,7 +377,10 @@
 .airtime-signal { color: var(--plum-soft); background: rgba(255, 255, 255, .58); }
 .airtime-signal-above-average { color: #426a50; background: #e1eee3; }
 .airtime-signal-consistently-weak { color: #91615b; background: #f3e5e1; }
+.airtime-signal-maintenance { color: #805349; background: #f3e5e1; font-weight: 700; }
 .airtime-evidence { display: block; margin: 4px 0 0 16px; color: var(--muted-foreground); font-size: 8.5px; line-height: 1.35; }
+.airtime-maintenance-evidence strong, .airtime-maintenance-evidence span { display: block; }
+.airtime-maintenance-evidence strong { color: var(--ink); font-size: 9px; font-weight: 700; }
 .airtime-method { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--rose-soft); }
 .airtime-method summary { color: var(--rose-deep); cursor: pointer; font-size: 9px; font-weight: 700; }
 .airtime-method p { margin-top: 7px; font-size: 9px; line-height: 1.45; }
