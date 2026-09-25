@@ -359,10 +359,8 @@
 .airtime-intro { margin-top: -3px !important; }
 .airtime-list { display: grid; gap: 11px; margin-top: 15px; }
 .airtime-service { min-width: 0; }
-.airtime-service-heading { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.airtime-service-heading { display: grid; grid-template-columns: 9px minmax(0, 1fr); align-items: center; gap: 7px; }
 .airtime-service-heading strong { overflow: hidden; color: var(--ink); font-size: 10.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.airtime-weekly { color: var(--ink); font-size: 11px; font-weight: 700; white-space: nowrap; }
-.airtime-weekly small { margin-left: 3px; color: var(--muted-foreground); font-size: 9px; font-weight: 500; }
 .airtime-track { height: 4px; margin: 5px 0 5px 16px; overflow: hidden; border-radius: 99px; background: rgba(95, 66, 78, .11); }
 .airtime-fill { display: block; height: 100%; border-radius: inherit; }
 .airtime-fill.event-rose { background: #d88ca7; }
@@ -373,8 +371,7 @@
 .airtime-fill.event-blush { background: #d98cab; }
 .airtime-fill.event-muted { background: #b5a4b2; }
 .airtime-service-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 16px; }
-.airtime-score, .airtime-season, .airtime-new-angle, .airtime-signal { border-radius: 999px; padding: 2px 5px; font-size: 8px; line-height: 1.25; }
-.airtime-score { color: var(--plum-soft); background: rgba(255, 255, 255, .58); }
+.airtime-season, .airtime-new-angle, .airtime-signal { border-radius: 999px; padding: 2px 5px; font-size: 8px; line-height: 1.25; }
 .airtime-season { color: #7c5522; background: #f4e6ce; font-weight: 650; }
 .airtime-new-angle { color: #89506b; background: #f3dfe8; font-weight: 700; }
 .airtime-signal { color: var(--plum-soft); background: rgba(255, 255, 255, .58); }

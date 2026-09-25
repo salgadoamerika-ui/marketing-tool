@@ -3,7 +3,6 @@ import type { ServiceAirtimeAllocation } from '@/lib/airtime-allocation';
 type Props = {
   monthLabel: string;
   allocations: ServiceAirtimeAllocation[];
-  weeklyCapacity: number;
   getTone: (service: string) => string;
 };
 
@@ -11,27 +10,27 @@ function signalLabel(signal: ServiceAirtimeAllocation['signal']): string {
   if (signal === 'above-average') return 'Above average';
   if (signal === 'consistently-weak') return 'Consistently weak';
   if (signal === 'flat') return 'Flat';
-  return 'Need 3 results';
+  return 'Need more data';
 }
 
 function signalDetail(allocation: ServiceAirtimeAllocation): string {
   if (allocation.signal === 'above-average') {
-    return `Latest ${allocation.recentViews?.toLocaleString()} views · prior average ${allocation.priorAverageViews?.toLocaleString()}`;
+    return 'Recent views are above the service average';
   }
   if (allocation.signal === 'consistently-weak') {
-    return `Last 3 results are below the ${allocation.averageViews?.toLocaleString()}-view service average`;
+    return 'Recent results are consistently below average';
   }
   if (allocation.signal === 'flat') return 'Recent results are near the service average';
-  return `${allocation.measuredPostCount} of 3 measured posts · no performance adjustment`;
+  return 'More measured posts are needed before performance changes airtime';
 }
 
-export function AirtimeBalance({ monthLabel, allocations, weeklyCapacity, getTone }: Props) {
+export function AirtimeBalance({ monthLabel, allocations, getTone }: Props) {
   return (
     <section aria-labelledby="airtime-balance-title" className="insight-card tint airtime-card">
       <p className="insight-eyebrow">{monthLabel} allocation</p>
       <h2 id="airtime-balance-title">This month’s balance</h2>
       <p className="airtime-intro">
-        {weeklyCapacity.toFixed(1)} posts per week across services. Every service keeps at least one post a month.
+        Colored timelines show weekly airtime. Every service keeps a steady monthly presence.
       </p>
       <div aria-label="Weekly post allocation by service" className="airtime-list">
         {allocations.map((allocation) => (
@@ -39,12 +38,9 @@ export function AirtimeBalance({ monthLabel, allocations, weeklyCapacity, getTon
             <div className="airtime-service-heading">
               <span className={`airtime-dot focus-dot ${getTone(allocation.service)}`} />
               <strong>{allocation.service}</strong>
-              <span className="airtime-weekly">
-                {allocation.postsPerWeek.toFixed(2)}<small>/wk</small>
-              </span>
             </div>
             <div
-              aria-label={`${allocation.service}: ${allocation.postsPerWeek.toFixed(2)} posts per week`}
+              aria-label={`${allocation.service} share of weekly airtime`}
               aria-valuemax={100}
               aria-valuemin={0}
               aria-valuenow={allocation.sharePercent}
@@ -57,7 +53,6 @@ export function AirtimeBalance({ monthLabel, allocations, weeklyCapacity, getTon
               />
             </div>
             <div className="airtime-service-meta">
-              <span className="airtime-score">Score {allocation.airtimeScore.toFixed(2)}</span>
               {allocation.inSeason && <span className="airtime-season">In season</span>}
               {allocation.tryNewAngle && <span className="airtime-new-angle">Try a new angle</span>}
               <span className={`airtime-signal airtime-signal-${allocation.signal}`}>

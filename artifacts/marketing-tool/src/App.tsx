@@ -825,7 +825,6 @@ function CalendarSurface() {
                 month: 'long',
                 year: 'numeric',
               }).format(visibleMonth)}
-              weeklyCapacity={airtime.weeklyCapacity}
             />
 
             <section className="insight-card">
