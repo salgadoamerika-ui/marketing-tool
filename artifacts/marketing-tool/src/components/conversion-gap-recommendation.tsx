@@ -34,11 +34,10 @@ export function ConversionGapRecommendation({
       <p className="conversion-gap-copy">
         This got <strong>{result.views.toLocaleString()} views</strong> and{' '}
         <strong>{result.saves.toLocaleString()} saves</strong> but{' '}
-        <strong>{result.bookings.toLocaleString()} bookings</strong> — strong interest, weak conversion.
+        <strong>{result.bookings.toLocaleString()} bookings</strong> — bookings are below 20% of both.
       </p>
       <p className="conversion-gap-context">
-        It's landing with people, but they're not booking. A trust or money blocker may be in the way.
-        Compared with {result.postCount} {service} posts with complete results.
+        People engaged with {service}, but few booked. Trust or cost may be a barrier.
       </p>
       <div className="conversion-gap-actions">
         <button
