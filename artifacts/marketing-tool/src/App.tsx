@@ -2,11 +2,13 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 're
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ConversionGapRecommendation } from '@/components/conversion-gap-recommendation';
 import { OverperformerRecommendation } from '@/components/overperformer-recommendation';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
 import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
 import { getConversionSuggestionPlans } from '@/lib/conversion-gap-followups';
 import { addDaysToDate, getFollowUpPlans, type FollowUpPlan } from '@/lib/follow-ups';
@@ -31,6 +33,7 @@ type CalendarEvent = {
   id?: string;
   isSuggestion?: boolean;
   hasConversionGap?: boolean;
+  status?: 'completed' | 'skipped';
 };
 
 type Distribution = 'organic' | 'paid';
@@ -51,6 +54,7 @@ type UserPost = {
   budget?: number;
   runLength?: number;
   performance?: PostPerformance;
+  status?: 'completed' | 'skipped';
 };
 
 type PostForm = {
@@ -276,7 +280,8 @@ function isUserPost(value: unknown): value is UserPost {
       && typeof post.date === 'string'
       && Array.isArray(post.platforms)
       && post.platforms.every((platform) => typeof platform === 'string' && platform.trim().length > 0)
-      && (post.distribution === 'organic' || post.distribution === 'paid'),
+      && (post.distribution === 'organic' || post.distribution === 'paid')
+      && (post.status === undefined || post.status === 'completed' || post.status === 'skipped'),
   );
 }
 
@@ -374,6 +379,7 @@ function CalendarSurface() {
   const [activeBusinessId, setActiveBusinessId] = useState('mosaic');
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
   const [statusMessage, setStatusMessage] = useState('');
+  const [actionInsight, setActionInsight] = useState<ActionInsight | null>(null);
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
@@ -416,6 +422,7 @@ function CalendarSurface() {
     tone: getPostTone(post.project, activeBusiness),
     isSuggestion: post.isSuggestion,
     hasConversionGap: getConversionGap(post, userPosts) !== null,
+    status: post.status,
   });
   const calendarEvents = [
     ...events,
@@ -548,7 +555,9 @@ function CalendarSurface() {
       .filter((plan) => !plan.existingPostId)
       .map((plan) => makeAutomaticSuggestion(savedPost, plan));
 
-    setUserPosts((current) => [...current, savedPost, ...suggestions]);
+    const nextPosts = [...userPosts, savedPost, ...suggestions];
+    setUserPosts(nextPosts);
+    setActionInsight(buildActionInsight('logged', savedPost, nextPosts));
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
     showActionMessage(suggestions.length
@@ -564,6 +573,26 @@ function CalendarSurface() {
     setUserPosts((current) => current.filter((post) => post.id !== selectedUserPost.id));
     setSelectedPostId(null);
     showActionMessage(`Deleted “${selectedUserPost.title}” from the calendar.`);
+  };
+
+  const handlePostStatus = (status: 'completed' | 'skipped') => {
+    if (!selectedUserPost || selectedUserPost.status === status) return;
+    const updatedPost = { ...selectedUserPost, status };
+    const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
+    setUserPosts(nextPosts);
+    setActionInsight(buildActionInsight(status, updatedPost, nextPosts));
+    setSelectedPostId(null);
+  };
+
+  const handleSaveResults = (performance: PostPerformance) => {
+    if (!selectedUserPost) return;
+    const updatedPost = { ...selectedUserPost, performance };
+    const nextPosts = appendConversionSuggestions(
+      userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post),
+    );
+    setUserPosts(nextPosts);
+    setActionInsight(buildActionInsight('results', updatedPost, nextPosts));
+    setSelectedPostId(null);
   };
 
   const handleBoostPost = (budget: number, runLength: number) => {
@@ -690,6 +719,7 @@ function CalendarSurface() {
                           <>
                             {event.title}
                             {event.detail && <small>{event.detail}</small>}
+                            {event.status && <span className={`event-post-status event-post-status-${event.status}`}>{event.status}</span>}
                             {event.hasConversionGap && <span className="event-insight-tag">Conversion gap</span>}
                           </>
                         );
@@ -1003,6 +1033,11 @@ function CalendarSurface() {
                 <div className={`post-detail-project event-${getPostTone(selectedUserPost.project, activeBusiness)}`}>
                   {selectedUserPost.project}
                 </div>
+                {selectedUserPost.status && (
+                  <p className={`post-detail-status post-detail-status-${selectedUserPost.status}`}>
+                    {selectedUserPost.status === 'completed' ? 'Completed' : 'Skipped'}
+                  </p>
+                )}
                 <div className="post-detail-list">
                   <div>
                     <span>Date</span>
@@ -1034,11 +1069,7 @@ function CalendarSurface() {
                 <PostPerformanceForm
                   key={selectedUserPost.id}
                   performance={selectedUserPost.performance}
-                  onSave={(performance) => {
-                    setUserPosts((current) => appendConversionSuggestions(current.map((post) => (
-                      post.id === selectedUserPost.id ? { ...post, performance } : post
-                    ))));
-                  }}
+                  onSave={handleSaveResults}
                 />
                 {selectedConversionAssessment && selectedConversionAssessment.status !== 'detected' && (
                   <section aria-label="Conversion gap status" className="conversion-gap-hint">
@@ -1080,6 +1111,24 @@ function CalendarSurface() {
                   />
                 )}
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
+                <div className="post-status-actions" aria-label="Post status">
+                  <button
+                    className="post-status-complete"
+                    disabled={selectedUserPost.status === 'completed'}
+                    onClick={() => handlePostStatus('completed')}
+                    type="button"
+                  >
+                    Mark complete
+                  </button>
+                  <button
+                    className="post-status-skipped"
+                    disabled={selectedUserPost.status === 'skipped'}
+                    onClick={() => handlePostStatus('skipped')}
+                    type="button"
+                  >
+                    Mark skipped
+                  </button>
+                </div>
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
                   <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>
@@ -1087,6 +1136,9 @@ function CalendarSurface() {
               </div>
             </section>
           </div>
+        )}
+        {actionInsight && (
+          <ActionInsightPopup insight={actionInsight} onClose={() => setActionInsight(null)} />
         )}
       </div>
     </main>
