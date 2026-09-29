@@ -358,6 +358,13 @@
 .focus-dot.sand { background: #d2b98c; }
 .focus-dot.lavender { background: #bba4c0; }
 .focus-dot.blue { background: #9ca3c3; }
+.focus-list { display: grid; gap: 7px; margin: 13px 0 16px; }
+.focus-row { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 11px; font-weight: 500; line-height: 1.35; }
+.heartbeat { display: flex; align-items: flex-start; gap: 9px; margin-top: 15px; border-top: 1px solid rgba(95, 66, 78, .13); padding-top: 12px; }
+.heartbeat-mark { display: grid; width: 27px; height: 27px; flex: none; place-items: center; border-radius: 8px; background: #f3dce5; color: var(--rose-deep); }
+.heartbeat > div { display: grid; min-width: 0; gap: 3px; padding-top: 1px; }
+.heartbeat > div > strong { color: var(--ink); font-size: 10px; font-weight: 650; line-height: 1.35; }
+.heartbeat > div > span { color: var(--muted-foreground); font-size: 10px; line-height: 1.45; }
 .airtime-intro { margin-top: -3px !important; }
 .airtime-list { display: grid; gap: 11px; margin-top: 15px; }
 .airtime-service { min-width: 0; }
