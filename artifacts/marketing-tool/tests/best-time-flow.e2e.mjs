@@ -242,6 +242,20 @@ async function clickButtonText(evaluate, exactText) {
   await evaluate(expression);
 }
 
+async function selectBusiness(evaluate, name) {
+  await evaluate(`(() => {
+    const button = [...document.querySelectorAll('button.business-tab')]
+      .find((element) => element.textContent.trim() === ${jsString(name)});
+    if (!button) throw new Error('Missing business tab: ' + ${jsString(name)});
+    button.click();
+    return true;
+  })()`);
+  await waitFor(
+    () => evaluate(`document.querySelector('.calendar-toolbar .toolbar-note')?.textContent?.includes(${jsString(name)})`),
+    `${name} workspace to become active`,
+  );
+}
+
 async function dismissInsight(evaluate) {
   await evaluate("document.querySelector('button.action-insight-skip')?.click() ?? true");
 }
@@ -359,8 +373,13 @@ const isolatedServicePosts = [
   { service: 'Insurance', date: '2026-10-08', postedTime: '19:00', views: 1000, title: 'Insurance timing sample 2' },
   { service: 'Insurance', date: '2026-10-15', postedTime: '20:30', views: 1100, title: 'Insurance timing sample 3' },
 ];
+const secondBusinessPosts = [
+  { service: 'Tax planning', date: '2026-10-05', postedTime: '18:00', views: 1100, title: 'Northline timing sample 1' },
+  { service: 'Tax planning', date: '2026-10-12', postedTime: '19:00', views: 1000, title: 'Northline timing sample 2' },
+  { service: 'Tax planning', date: '2026-10-19', postedTime: '20:30', views: 900, title: 'Northline timing sample 3' },
+];
 
-test('learned timing updates through saved results, stays service-specific, and survives reload', { timeout: 120000 }, async () => {
+test('learned timing stays business- and service-specific through saved results and reload', { timeout: 120000 }, async () => {
   const port = await getFreePort();
   const origin = `http://127.0.0.1:${port}`;
   const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
@@ -400,6 +419,22 @@ test('learned timing updates through saved results, stays service-specific, and 
       await assertCalendarMode(evaluate, post, index < 2 ? 'suggested' : 'learned');
     }
 
+    await selectBusiness(evaluate, 'Northline Financial');
+    for (const [index, post] of secondBusinessPosts.entries()) {
+      await createPost(evaluate, post);
+      await openPost(evaluate, post);
+      assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
+      await saveResults(evaluate, post);
+      await openPost(evaluate, post);
+      const expected = index < 2
+        ? 'Best time · suggested'
+        : 'Best time · from your results: Monday evenings';
+      await waitFor(async () => (await readRecommendation(evaluate)) === expected, `${post.title} recommendation to update`);
+      assert.equal(await readRecommendation(evaluate), expected);
+      await assertCalendarMode(evaluate, post, index < 2 ? 'suggested' : 'learned');
+    }
+
+    await selectBusiness(evaluate, 'Mosaic Legal');
     for (const [index, post] of isolatedServicePosts.entries()) {
       await createPost(evaluate, post);
       await openPost(evaluate, post);
@@ -414,26 +449,49 @@ test('learned timing updates through saved results, stays service-specific, and 
       await assertCalendarMode(evaluate, post, index < 2 ? 'suggested' : 'learned');
     }
 
+    await selectBusiness(evaluate, 'Mosaic Legal');
     await openPost(evaluate, learnedPosts[2]);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Tuesday mornings');
+    await clickButtonText(evaluate, 'Keep post');
+    await selectBusiness(evaluate, 'Northline Financial');
+    await openPost(evaluate, secondBusinessPosts[2]);
+    assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Monday evenings');
     await clickButtonText(evaluate, 'Keep post');
 
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after reload');
-    const measuredTitles = new Set([...learnedPosts, ...isolatedServicePosts].map((post) => post.title));
+    const allMeasuredPosts = [...learnedPosts, ...secondBusinessPosts, ...isolatedServicePosts];
+    const measuredTitles = new Set(allMeasuredPosts.map((post) => post.title));
     const savedCount = await waitFor(async () => {
       const posts = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
       const savedMeasuredPosts = posts.filter((post) => measuredTitles.has(post.title));
       const allResultsSaved = savedMeasuredPosts.every((post) =>
         Number.isSafeInteger(post.performance?.views) && typeof post.postedTime === 'string'
       );
-      return savedMeasuredPosts.length === 6 && allResultsSaved ? savedMeasuredPosts.length : false;
-    }, 'all six measured posts and results to persist');
-    assert.equal(savedCount, 6);
+      return savedMeasuredPosts.length === 9 && allResultsSaved ? savedMeasuredPosts.length : false;
+    }, 'all nine measured posts and results to persist');
+    assert.equal(savedCount, 9);
+    const persistedBusinessAssignments = await evaluate(`(() => {
+      const titles = ${jsString([...measuredTitles])};
+      const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
+      return Object.fromEntries(posts
+        .filter((post) => titles.includes(post.title))
+        .map(({ title, businessId }) => [title, businessId]));
+    })()`);
+    assert.deepEqual(persistedBusinessAssignments, Object.fromEntries([
+      ...learnedPosts.map((post) => [post.title, 'mosaic']),
+      ...secondBusinessPosts.map((post) => [post.title, 'northline']),
+      ...isolatedServicePosts.map((post) => [post.title, 'mosaic']),
+    ]));
 
     await openPost(evaluate, learnedPosts[2]);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Tuesday mornings');
     await clickButtonText(evaluate, 'Keep post');
+    await selectBusiness(evaluate, 'Northline Financial');
+    await openPost(evaluate, secondBusinessPosts[2]);
+    assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Monday evenings');
+    await clickButtonText(evaluate, 'Keep post');
+    await selectBusiness(evaluate, 'Mosaic Legal');
     await openPost(evaluate, isolatedServicePosts[2]);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
   } finally {
