@@ -1,27 +1,9 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { AirtimeBalance } from '@/components/airtime-balance';
-import { ActionInsightPopup } from '@/components/action-insight-popup';
-import { ConversionGapRecommendation } from '@/components/conversion-gap-recommendation';
-import { OverperformerRecommendation } from '@/components/overperformer-recommendation';
-import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
-import { SeasonalitySuggestionPopup } from '@/components/seasonality-suggestion-popup';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
-import { assessConversionGap, getConversionGap, type ConversionGapAssessment } from '@/lib/conversion-gap';
-import { getAirtimeAllocations } from '@/lib/airtime-allocation';
-import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
-import {
-  findSeasonalityFinding,
-  isNextSeasonPerformanceDate,
-  nextSeasonOccurrenceYear,
-  type SeasonalityFinding,
-} from '@/lib/seasonality';
-import { addDaysToDate, isSameSequenceType } from '@/lib/follow-ups';
-import { getOverperformer } from '@/lib/overperformer';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -40,11 +22,6 @@ type CalendarEvent = {
   detail?: string;
   tone: EventTone;
   id?: string;
-  isSuggestion?: boolean;
-  hasConversionGap?: boolean;
-  isSequenceHighlight?: boolean;
-  status?: 'completed' | 'skipped';
-  bestTime?: BestTimeRecommendation;
 };
 
 type Distribution = 'organic' | 'paid';
@@ -57,16 +34,10 @@ type UserPost = {
   contentType: string;
   title: string;
   date: string;
-  postedTime?: string;
   platforms: Platform[];
   distribution: Distribution;
-  isSuggestion?: boolean;
-  sourcePostId?: string;
-  suggestionKind?: 'automatic' | 'overperformer' | 'trust' | 'offer' | 'insight' | 'reschedule';
   budget?: number;
   runLength?: number;
-  performance?: PostPerformance;
-  status?: 'completed' | 'skipped';
 };
 
 type PostForm = {
@@ -90,42 +61,47 @@ type Business = {
   events: Record<string, CalendarEvent[]>;
 };
 
-type SeasonalityPrompt = SeasonalityFinding & {
-  businessId: string;
-  service: string;
-};
-
-type SeasonalityDismissal = {
-  retryAfterYear: number;
-};
-
 const userPostsStorageKey = 'marketing-tool.user-posts';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
-const serviceSeasonsStorageKey = 'marketing-tool.service-seasons';
-const seasonalityDismissalsStorageKey = 'marketing-tool.seasonality-dismissals';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
-const contentTypes = [
-  'Announcement', 'Inside look', 'Insight', 'Book now', 'Testimonial', 'Proof',
-  'Pricing', 'Promo', 'Enrollment', 'Recap', 'Fresh angle',
-];
+const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
 const contentTypeRationales: Record<string, string> = {
   Announcement: 'Opens the campaign. You lead with awareness before asking for anything.',
   'Inside look': "You've announced — now show them inside to turn interest into desire.",
   'Book now': "The audience is warm. Now's when the ask converts.",
-  Enrollment: 'A direct enrollment invitation for people ready to take the next step.',
-  Testimonial: 'A real client story builds trust with people who are interested but unsure.',
   Proof: 'Proof beats claims — real results move people who are interested but unsure.',
-  Pricing: 'Clear pricing helps interested people make a confident decision.',
-  Promo: 'A focused promotion gives people a reason to act now.',
   Insight: 'Value-first content builds trust before you ask for the booking.',
   Recap: 'Keeps the service visible and reinforces what you offer.',
-  'Fresh angle': 'A fresh creative angle keeps the content sequence moving.',
 };
-const serviceSeasonMonths: Record<string, number[]> = {
-  'Fall programs': [8, 9, 10],
-  'Tax planning': [1, 2, 3, 4, 11, 12],
-  Insurance: [10, 11, 12, 1],
+// Phase 3 — the brain: what move naturally comes next after each content type
+const followUpMap: Record<string, Array<{ offset: number; contentType: string; label: string }>> = {
+  'Announcement': [
+    { offset: 2, contentType: 'Inside look', label: 'show them inside' },
+    { offset: 5, contentType: 'Book now', label: 'make the ask' },
+  ],
+  'Inside look': [
+    { offset: 2, contentType: 'Proof', label: 'back it with proof' },
+    { offset: 4, contentType: 'Book now', label: 'convert the interest' },
+  ],
+  'Book now': [
+    { offset: 3, contentType: 'Proof', label: 'reinforce trust' },
+  ],
+  'Proof': [
+    { offset: 3, contentType: 'Book now', label: 'ask while trust is high' },
+  ],
+  'Insight': [
+    { offset: 4, contentType: 'Book now', label: 'turn value into a booking' },
+  ],
+  'Recap': [
+    { offset: 5, contentType: 'Insight', label: 'keep the rhythm going' },
+  ],
 };
+
+function addDaysToDate(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 const businessData: Business[] = [
   {
     id: 'mosaic',
@@ -240,33 +216,6 @@ const businessData: Business[] = [
   },
 ];
 
-function getBuiltInInsightPosts(business: Business): InsightPost[] {
-  return Object.entries(business.events).flatMap(([month, events]) =>
-    events.map((event, index) => ({
-      id: `calendar-${business.id}-${month}-${index}`,
-      businessId: business.id,
-      project: business.palette.find((item) => item.tone === event.tone)?.label ?? '',
-      title: event.title,
-      contentType: event.detail ?? 'Announcement',
-      date: `${month}-${String(event.day).padStart(2, '0')}`,
-    }))
-  );
-}
-
-function buildCalendarActionInsight(
-  action: InsightAction,
-  post: UserPost,
-  posts: UserPost[],
-  business: Business,
-  today: string,
-): ActionInsight {
-  const calendarContext = [...posts, ...getBuiltInInsightPosts(business)];
-  const occupiedDates = calendarContext
-    .filter((item) => item.businessId === business.id && item.status !== 'skipped')
-    .map((item) => item.date);
-  return buildActionInsight(action, post, calendarContext, today, occupiedDates);
-}
-
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
 
@@ -340,12 +289,9 @@ function isUserPost(value: unknown): value is UserPost {
       && typeof post.contentType === 'string'
       && typeof post.title === 'string'
       && typeof post.date === 'string'
-      && (post.postedTime === undefined
-        || (typeof post.postedTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(post.postedTime)))
       && Array.isArray(post.platforms)
       && post.platforms.every((platform) => typeof platform === 'string' && platform.trim().length > 0)
-      && (post.distribution === 'organic' || post.distribution === 'paid')
-      && (post.status === undefined || post.status === 'completed' || post.status === 'skipped'),
+      && (post.distribution === 'organic' || post.distribution === 'paid'),
   );
 }
 
@@ -360,74 +306,6 @@ function readUserPosts() {
   } catch (error) {
     console.warn('Saved calendar posts could not be loaded.', error);
     return [];
-  }
-}
-
-function serviceSeasonKey(businessId: string, service: string) {
-  return `${businessId}::${service}`;
-}
-
-function seasonalityDismissalKey(businessId: string, service: string, month: number) {
-  return `${serviceSeasonKey(businessId, service)}::${month}`;
-}
-
-function validSeasonMonths(value: unknown): value is number[] {
-  return Array.isArray(value)
-    && value.every((month) => Number.isInteger(month) && month >= 1 && month <= 12);
-}
-
-function readServiceSeasons(): Record<string, number[]> {
-  const defaults: Record<string, number[]> = {};
-  for (const business of businessData) {
-    for (const service of business.projects) {
-      defaults[serviceSeasonKey(business.id, service)] = [...(serviceSeasonMonths[service] ?? [])];
-    }
-  }
-  if (typeof window === 'undefined') return defaults;
-
-  try {
-    const saved = window.localStorage.getItem(serviceSeasonsStorageKey);
-    if (!saved) return defaults;
-    const parsed: unknown = JSON.parse(saved);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return defaults;
-
-    for (const [key, value] of Object.entries(parsed)) {
-      if (key in defaults && validSeasonMonths(value)) {
-        defaults[key] = [...new Set(value)];
-      }
-    }
-    return defaults;
-  } catch (error) {
-    console.warn('Saved service seasons could not be loaded.', error);
-    return defaults;
-  }
-}
-
-function readSeasonalityDismissals(): Record<string, SeasonalityDismissal> {
-  if (typeof window === 'undefined') return {};
-
-  try {
-    const saved = window.localStorage.getItem(seasonalityDismissalsStorageKey);
-    if (!saved) return {};
-    const parsed: unknown = JSON.parse(saved);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-
-    return Object.fromEntries(
-      Object.entries(parsed).flatMap(([key, value]) => {
-        if (
-          value
-          && typeof value === 'object'
-          && Number.isInteger((value as SeasonalityDismissal).retryAfterYear)
-          && (value as SeasonalityDismissal).retryAfterYear > 0
-        ) {
-          return [[key, { retryAfterYear: (value as SeasonalityDismissal).retryAfterYear }]];
-        }
-        return [];
-      }),
-    );
-  } catch (error) {
-    console.warn('Saved seasonality choices could not be loaded.', error);
-    return {};
   }
 }
 
@@ -446,7 +324,7 @@ function getPostDetail(post: UserPost) {
   const distributionText = post.distribution === 'paid'
     ? `Paid · $${post.budget?.toLocaleString() ?? '0'} · ${post.runLength ?? 0}d`
     : 'Organic';
-  return `${post.isSuggestion ? 'Suggested · ' : ''}${post.contentType} · ${channelText} · ${distributionText}`;
+  return `${post.contentType} · ${channelText} · ${distributionText}`;
 }
 
 function formatPostDate(date: string) {
@@ -457,26 +335,11 @@ function formatPostDate(date: string) {
   }).format(new Date(`${date}T12:00:00`));
 }
 
-function conversionGapStatusText(assessment: ConversionGapAssessment, service: string): string {
-  if (assessment.status === 'needs-results') {
-    return `Add views, saves, and bookings for this post. ${assessment.postCount} ${service} posts in this business have complete results; at least 3 are needed.`;
-  }
-  if (assessment.status === 'needs-history') {
-    return `${assessment.postCount} of 3 ${service} posts in this business have complete results. Add results to ${3 - assessment.postCount} more to check for a conversion gap.`;
-  }
-  return 'No conversion gap for this post. Once at least 3 posts have complete results, it appears when views and saves are both above zero and bookings are below 20% of each.';
-}
-
 function CalendarSurface() {
   const [activeBusinessId, setActiveBusinessId] = useState('mosaic');
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
   const [statusMessage, setStatusMessage] = useState('');
-  const [actionInsight, setActionInsight] = useState<ActionInsight | null>(null);
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
-  const [serviceSeasons, setServiceSeasons] = useState<Record<string, number[]>>(readServiceSeasons);
-  const [seasonalityDismissals, setSeasonalityDismissals] =
-    useState<Record<string, SeasonalityDismissal>>(readSeasonalityDismissals);
-  const [seasonalityPrompt, setSeasonalityPrompt] = useState<SeasonalityPrompt | null>(null);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
@@ -488,72 +351,19 @@ function CalendarSurface() {
 
   const activeBusiness = businessData.find((business) => business.id === activeBusinessId) ?? businessData[0];
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
-  const airtime = useMemo(() => getAirtimeAllocations(
-    activeBusiness.id,
-    activeBusiness.projects.map((name) => ({
-      name,
-      seasonMonths: serviceSeasons[serviceSeasonKey(activeBusiness.id, name)] ?? [],
-    })),
-    userPosts,
-    visibleMonth.getFullYear(),
-    visibleMonth.getMonth() + 1,
-  ), [activeBusiness, serviceSeasons, userPosts, visibleMonth]);
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
-  const selectedBestTime = selectedUserPost?.isSuggestion
-    ? getBestTimeRecommendation(
-      selectedUserPost.businessId,
-      selectedUserPost.project,
-      selectedUserPost.platforms,
-      userPosts,
-    )
-    : null;
-  const selectedConversionAssessment = selectedUserPost ? assessConversionGap(selectedUserPost, userPosts) : null;
-  const selectedOverperformer = selectedUserPost ? getOverperformer(selectedUserPost, userPosts) : null;
-  const selectedConversionGap = selectedConversionAssessment?.status === 'detected'
-    ? selectedConversionAssessment.result
-    : null;
-  const hasSuggestedFollowUp = selectedUserPost
-    ? userPosts.some((post) => post.sourcePostId === selectedUserPost.id && (!post.suggestionKind || post.suggestionKind === 'overperformer'))
-    : false;
-  const selectedTrustSuggestion = selectedUserPost
-    ? userPosts.find((post) =>
-      post.businessId === selectedUserPost.businessId
-      && post.project === selectedUserPost.project
-      && post.suggestionKind === 'trust')
-    : undefined;
-  const selectedOfferSuggestion = selectedTrustSuggestion
-    ? userPosts.find((post) =>
-      post.sourcePostId === selectedTrustSuggestion.sourcePostId && post.suggestionKind === 'offer')
-    : undefined;
-  const postAsEvent = (post: UserPost): CalendarEvent => ({
-    id: post.id,
-    day: Number(post.date.slice(-2)),
-    title: post.title,
-    detail: getPostDetail(post),
-    tone: getPostTone(post.project, activeBusiness),
-    isSuggestion: post.isSuggestion,
-    isSequenceHighlight: actionInsight?.beats.some((beat) =>
-      beat.state === 'scheduled' && beat.existingPostId === post.id
-    ),
-    hasConversionGap: getConversionGap(post, userPosts) !== null,
-    status: post.status,
-    bestTime: post.isSuggestion
-      ? getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts)
-      : undefined,
-  });
   const calendarEvents = [
-    ...events.map((event) => ({
-      ...event,
-      isSequenceHighlight: actionInsight?.beats.some((beat) =>
-        beat.state === 'scheduled'
-        && beat.title === event.title
-        && beat.date === `${monthKey(visibleMonth)}-${String(event.day).padStart(2, '0')}`
-      ),
+    ...events,
+    ...monthPosts.map((post) => ({
+      id: post.id,
+      day: Number(post.date.slice(-2)),
+      title: post.title,
+      detail: getPostDetail(post),
+      tone: getPostTone(post.project, activeBusiness),
     })),
-    ...monthPosts.map(postAsEvent),
   ];
   const todayKey = '2026-09-10';
 
@@ -565,62 +375,6 @@ function CalendarSurface() {
     window.localStorage.setItem(platformOptionsStorageKey, JSON.stringify(availablePlatforms));
   }, [availablePlatforms]);
 
-  useEffect(() => {
-    window.localStorage.setItem(serviceSeasonsStorageKey, JSON.stringify(serviceSeasons));
-  }, [serviceSeasons]);
-
-  useEffect(() => {
-    window.localStorage.setItem(seasonalityDismissalsStorageKey, JSON.stringify(seasonalityDismissals));
-  }, [seasonalityDismissals]);
-
-  useEffect(() => {
-    if (seasonalityPrompt) {
-      const promptMonths = serviceSeasons[
-        serviceSeasonKey(seasonalityPrompt.businessId, seasonalityPrompt.service)
-      ] ?? [];
-      if (promptMonths.includes(seasonalityPrompt.month)) setSeasonalityPrompt(null);
-      return;
-    }
-
-    for (const service of activeBusiness.projects) {
-      const seasonsKey = serviceSeasonKey(activeBusiness.id, service);
-      const finding = findSeasonalityFinding(
-        activeBusiness.id,
-        service,
-        userPosts,
-        serviceSeasons[seasonsKey] ?? [],
-      );
-      if (!finding) continue;
-
-      const dismissal = seasonalityDismissals[
-        seasonalityDismissalKey(activeBusiness.id, service, finding.month)
-      ];
-      const hasResultsFromNextSeason = dismissal && userPosts.some((post) =>
-        post.businessId === activeBusiness.id
-        && post.project === service
-        && post.status !== 'skipped'
-        && typeof post.performance?.views === 'number'
-        && Number.isSafeInteger(post.performance.views)
-        && post.performance.views >= 0
-        && isNextSeasonPerformanceDate(finding.month, post.date, dismissal.retryAfterYear)
-      );
-      if (!dismissal || hasResultsFromNextSeason) {
-        setSeasonalityPrompt({
-          ...finding,
-          businessId: activeBusiness.id,
-          service,
-        });
-        return;
-      }
-    }
-  }, [
-    activeBusiness,
-    seasonalityDismissals,
-    seasonalityPrompt,
-    serviceSeasons,
-    userPosts,
-  ]);
-
   const shiftMonth = (amount: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
     setStatusMessage('');
@@ -629,49 +383,6 @@ function CalendarSurface() {
   const showActionMessage = (message: string) => {
     setStatusMessage(message);
     window.setTimeout(() => setStatusMessage(''), 3000);
-  };
-
-  const handleSaveSeasonMonths = (service: string, months: number[]) => {
-    const key = serviceSeasonKey(activeBusiness.id, service);
-    const validMonths = [...new Set(months.filter((month) =>
-      Number.isInteger(month) && month >= 1 && month <= 12
-    ))].sort((left, right) => left - right);
-    setServiceSeasons((current) => ({ ...current, [key]: validMonths }));
-  };
-
-  const handleAcceptSeasonality = () => {
-    if (!seasonalityPrompt) return;
-    const { businessId, service, month } = seasonalityPrompt;
-    const key = serviceSeasonKey(businessId, service);
-    setServiceSeasons((current) => {
-      const months = current[key] ?? serviceSeasonMonths[service] ?? [];
-      return months.includes(month)
-        ? current
-        : { ...current, [key]: [...months, month].sort((left, right) => left - right) };
-    });
-    setSeasonalityDismissals((current) => {
-      const next = { ...current };
-      delete next[seasonalityDismissalKey(businessId, service, month)];
-      return next;
-    });
-    setSeasonalityPrompt(null);
-    const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' })
-      .format(new Date(2026, month - 1, 1));
-    showActionMessage(`${monthName} is now part of ${service}’s season.`);
-  };
-
-  const handleAskNextSeason = () => {
-    if (!seasonalityPrompt) return;
-    const { businessId, service, month } = seasonalityPrompt;
-    const retryAfterYear = nextSeasonOccurrenceYear(month, new Date());
-    setSeasonalityDismissals((current) => ({
-      ...current,
-      [seasonalityDismissalKey(businessId, service, month)]: { retryAfterYear },
-    }));
-    setSeasonalityPrompt(null);
-    const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' })
-      .format(new Date(2026, month - 1, 1));
-    showActionMessage(`I’ll ask about ${monthName} again next season.`);
   };
 
   const openPostForm = () => {
@@ -768,13 +479,28 @@ function CalendarSurface() {
       distribution: postForm.distribution,
       ...(postForm.distribution === 'paid' ? { budget, runLength } : {}),
     };
-    const nextPosts = [...userPosts, savedPost];
-    setUserPosts(nextPosts);
-    const insight = buildCalendarActionInsight(
-      'logged', savedPost, nextPosts, activeBusiness, formatDateInput(new Date()),
-    );
-    setActionInsight(insight);
-    setVisibleMonth(new Date(`${(insight.beats[0]?.date ?? savedPost.date)}T12:00:00`));
+    // create suggested follow-up posts based on what was just logged
+    const followUps = followUpMap[savedPost.contentType] ?? [];
+    const suggestions: UserPost[] = followUps
+      .map((f) => ({
+        id: createPostId(),
+        businessId: activeBusiness.id,
+        project: savedPost.project,
+        contentType: f.contentType,
+        title: `${savedPost.project}: ${f.label}`,
+        date: addDaysToDate(savedPost.date, f.offset),
+        platforms: savedPost.platforms,
+        distribution: 'organic' as Distribution,
+      }))
+      // anti-duplicate: skip if a post of that type already exists within a few days
+      .filter((sugg) => !userPosts.some(
+        (p) => p.businessId === activeBusiness.id
+          && p.contentType === sugg.contentType
+          && Math.abs(new Date(p.date).getTime() - new Date(sugg.date).getTime()) < 4 * 86400000,
+      ));
+
+    setUserPosts((current) => [...current, savedPost, ...suggestions]);
+    setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
     showActionMessage(`Added “${savedPost.title}” to the calendar.`);
   };
@@ -787,111 +513,6 @@ function CalendarSurface() {
     showActionMessage(`Deleted “${selectedUserPost.title}” from the calendar.`);
   };
 
-  const handlePostStatus = (status: 'completed' | 'skipped') => {
-    if (!selectedUserPost || selectedUserPost.status === status) return;
-    const updatedPost = { ...selectedUserPost, status };
-    const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
-    setUserPosts(nextPosts);
-    const postBusiness = businessData.find((business) => business.id === updatedPost.businessId) ?? activeBusiness;
-    const insight = buildCalendarActionInsight(
-      status, updatedPost, nextPosts, postBusiness, formatDateInput(new Date()),
-    );
-    setActionInsight(insight);
-    if (insight.beats[0]) setVisibleMonth(new Date(`${insight.beats[0].date}T12:00:00`));
-    setSelectedPostId(null);
-  };
-
-  const handleSaveResults = (performance: PostPerformance, postedTime?: string) => {
-    if (!selectedUserPost) return;
-    const updatedPost = { ...selectedUserPost, performance, postedTime: postedTime || undefined };
-    const nextPosts = userPosts.map((post) => post.id === updatedPost.id ? updatedPost : post);
-    setUserPosts(nextPosts);
-    const postBusiness = businessData.find((business) => business.id === updatedPost.businessId) ?? activeBusiness;
-    const insight = buildCalendarActionInsight(
-      'results', updatedPost, nextPosts, postBusiness, formatDateInput(new Date()),
-    );
-    setActionInsight(insight);
-    if (insight.beats[0]) setVisibleMonth(new Date(`${insight.beats[0].date}T12:00:00`));
-    setSelectedPostId(null);
-  };
-
-  const handleAddInsightSuggestion = () => {
-    const proposals = actionInsight?.proposals ?? [];
-    if (proposals.length === 0) return;
-    const missingTrigger = proposals.some((proposal) =>
-      !userPosts.some((post) => post.id === proposal.triggerPostId)
-    );
-    if (missingTrigger) {
-      setActionInsight(null);
-      showActionMessage('That source post is no longer available. The suggestion was not added.');
-      return;
-    }
-    const proposedPosts: UserPost[] = proposals.flatMap((proposal) => {
-      const trigger = userPosts.find((post) => post.id === proposal.triggerPostId);
-      return trigger ? [{
-        id: createPostId(),
-        businessId: trigger.businessId,
-        project: trigger.project,
-        contentType: proposal.contentType,
-        title: proposal.title,
-        date: proposal.date,
-        platforms: trigger.platforms,
-        distribution: 'organic' as const,
-        isSuggestion: true,
-        sourcePostId: proposal.sourcePostId,
-        suggestionKind: proposal.kind,
-      }] : [];
-    });
-    setUserPosts((current) => {
-      const additions = proposedPosts.filter((candidate) => {
-        const source = current.find((post) => post.id === candidate.sourcePostId);
-        if (!source) return false;
-        const duplicateEnd = addDaysToDate(candidate.date, 7);
-        return !current.some((post) =>
-          post.businessId === candidate.businessId
-          && post.project === candidate.project
-          && post.status !== 'skipped'
-          && isSameSequenceType(post.contentType, candidate.contentType)
-          && post.date > source.date
-          && post.date <= duplicateEnd
-        );
-      });
-      return additions.length ? [...current, ...additions] : current;
-    });
-    setActionInsight(null);
-    setVisibleMonth(new Date(`${proposals[0].date}T12:00:00`));
-    showActionMessage(proposals.length === 1
-      ? `Added suggested “${proposals[0].title}” to the calendar.`
-      : 'Added the missing suggested moves to the calendar.');
-  };
-
-  const handleBoostPost = (budget: number, runLength: number) => {
-    if (!selectedUserPost) return;
-    setUserPosts((current) => current.map((post) => (
-      post.id === selectedUserPost.id ? { ...post, distribution: 'paid', budget, runLength } : post
-    )));
-  };
-
-  const handleMakeMoreLikeIt = () => {
-    if (!selectedUserPost) return;
-    setUserPosts((current) => {
-      if (current.some((post) => post.sourcePostId === selectedUserPost.id && (!post.suggestionKind || post.suggestionKind === 'overperformer'))) return current;
-      return [...current, {
-        id: createPostId(),
-        businessId: selectedUserPost.businessId,
-        project: selectedUserPost.project,
-        contentType: selectedUserPost.contentType,
-        title: `More like: ${selectedUserPost.title}`,
-        date: addDaysToDate(selectedUserPost.date, 3),
-        platforms: selectedUserPost.platforms,
-        distribution: 'organic',
-        isSuggestion: true,
-        sourcePostId: selectedUserPost.id,
-        suggestionKind: 'overperformer',
-      }];
-    });
-  };
-
   return (
     <main className="calendar-page">
       <div className="calendar-shell">
@@ -902,7 +523,6 @@ function CalendarSurface() {
               key={business.id}
               onClick={() => {
                 setActiveBusinessId(business.id);
-                setSeasonalityPrompt(null);
                 setStatusMessage('');
                 closeSelectedPost();
                 closePostForm();
@@ -975,7 +595,7 @@ function CalendarSurface() {
                 const dateKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}`;
                 const dayEvents = dateKey === monthKey(visibleMonth)
                   ? calendarEvents.filter((event) => event.day === day.getDate())
-                  : activeBusinessPosts.filter((post) => post.date === formatDateInput(day)).map(postAsEvent);
+                  : [];
                 const isOutside = day.getMonth() !== visibleMonth.getMonth();
                 const isToday = `${dateKey}-${String(day.getDate()).padStart(2, '0')}` === todayKey;
 
@@ -990,24 +610,13 @@ function CalendarSurface() {
                           <>
                             {event.title}
                             {event.detail && <small>{event.detail}</small>}
-                            {event.bestTime && (
-                              <span
-                                aria-label={`${event.bestTime.label}. ${event.bestTime.detail}`}
-                                className={`event-best-time event-best-time-${event.bestTime.mode}`}
-                                title={`${event.bestTime.label}. ${event.bestTime.detail}`}
-                              >
-                                {event.bestTime.compactLabel}
-                              </span>
-                            )}
-                            {event.status && <span className={`event-post-status event-post-status-${event.status}`}>{event.status}</span>}
-                            {event.hasConversionGap && <span className="event-insight-tag">Conversion gap</span>}
                           </>
                         );
 
                         return event.id ? (
                           <button
-                            aria-label={`Open saved post: ${event.title}${event.bestTime ? `. ${event.bestTime.label}. ${event.bestTime.detail}` : ''}`}
-                            className={`event-chip event-chip-button event-${event.tone}${event.isSuggestion ? ' event-chip-suggestion' : ''}${event.isSequenceHighlight ? ' event-chip-sequence-highlight' : ''}`}
+                            aria-label={`Open saved post: ${event.title}`}
+                            className={`event-chip event-chip-button event-${event.tone}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
                             title="Select to view or delete this saved post"
@@ -1017,7 +626,7 @@ function CalendarSurface() {
                           </button>
                         ) : (
                           <div
-                            className={`event-chip event-${event.tone}${event.isSequenceHighlight ? ' event-chip-sequence-highlight' : ''}`}
+                            className={`event-chip event-${event.tone}`}
                             key={`${event.day}-${event.title}`}
                             title={event.detail}
                           >
@@ -1033,19 +642,26 @@ function CalendarSurface() {
           </section>
 
           <aside className="sidebar">
-            <AirtimeBalance
-              allocations={airtime.allocations}
-              getTone={(service) => getPostTone(service, activeBusiness)}
-              seasonMonthsByService={Object.fromEntries(activeBusiness.projects.map((service) => [
-                service,
-                serviceSeasons[serviceSeasonKey(activeBusiness.id, service)] ?? [],
-              ]))}
-              onSaveSeasonMonths={handleSaveSeasonMonths}
-              monthLabel={new Intl.DateTimeFormat('en-US', {
-                month: 'long',
-                year: 'numeric',
-              }).format(visibleMonth)}
-            />
+            <section className="insight-card tint">
+              <p className="insight-eyebrow">This month at a glance</p>
+              <h2>Keep the signal warm.</h2>
+              <p>{activeBusiness.focus}</p>
+              <div className="focus-list">
+                {activeBusiness.palette.map((item) => (
+                  <div className="focus-row" key={item.label}>
+                    <span className={`focus-dot ${item.tone}`} />
+                    {item.label}
+                  </div>
+                ))}
+              </div>
+              <div className="heartbeat">
+                <span className="heartbeat-mark"><Activity size={14} strokeWidth={1.8} /></span>
+                <div>
+                  <strong>Weekly heartbeat</strong>
+                  <span>One check-in keeps every service moving.</span>
+                </div>
+              </div>
+            </section>
 
             <section className="insight-card">
               <p className="legend-title">Content threads</p>
@@ -1306,20 +922,6 @@ function CalendarSurface() {
                 <div className={`post-detail-project event-${getPostTone(selectedUserPost.project, activeBusiness)}`}>
                   {selectedUserPost.project}
                 </div>
-                {selectedBestTime && (
-                  <section
-                    aria-label="Best time recommendation"
-                    className={`post-best-time post-best-time-${selectedBestTime.mode}`}
-                  >
-                    <span className="post-best-time-label">{selectedBestTime.label}</span>
-                    <p>{selectedBestTime.detail}</p>
-                  </section>
-                )}
-                {selectedUserPost.status && (
-                  <p className={`post-detail-status post-detail-status-${selectedUserPost.status}`}>
-                    {selectedUserPost.status === 'completed' ? 'Completed' : 'Skipped'}
-                  </p>
-                )}
                 <div className="post-detail-list">
                   <div>
                     <span>Date</span>
@@ -1348,70 +950,7 @@ function CalendarSurface() {
                     <p>{contentTypeRationales[selectedUserPost.contentType]}</p>
                   </section>
                 )}
-                <PostPerformanceForm
-                  key={selectedUserPost.id}
-                  performance={selectedUserPost.performance}
-                  postedTime={selectedUserPost.postedTime}
-                  onSave={handleSaveResults}
-                />
-                {selectedConversionAssessment && selectedConversionAssessment.status !== 'detected' && (
-                  <section aria-label="Conversion gap status" className="conversion-gap-hint">
-                    <strong>Conversion gap</strong>
-                    <p>{selectedUserPost.suggestionKind === 'trust' && selectedConversionAssessment.status === 'needs-results'
-                      ? 'This suggested testimonial is the trust step. Add its views, saves, and bookings to see whether a lower-barrier post is needed.'
-                      : selectedUserPost.suggestionKind === 'trust' && selectedConversionAssessment.status === 'not-detected'
-                        ? 'This testimonial did not meet the low-booking ratio, so no lower-barrier post was added.'
-                        : conversionGapStatusText(selectedConversionAssessment, selectedUserPost.project)}</p>
-                  </section>
-                )}
-                {selectedConversionGap && (
-                  <ConversionGapRecommendation
-                    service={selectedUserPost.project}
-                    result={selectedConversionGap}
-                    stage={selectedUserPost.suggestionKind === 'trust'
-                      ? 'offer'
-                      : selectedUserPost.suggestionKind === 'offer' ? 'complete' : 'trust'}
-                    scheduledDate={selectedUserPost.suggestionKind === 'trust'
-                      ? selectedOfferSuggestion && formatPostDate(selectedOfferSuggestion.date)
-                      : selectedTrustSuggestion && formatPostDate(selectedTrustSuggestion.date)}
-                    laterOfferDate={selectedUserPost.suggestionKind !== 'trust' && selectedOfferSuggestion
-                      ? formatPostDate(selectedOfferSuggestion.date)
-                      : undefined}
-                  />
-                )}
-                {selectedOverperformer && (
-                  <OverperformerRecommendation
-                    key={`overperformer-${selectedUserPost.id}`}
-                    service={selectedUserPost.project}
-                    result={selectedOverperformer}
-                    boost={selectedUserPost.distribution === 'paid'
-                      ? { budget: selectedUserPost.budget, runLength: selectedUserPost.runLength }
-                      : undefined}
-                    hasFollowUp={hasSuggestedFollowUp}
-                    followUpDate={formatPostDate(addDaysToDate(selectedUserPost.date, 3))}
-                    onBoost={handleBoostPost}
-                    onSuggest={handleMakeMoreLikeIt}
-                  />
-                )}
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
-                <div className="post-status-actions" aria-label="Post status">
-                  <button
-                    className="post-status-complete"
-                    disabled={selectedUserPost.status === 'completed'}
-                    onClick={() => handlePostStatus('completed')}
-                    type="button"
-                  >
-                    Mark complete
-                  </button>
-                  <button
-                    className="post-status-skipped"
-                    disabled={selectedUserPost.status === 'skipped'}
-                    onClick={() => handlePostStatus('skipped')}
-                    type="button"
-                  >
-                    Mark skipped
-                  </button>
-                </div>
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
                   <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>
@@ -1419,21 +958,6 @@ function CalendarSurface() {
               </div>
             </section>
           </div>
-        )}
-        {actionInsight && (
-          <ActionInsightPopup
-            insight={actionInsight}
-            onAdd={handleAddInsightSuggestion}
-            onSkip={() => setActionInsight(null)}
-          />
-        )}
-        {!actionInsight && seasonalityPrompt?.businessId === activeBusiness.id && (
-          <SeasonalitySuggestionPopup
-            service={seasonalityPrompt.service}
-            finding={seasonalityPrompt}
-            onAccept={handleAcceptSeasonality}
-            onAskNextSeason={handleAskNextSeason}
-          />
         )}
       </div>
     </main>
