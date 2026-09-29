@@ -2,8 +2,10 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 're
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -22,6 +24,7 @@ type CalendarEvent = {
   detail?: string;
   tone: EventTone;
   id?: string;
+  bestTime?: BestTimeRecommendation;
 };
 
 type Distribution = 'organic' | 'paid';
@@ -34,8 +37,10 @@ type UserPost = {
   contentType: string;
   title: string;
   date: string;
+  postedTime?: string;
   platforms: Platform[];
   distribution: Distribution;
+  performance?: PostPerformance;
   budget?: number;
   runLength?: number;
 };
@@ -289,10 +294,24 @@ function isUserPost(value: unknown): value is UserPost {
       && typeof post.contentType === 'string'
       && typeof post.title === 'string'
       && typeof post.date === 'string'
+      && (post.postedTime === undefined
+        || (typeof post.postedTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(post.postedTime)))
+      && (post.performance === undefined || isPostPerformance(post.performance))
       && Array.isArray(post.platforms)
       && post.platforms.every((platform) => typeof platform === 'string' && platform.trim().length > 0)
       && (post.distribution === 'organic' || post.distribution === 'paid'),
   );
+}
+
+function isPostPerformance(value: unknown): value is PostPerformance {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const performance = value as Partial<PostPerformance>;
+  return (['views', 'saves', 'bookings'] as const).every((metric) => {
+    const count = performance[metric];
+    return count === undefined || (
+      typeof count === 'number' && Number.isSafeInteger(count) && count >= 0
+    );
+  });
 }
 
 function readUserPosts() {
@@ -355,15 +374,25 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const selectedBestTime = selectedUserPost
+    ? getBestTimeRecommendation(
+      selectedUserPost.businessId,
+      selectedUserPost.project,
+      selectedUserPost.platforms,
+      userPosts,
+    )
+    : null;
+  const postAsEvent = (post: UserPost): CalendarEvent => ({
+    id: post.id,
+    day: Number(post.date.slice(-2)),
+    title: post.title,
+    detail: getPostDetail(post),
+    tone: getPostTone(post.project, activeBusiness),
+    bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts),
+  });
   const calendarEvents = [
     ...events,
-    ...monthPosts.map((post) => ({
-      id: post.id,
-      day: Number(post.date.slice(-2)),
-      title: post.title,
-      detail: getPostDetail(post),
-      tone: getPostTone(post.project, activeBusiness),
-    })),
+    ...monthPosts.map(postAsEvent),
   ];
   const todayKey = '2026-09-10';
 
@@ -513,6 +542,17 @@ function CalendarSurface() {
     showActionMessage(`Deleted “${selectedUserPost.title}” from the calendar.`);
   };
 
+  const handleSaveResults = (performance: PostPerformance, postedTime?: string) => {
+    if (!selectedUserPost) return;
+
+    setUserPosts((current) => current.map((post) =>
+      post.id === selectedUserPost.id
+        ? { ...post, performance, postedTime: postedTime || undefined }
+        : post
+    ));
+    setSelectedPostId(null);
+  };
+
   return (
     <main className="calendar-page">
       <div className="calendar-shell">
@@ -610,12 +650,21 @@ function CalendarSurface() {
                           <>
                             {event.title}
                             {event.detail && <small>{event.detail}</small>}
+                            {event.bestTime && (
+                              <span
+                                aria-label={`${event.bestTime.label}. ${event.bestTime.detail}`}
+                                className={`event-best-time event-best-time-${event.bestTime.mode}`}
+                                title={`${event.bestTime.label}. ${event.bestTime.detail}`}
+                              >
+                                {event.bestTime.compactLabel}
+                              </span>
+                            )}
                           </>
                         );
 
                         return event.id ? (
                           <button
-                            aria-label={`Open saved post: ${event.title}`}
+                            aria-label={`Open saved post: ${event.title}${event.bestTime ? `. ${event.bestTime.label}. ${event.bestTime.detail}` : ''}`}
                             className={`event-chip event-chip-button event-${event.tone}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
@@ -922,6 +971,15 @@ function CalendarSurface() {
                 <div className={`post-detail-project event-${getPostTone(selectedUserPost.project, activeBusiness)}`}>
                   {selectedUserPost.project}
                 </div>
+                {selectedBestTime && (
+                  <section
+                    aria-label="Best time recommendation"
+                    className={`post-best-time post-best-time-${selectedBestTime.mode}`}
+                  >
+                    <span className="post-best-time-label">{selectedBestTime.label}</span>
+                    <p>{selectedBestTime.detail}</p>
+                  </section>
+                )}
                 <div className="post-detail-list">
                   <div>
                     <span>Date</span>
@@ -944,6 +1002,12 @@ function CalendarSurface() {
                     </strong>
                   </div>
                 </div>
+                <PostPerformanceForm
+                  key={selectedUserPost.id}
+                  performance={selectedUserPost.performance}
+                  postedTime={selectedUserPost.postedTime}
+                  onSave={handleSaveResults}
+                />
                 {contentTypeRationales[selectedUserPost.contentType] && (
                   <section aria-labelledby="post-rationale-title" className="post-rationale">
                     <h3 id="post-rationale-title">Why this move</h3>

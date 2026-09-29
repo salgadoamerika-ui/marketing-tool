@@ -21,3 +21,4 @@ timeoutMs = 20000
 
 [nix]
 packages = ["nano"]
+channel = "stable-25_05"
