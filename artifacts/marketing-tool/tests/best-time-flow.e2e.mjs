@@ -330,12 +330,12 @@ async function saveResults(evaluate, post) {
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
     };
-    setValue(inputs[0], ${jsString(post.views)});
+    setValue(inputs[0], ${jsString(post.views ?? '')});
     setValue(inputs[1], '0');
     setValue(inputs[2], '0');
     const time = form.querySelector('input[type=\"time\"]');
     if (!time) throw new Error('Actual posting time field is missing.');
-    setValue(time, ${jsString(post.postedTime)});
+    setValue(time, ${jsString(post.postedTime ?? '')});
     form.querySelector('button[type=\"submit\"]').click();
     return true;
   })()`);
@@ -346,7 +346,11 @@ async function saveResults(evaluate, post) {
   await dismissInsight(evaluate);
   const persistedPost = await waitFor(async () => {
     const posts = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
-    return posts.find((item) => item.title === post.title && item.postedTime === post.postedTime);
+    return posts.find((item) =>
+      item.title === post.title
+      && item.postedTime === (post.postedTime || undefined)
+      && item.performance?.views === post.views
+    );
   }, `saved metrics and posting time for ${post.title}`);
   assert.equal(persistedPost.performance.views, post.views);
 }
@@ -366,7 +370,8 @@ async function assertCalendarMode(evaluate, post, mode) {
 const learnedPosts = [
   { service: 'Tax planning', date: '2026-10-06', postedTime: '09:00', views: 600, title: 'Tax timing sample 1' },
   { service: 'Tax planning', date: '2026-10-13', postedTime: '10:30', views: 500, title: 'Tax timing sample 2' },
-  { service: 'Tax planning', date: '2026-10-20', postedTime: '11:45', views: 400, title: 'Tax timing sample 3' },
+  { service: 'Tax planning', date: '2026-10-01', postedTime: '18:00', views: 400, title: 'Tax timing sample 3' },
+  { service: 'Tax planning', date: '2026-10-08', postedTime: '19:00', views: 300, title: 'Tax timing sample 4' },
 ];
 const isolatedServicePosts = [
   { service: 'Insurance', date: '2026-10-01', postedTime: '18:00', views: 900, title: 'Insurance timing sample 1' },
@@ -408,7 +413,10 @@ test('learned timing stays business- and service-specific through saved results 
     for (const [index, post] of learnedPosts.entries()) {
       await createPost(evaluate, post);
       await openPost(evaluate, post);
-      assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
+      const beforeSaveExpected = index < 3
+        ? 'Best time · suggested'
+        : 'Best time · from your results: Tuesday mornings';
+      assert.equal(await readRecommendation(evaluate), beforeSaveExpected);
       await saveResults(evaluate, post);
       await openPost(evaluate, post);
       const expected = index < 2
@@ -418,6 +426,24 @@ test('learned timing stays business- and service-specific through saved results 
       assert.equal(await readRecommendation(evaluate), expected);
       await assertCalendarMode(evaluate, post, index < 2 ? 'suggested' : 'learned');
     }
+
+    const correctedPost = { ...learnedPosts[1], views: 250 };
+    await openPost(evaluate, learnedPosts[1]);
+    await saveResults(evaluate, correctedPost);
+    await openPost(evaluate, learnedPosts[1]);
+    assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
+    await clickButtonText(evaluate, 'Keep post');
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after correcting saved results');
+    await openPost(evaluate, learnedPosts[0]);
+    assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
+    await assertCalendarMode(evaluate, learnedPosts[0], 'learned');
+
+    await openPost(evaluate, learnedPosts[3]);
+    await saveResults(evaluate, { ...learnedPosts[3], postedTime: undefined });
+    await openPost(evaluate, learnedPosts[3]);
+    assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
+    await assertCalendarMode(evaluate, learnedPosts[3], 'suggested');
 
     await selectBusiness(evaluate, 'Northline Financial');
     for (const [index, post] of secondBusinessPosts.entries()) {
@@ -451,7 +477,7 @@ test('learned timing stays business- and service-specific through saved results 
 
     await selectBusiness(evaluate, 'Mosaic Legal');
     await openPost(evaluate, learnedPosts[2]);
-    assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Tuesday mornings');
+    assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
     await clickButtonText(evaluate, 'Keep post');
     await selectBusiness(evaluate, 'Northline Financial');
     await openPost(evaluate, secondBusinessPosts[2]);
@@ -466,11 +492,27 @@ test('learned timing stays business- and service-specific through saved results 
       const posts = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
       const savedMeasuredPosts = posts.filter((post) => measuredTitles.has(post.title));
       const allResultsSaved = savedMeasuredPosts.every((post) =>
-        Number.isSafeInteger(post.performance?.views) && typeof post.postedTime === 'string'
+        Number.isSafeInteger(post.performance?.views)
       );
-      return savedMeasuredPosts.length === 9 && allResultsSaved ? savedMeasuredPosts.length : false;
-    }, 'all nine measured posts and results to persist');
-    assert.equal(savedCount, 9);
+      return savedMeasuredPosts.length === allMeasuredPosts.length && allResultsSaved
+        ? savedMeasuredPosts.length
+        : false;
+    }, 'all measured posts and corrected results to persist');
+    assert.equal(savedCount, allMeasuredPosts.length);
+    const persistedCorrections = await evaluate(`(() => {
+      const titles = ${jsString([learnedPosts[1].title, learnedPosts[3].title])};
+      const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
+      return Object.fromEntries(posts
+        .filter((post) => titles.includes(post.title))
+        .map(({ title, performance, postedTime }) => [
+          title,
+          { views: performance?.views, postedTime: postedTime ?? null },
+        ]));
+    })()`);
+    assert.deepEqual(persistedCorrections, {
+      [learnedPosts[1].title]: { views: 250, postedTime: '10:30' },
+      [learnedPosts[3].title]: { views: 300, postedTime: null },
+    });
     const persistedBusinessAssignments = await evaluate(`(() => {
       const titles = ${jsString([...measuredTitles])};
       const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
@@ -485,7 +527,7 @@ test('learned timing stays business- and service-specific through saved results 
     ]));
 
     await openPost(evaluate, learnedPosts[2]);
-    assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Tuesday mornings');
+    assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
     await clickButtonText(evaluate, 'Keep post');
     await selectBusiness(evaluate, 'Northline Financial');
     await openPost(evaluate, secondBusinessPosts[2]);
