@@ -32,3 +32,9 @@ Do not show the user the content rhythm or internal posting-frequency rules. Kee
 **Why:** The user explicitly asked to hide the content rhythm and gave final-two-weeks paid-booking intent as an example of the insight they want.
 
 **How to apply:** Explain why a move helps someone decide or book. Campaign timing is meaningful context; cadence, allocation rules and hidden performance counters are not user-facing insights. Do not invent performance conclusions when the evidence gate is unmet.
+
+Campaign additions accumulate through the deadline. Keep completed, measured, published, and past posts unchanged. A future approved generated post may move earlier when the user adds an updated recommendation; continue offering new steps only within the Campaign window.
+
+**Why:** The user explicitly asked that approving new closing posts never erase completed or past Campaign posts, while earlier-due approved steps can still move up and new steps can fill the remaining deadline window.
+
+**How to apply:** Keep historical entries out of Campaign replacement candidates. Limit earlier moves to still-upcoming, unmeasured approved plans, and keep every added Campaign date on or before its deadline.

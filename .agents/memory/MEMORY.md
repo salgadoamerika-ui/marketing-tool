@@ -4,5 +4,5 @@
 - [Airtime balance intent](airtime-balance-intent.md) — at-a-glance bars reflect monthly calendar volume, not aggregate results or recommended weekly capacity.
 - [Conversion service pattern](conversion-service-pattern.md) — last-three booking-to-views trend; newest-post flag, trust before offers, and recovery resets the episode.
 - [Invisible flat-post ladder](flat-post-ladder.md) — hidden weak-view streak shapes retry, fresh approach and monthly pacing; recovery restores ordinary suggestions.
-- [Service mode intent](service-mode-intent.md) — distinct lifecycles and Campaign priority; cadence stays internal, while insights explain strategy and real results.
+- [Service mode intent](service-mode-intent.md) — distinct lifecycles, priority, and additive Campaign history through its deadline; cadence stays internal.
 - [Browser readiness](browser-readiness.md) — prove reloads use a new document; use hit-tested pointer clicks, not DOM clicks, to verify popup controls.

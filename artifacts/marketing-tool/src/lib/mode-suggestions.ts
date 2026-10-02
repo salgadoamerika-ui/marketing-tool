@@ -75,9 +75,9 @@ export function applyModeSuggestions(
 
   const closingPreview = service.mode === 'campaign' && getCampaignPhase(service, cursor) === 'closing';
   const canMoveApprovedSuggestion = (item: InsightPost) =>
-    item.businessId === service.businessId && item.project === service.name
-    && item.schedulingStatus === 'approved-suggestion'
-    && item.status !== 'skipped' && item.performance === undefined && item.date > today;
+    service.mode === 'evergreen' && item.businessId === service.businessId && item.project === service.name
+    && item.schedulingStatus === 'approved-suggestion' && item.status !== 'skipped'
+    && item.performance === undefined && item.date > today;
   for (let index = 0; index < (quiet ? 1 : closingPreview ? 3 : 2); index += 1) {
     if (service.mode === 'campaign' && cursor > service.endDate) break;
     const phase = service.mode === 'campaign' ? getCampaignPhase(service, cursor) : undefined;
@@ -122,10 +122,12 @@ export function applyModeSuggestions(
       + (service.mode === 'campaign' && postingPhase === 'closing' ? ` · closes ${service.endDate}` : '');
     const proposal: InsightProposal = { kind: floor ? 'maintenance' : 'automatic',
       triggerPostId: post.id, sourcePostId: post.id, contentType, title, date };
-    // Only revise this source's unposted, generated suggestions. Manual posts,
-    // recorded results and other sources' plans are not ours to rewrite.
+    // Manual posts, measured results, and passed dates are ineligible. Campaign
+    // plans may move earlier, but suggestions must not erase Campaign history.
     const outdated = working.filter((item) => item.businessId === service.businessId && item.project === service.name
-      && (item.sourcePostId === post.id || (item.contentType === contentType && item.date !== date))
+      && (service.mode === 'campaign'
+        ? item.date > date && (item.sourcePostId === post.id || item.contentType === contentType)
+        : item.sourcePostId === post.id || (item.contentType === contentType && item.date !== date))
       && item.schedulingStatus === 'approved-suggestion'
       && item.status !== 'skipped' && item.performance === undefined && item.date > today
       && (item.contentType !== contentType

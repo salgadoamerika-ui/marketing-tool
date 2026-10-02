@@ -51,6 +51,43 @@ test('Campaign suggestions never precede the start or exceed the deadline, inclu
   assert.equal(getPacedSuggestionDate(campaign, [campaign], [], '2026-11-29', '2026-11-30', ['2026-11-30']), undefined);
 });
 
+test('Campaign additions preserve completed and past posts while moving future approved posts earlier', () => {
+  const sourcePost = source(campaign.name, '2026-11-20', {
+    id: 'closing-source', contentType: 'Announcement',
+  });
+  const published = {
+    ...sourcePost, id: 'completed-post', contentType: 'Testimonial', title: 'Completed trust post',
+    date: '2026-11-15', schedulingStatus: 'published', performance: { views: 640, saves: 31, bookings: 8 },
+  };
+  const pastSuggestion = {
+    ...sourcePost, id: 'past-approved-post', contentType: 'Inside look', title: 'Earlier approved post',
+    date: '2026-11-19', schedulingStatus: 'approved-suggestion', sourcePostId: sourcePost.id,
+  };
+  const futureSuggestions = [
+    {
+      ...sourcePost, id: 'future-one', contentType: 'Book now', title: 'Future booking post',
+      date: '2026-11-26', schedulingStatus: 'approved-suggestion', sourcePostId: sourcePost.id,
+    },
+    {
+      ...sourcePost, id: 'future-two', contentType: 'Inside look', title: 'Future experience post',
+      date: '2026-11-28', schedulingStatus: 'approved-suggestion', sourcePostId: sourcePost.id,
+    },
+  ];
+  const posts = [published, pastSuggestion, sourcePost, ...futureSuggestions];
+  const before = JSON.stringify(posts);
+  const plan = buildActionInsight('logged', sourcePost, posts, '2026-11-21', [], [campaign]);
+
+  assert.equal(JSON.stringify(posts), before, 'Building the closing suggestions cannot change saved posts.');
+  assert.equal(plan.proposals[0].contentType, 'Pricing');
+  assert.equal(plan.proposals[0].date, '2026-11-23');
+  assert.ok(plan.proposals.every((proposal) => proposal.date <= campaign.endDate));
+  assert.ok(plan.proposals.some((proposal) => proposal.replaces?.postId === 'future-one'));
+  assert.ok(plan.proposals.some((proposal) => proposal.replaces?.postId === 'future-two'));
+  assert.ok(!plan.proposals.some((proposal) => proposal.replaces?.postId === published.id));
+  assert.ok(!plan.proposals.some((proposal) => proposal.replaces?.postId === pastSuggestion.id));
+  assert.deepEqual(plan.proposals.map((proposal) => proposal.contentType), ['Pricing', 'Book now', 'Last chance']);
+});
+
 test('Healthy Services sustain a weekly rotation without a ramp or an end date', () => {
   const moves = insight(service, '2029-01-01').proposals;
   assert.deepEqual(moves.map((p) => p.date), ['2029-01-08', '2029-01-15']);

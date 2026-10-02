@@ -220,6 +220,131 @@ test('an approved planned post moves to the newly suggested date only after Add'
   }
 });
 
+test('Campaign Add keeps completed posts and builds approved closing posts up to the deadline', { timeout: 120000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const dateAfter = (date, days) => {
+    const value = new Date(`${date}T12:00:00`);
+    value.setDate(value.getDate() + days);
+    return value.toISOString().slice(0, 10);
+  };
+  let today;
+  let campaign;
+  let source;
+  let completed;
+  let pastApproved;
+  let futurePosts;
+  let startingPosts;
+  const readPosts = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'Campaign approval test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'Campaign calendar');
+    today = await evaluate(`(() => {
+      const day = new Date();
+      return [day.getFullYear(), String(day.getMonth() + 1).padStart(2, '0'), String(day.getDate()).padStart(2, '0')].join('-');
+    })()`);
+    campaign = { startDate: dateAfter(today, -20), endDate: dateAfter(today, 10) };
+    source = {
+      id: 'campaign-history-source', businessId: 'mosaic', project: 'Insurance',
+      title: 'Final-week announcement', date: today, contentType: 'Announcement',
+      platforms: ['Instagram'], distribution: 'organic',
+    };
+    completed = {
+      ...source, id: 'campaign-completed-post', title: 'Completed trust post', contentType: 'Testimonial',
+      date: dateAfter(today, -2), schedulingStatus: 'published',
+      performance: { views: 640, saves: 31, bookings: 8 },
+    };
+    pastApproved = {
+      ...source, id: 'campaign-past-approved', title: 'Earlier approved post', contentType: 'Inside look',
+      date: dateAfter(today, -1), schedulingStatus: 'approved-suggestion', sourcePostId: source.id,
+    };
+    futurePosts = [
+      {
+        ...source, id: 'campaign-future-one', title: 'Future booking post', contentType: 'Book now',
+        date: dateAfter(today, 4), schedulingStatus: 'approved-suggestion', sourcePostId: source.id,
+      },
+      {
+        ...source, id: 'campaign-future-two', title: 'Future experience post', contentType: 'Inside look',
+        date: dateAfter(today, 6), schedulingStatus: 'approved-suggestion', sourcePostId: source.id,
+      },
+    ];
+    startingPosts = [completed, pastApproved, source, ...futurePosts];
+    const services = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.services') ?? '[]')");
+    const insurance = services.find((item) => item.businessId === source.businessId && item.name === source.project);
+    assert.ok(insurance, 'The test calendar should contain the Insurance service.');
+    const campaignService = { ...insurance, mode: 'campaign', ...campaign };
+    const savedServices = [...services.filter((item) => item.id !== insurance.id), campaignService];
+    await evaluate(`localStorage.setItem('marketing-tool.services', ${jsString(JSON.stringify(savedServices))});
+      localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify(startingPosts))})`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'seeded Campaign calendar');
+
+    await openPost(evaluate, source);
+    await clickButtonText(evaluate, 'Suggest next posts');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-add'))"), 'closing suggestions');
+    const initial = await readPosts(evaluate);
+    assert.deepEqual(initial, startingPosts, 'Reviewing the suggestions must leave every saved post unchanged.');
+    await browser.clickVisible('.action-insight-add');
+    await waitFor(async () => {
+      const saved = await readPosts(evaluate);
+      return saved.find((post) => post.id === futurePosts[0].id)?.date === dateAfter(today, 2)
+        && saved.find((post) => post.id === futurePosts[1].id)?.date < futurePosts[1].date
+        && saved.some((post) => post.contentType === 'Last chance' && post.sourcePostId === source.id);
+    }, 'Campaign suggestions applied without losing earlier posts');
+
+    let saved = await readPosts(evaluate);
+    for (const history of [completed, pastApproved]) {
+      const kept = saved.filter((post) => post.id === history.id);
+      assert.equal(kept.length, 1, `${history.id} must not be deleted or duplicated.`);
+      assert.deepEqual(
+        { title: kept[0].title, contentType: kept[0].contentType, date: kept[0].date,
+          schedulingStatus: kept[0].schedulingStatus, performance: kept[0].performance },
+        { title: history.title, contentType: history.contentType, date: history.date,
+          schedulingStatus: history.schedulingStatus, performance: history.performance },
+        `${history.id} must keep its completed or past details.`,
+      );
+    }
+    for (const future of futurePosts) {
+      assert.equal(saved.filter((post) => post.id === future.id).length, 1,
+        'An approved future post should move in place rather than duplicate.');
+    }
+    let approvedCampaignPosts = saved.filter((post) => post.businessId === source.businessId
+      && post.project === source.project && post.schedulingStatus === 'approved-suggestion' && post.date >= today);
+    assert.ok(approvedCampaignPosts.length >= 3);
+    assert.ok(approvedCampaignPosts.every((post) => post.date <= campaign.endDate),
+      'Campaign suggestions must stop at the deadline.');
+
+    const lastChance = saved.find((post) => post.sourcePostId === source.id && post.contentType === 'Last chance');
+    assert.ok(lastChance);
+    await openPost(evaluate, lastChance);
+    await clickButtonText(evaluate, 'Suggest next posts');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-add'))"), 'remaining deadline dates');
+    await browser.clickVisible('.action-insight-add');
+    await waitFor(async () => (await readPosts(evaluate)).filter((post) => post.businessId === source.businessId
+      && post.project === source.project && post.schedulingStatus === 'approved-suggestion' && post.date >= today)
+      .length > approvedCampaignPosts.length,
+    'additional Campaign posts added through the deadline');
+    saved = await readPosts(evaluate);
+    approvedCampaignPosts = saved.filter((post) => post.businessId === source.businessId
+      && post.project === source.project && post.schedulingStatus === 'approved-suggestion' && post.date >= today);
+    assert.ok(approvedCampaignPosts.every((post) => post.date <= campaign.endDate));
+    assert.equal(saved.filter((post) => post.id === completed.id).length, 1);
+    assert.equal(saved.filter((post) => post.id === pastApproved.id).length, 1);
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
 test('season month settings stay in the Month at a glance bubble and persist independently for every service', { timeout: 90000 }, async () => {
   const port = await getFreePort();
   const origin = `http://127.0.0.1:${port}`;
