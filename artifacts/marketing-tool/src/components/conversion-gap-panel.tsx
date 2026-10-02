@@ -7,19 +7,25 @@ export function ConversionGapPanel({ review, onAdd }: { review: ConversionReview
   const { assessment, subject, proposal, stage } = review;
   if (assessment.status !== 'detected') return null;
   const { result } = assessment;
+  const message = stage === 'trust'
+    ? 'People are interested, but bookings aren’t following. Something in the booking path isn’t working yet. Try a client story to build trust.'
+    : stage === 'waiting-trust'
+      ? 'Your client story is on the calendar. Let it run, then record its results before deciding whether to change the offer.'
+      : stage === 'offer'
+        ? 'The client story didn’t bring in more bookings. Lower the barrier with a clear referral offer.'
+        : 'The referral offer is on the calendar. Keep tracking bookings; this alert clears when bookings improve across your recent posts.';
   return (
     <section className="conversion-gap-panel conversion-gap-detected" aria-label="Conversion gap check" aria-live="polite">
-      <h3><HeartHandshake size={18} aria-hidden="true" /> Conversion gap · {subject.project}</h3>
-      <p>
-        Across the latest 3 measured posts: {result.views.toLocaleString()} views,{' '}
-        {result.saves.toLocaleString()} saves, and {result.bookings.toLocaleString()} bookings.
-        {' '}{(result.bookingRate * 100).toFixed(2)}% of views converted to bookings, below 2%;
-        {' '}{result.lowConversionPosts}/3 posts show low conversion. People are interested, but few are booking.
-      </p>
-      {stage === 'trust' ? <p>Interest isn’t converting — let’s try proof first.</p>
-        : stage === 'waiting-trust' ? <p>Your trust post is on the calendar. Let it run and record its results before considering an offer.</p>
-          : stage === 'offer' ? <p>Trust didn’t move it — time to lower the barrier with a referral offer.</p>
-            : <p>Your referral offer is already on the calendar. Keep recording results; this flag clears when the latest three posts recover.</p>}
+      <h3><HeartHandshake size={18} aria-hidden="true" /> {subject.project}: bookings aren’t following interest</h3>
+      <p className="conversion-gap-message">{message}</p>
+      <div aria-label="Your numbers from the latest three posts" className="conversion-gap-metrics">
+        <span className="conversion-gap-metrics-label">Your numbers · last 3 posts</span>
+        <dl>
+          <div><dt>Views</dt><dd>{result.views.toLocaleString()}</dd></div>
+          <div><dt>Saves</dt><dd>{result.saves.toLocaleString()}</dd></div>
+          <div><dt>Bookings</dt><dd>{result.bookings.toLocaleString()}</dd></div>
+        </dl>
+      </div>
       {proposal && (
         <>
           <strong className="conversion-gap-next">{proposal.kind === 'trust' ? 'Step 1 · Build trust' : 'Step 2 · Lower the barrier'}: {proposal.title}</strong>

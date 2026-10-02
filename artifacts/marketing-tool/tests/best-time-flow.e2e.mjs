@@ -662,7 +662,8 @@ test('service trend marks only newest measured post, offers trust then referral,
     await openPost(evaluate, posts[2]);
     await saveResults(evaluate, { ...posts[2], views: 300, saves: 10, bookings: 1 }, { keepOpen: true });
     await waitFor(() => evaluate("Boolean(document.querySelector('.conversion-gap-detected'))"), 'gap after third result');
-    assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /latest 3 measured posts: 900 views/);
+    assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /Your numbers · last 3 posts/);
+    assert.match(await evaluate("document.querySelector('.conversion-gap-message').textContent"), /Something in the booking path isn’t working yet/);
     assert.equal(await evaluate("document.querySelectorAll('.event-conversion-gap').length"), 1);
     assert.match(await evaluate("document.querySelector('.event-conversion-gap').closest('button').textContent"), /Conversion check third/);
     assert.equal((await readPosts(evaluate)).length, 3, 'Detection must not silently add a calendar post.');
@@ -692,7 +693,7 @@ test('service trend marks only newest measured post, offers trust then referral,
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after trust runs');
     await openPost(evaluate, trust);
-    await waitFor(() => evaluate("document.querySelector('.conversion-gap-panel')?.textContent.includes('Trust didn’t move it')"), 'offer after weak testimonial');
+    await waitFor(() => evaluate("document.querySelector('.conversion-gap-panel')?.textContent.includes('didn’t bring in more bookings')"), 'offer after weak testimonial');
     await click(evaluate, '.conversion-gap-actions .save-post-button');
     const offer = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'offer'), 'approved referral offer');
     assert.equal(offer.sourcePostId, 'third');
