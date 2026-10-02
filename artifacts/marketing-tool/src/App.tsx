@@ -3,11 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { MonthlyAirtimeBars } from '@/components/monthly-airtime-bars';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
 import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
+import { getMonthlyAirtime } from '@/lib/monthly-airtime';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -22,6 +24,7 @@ type EventTone = 'rose' | 'lavender' | 'sage' | 'sand' | 'blue' | 'blush' | 'mut
 
 type CalendarEvent = {
   day: number;
+  project?: string;
   title: string;
   detail?: string;
   tone: EventTone;
@@ -74,12 +77,6 @@ const userPostsStorageKey = 'marketing-tool.user-posts';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
-const glanceMetricDefinitions: Array<{ key: keyof PostPerformance; label: string }> = [
-  { key: 'views', label: 'Views' },
-  { key: 'saves', label: 'Saves' },
-  { key: 'bookings', label: 'Bookings' },
-];
-const performanceNumberFormatter = new Intl.NumberFormat('en-US');
 const contentTypeRationales: Record<string, string> = {
   Announcement: 'Opens the campaign. You lead with awareness before asking for anything.',
   'Inside look': "You've announced — now show them inside to turn interest into desire.",
@@ -104,33 +101,33 @@ const businessData: Business[] = [
     ],
     events: {
       '2026-08': [
-        { day: 4, title: 'Tax planning: common filing errors', detail: 'Post', tone: 'sand' },
-        { day: 8, title: 'Immigration: document checklist', detail: 'Inside look', tone: 'blue' },
-        { day: 13, title: 'Fall programs: save the date', detail: 'Announcement', tone: 'rose' },
-        { day: 18, title: 'Divorce: first conversation', detail: 'Insight', tone: 'lavender' },
-        { day: 25, title: 'Insurance review: what changed?', detail: 'Book now', tone: 'sage' },
+        { day: 4, project: 'Tax planning', title: 'Tax planning: common filing errors', detail: 'Post', tone: 'sand' },
+        { day: 8, project: 'Immigration', title: 'Immigration: document checklist', detail: 'Inside look', tone: 'blue' },
+        { day: 13, project: 'Fall programs', title: 'Fall programs: save the date', detail: 'Announcement', tone: 'rose' },
+        { day: 18, project: 'Divorce', title: 'Divorce: first conversation', detail: 'Insight', tone: 'lavender' },
+        { day: 25, project: 'Insurance', title: 'Insurance review: what changed?', detail: 'Book now', tone: 'sage' },
       ],
       '2026-09': [
-        { day: 2, title: 'Fall programs open', detail: 'Announcement', tone: 'rose' },
-        { day: 4, title: 'Tax planning for a new quarter', detail: 'Insight', tone: 'sand' },
-        { day: 7, title: 'Divorce: the first practical step', detail: 'Inside look', tone: 'lavender' },
-        { day: 9, title: 'Meet the fall team', detail: 'Inside look', tone: 'rose' },
-        { day: 11, title: 'Immigration: what to bring', detail: 'Insight', tone: 'blue' },
-        { day: 14, title: 'Insurance review week', detail: 'Book now', tone: 'sage' },
-        { day: 16, title: 'Fall programs: early places', detail: 'Proof', tone: 'blush' },
-        { day: 18, title: 'Tax planning: a cleaner close', detail: 'Book now', tone: 'sand' },
-        { day: 21, title: 'Divorce consults, explained', detail: 'Announcement', tone: 'lavender' },
-        { day: 23, title: 'Fall programs: behind the scenes', detail: 'Inside look', tone: 'rose' },
-        { day: 25, title: 'Immigration clinic', detail: 'Book now', tone: 'blue' },
-        { day: 28, title: 'Insurance questions answered', detail: 'Recap', tone: 'sage' },
-        { day: 30, title: 'Fall programs: last places', detail: 'Closing note', tone: 'blush' },
+        { day: 2, project: 'Fall programs', title: 'Fall programs open', detail: 'Announcement', tone: 'rose' },
+        { day: 4, project: 'Tax planning', title: 'Tax planning for a new quarter', detail: 'Insight', tone: 'sand' },
+        { day: 7, project: 'Divorce', title: 'Divorce: the first practical step', detail: 'Inside look', tone: 'lavender' },
+        { day: 9, project: 'Fall programs', title: 'Meet the fall team', detail: 'Inside look', tone: 'rose' },
+        { day: 11, project: 'Immigration', title: 'Immigration: what to bring', detail: 'Insight', tone: 'blue' },
+        { day: 14, project: 'Insurance', title: 'Insurance review week', detail: 'Book now', tone: 'sage' },
+        { day: 16, project: 'Fall programs', title: 'Fall programs: early places', detail: 'Proof', tone: 'blush' },
+        { day: 18, project: 'Tax planning', title: 'Tax planning: a cleaner close', detail: 'Book now', tone: 'sand' },
+        { day: 21, project: 'Divorce', title: 'Divorce consults, explained', detail: 'Announcement', tone: 'lavender' },
+        { day: 23, project: 'Fall programs', title: 'Fall programs: behind the scenes', detail: 'Inside look', tone: 'rose' },
+        { day: 25, project: 'Immigration', title: 'Immigration clinic', detail: 'Book now', tone: 'blue' },
+        { day: 28, project: 'Insurance', title: 'Insurance questions answered', detail: 'Recap', tone: 'sage' },
+        { day: 30, project: 'Fall programs', title: 'Fall programs: last places', detail: 'Closing note', tone: 'blush' },
       ],
       '2026-10': [
-        { day: 2, title: 'Fall programs: final call', detail: 'Announcement', tone: 'rose' },
-        { day: 6, title: 'Insurance renewal checklist', detail: 'Insight', tone: 'sage' },
-        { day: 10, title: 'Divorce: what happens next', detail: 'Inside look', tone: 'lavender' },
-        { day: 15, title: 'Tax planning before year-end', detail: 'Book now', tone: 'sand' },
-        { day: 22, title: 'Immigration Q&A', detail: 'Insight', tone: 'blue' },
+        { day: 2, project: 'Fall programs', title: 'Fall programs: final call', detail: 'Announcement', tone: 'rose' },
+        { day: 6, project: 'Insurance', title: 'Insurance renewal checklist', detail: 'Insight', tone: 'sage' },
+        { day: 10, project: 'Divorce', title: 'Divorce: what happens next', detail: 'Inside look', tone: 'lavender' },
+        { day: 15, project: 'Tax planning', title: 'Tax planning before year-end', detail: 'Book now', tone: 'sand' },
+        { day: 22, project: 'Immigration', title: 'Immigration Q&A', detail: 'Insight', tone: 'blue' },
         { day: 29, title: 'October service recap', detail: 'Recap', tone: 'muted' },
       ],
     },
@@ -150,21 +147,21 @@ const businessData: Business[] = [
     ],
     events: {
       '2026-08': [
-        { day: 6, title: 'Quarterly planning notes', detail: 'Insight', tone: 'sand' },
-        { day: 12, title: 'Fall programs: early places', detail: 'Proof', tone: 'rose' },
-        { day: 20, title: 'Insurance review office hours', detail: 'Book now', tone: 'sage' },
+        { day: 6, project: 'Tax planning', title: 'Quarterly planning notes', detail: 'Insight', tone: 'sand' },
+        { day: 12, project: 'Fall programs', title: 'Fall programs: early places', detail: 'Proof', tone: 'rose' },
+        { day: 20, project: 'Insurance', title: 'Insurance review office hours', detail: 'Book now', tone: 'sage' },
       ],
       '2026-09': [
-        { day: 3, title: 'Fall programs: planning ahead', detail: 'Announcement', tone: 'rose' },
-        { day: 8, title: 'Tax planning for the final quarter', detail: 'Insight', tone: 'sand' },
-        { day: 12, title: 'What an insurance review covers', detail: 'Inside look', tone: 'sage' },
-        { day: 17, title: 'Year-end decisions, made simple', detail: 'Book now', tone: 'sand' },
-        { day: 24, title: 'Immigration: the timeline view', detail: 'Inside look', tone: 'blue' },
+        { day: 3, project: 'Fall programs', title: 'Fall programs: planning ahead', detail: 'Announcement', tone: 'rose' },
+        { day: 8, project: 'Tax planning', title: 'Tax planning for the final quarter', detail: 'Insight', tone: 'sand' },
+        { day: 12, project: 'Insurance', title: 'What an insurance review covers', detail: 'Inside look', tone: 'sage' },
+        { day: 17, project: 'Tax planning', title: 'Year-end decisions, made simple', detail: 'Book now', tone: 'sand' },
+        { day: 24, project: 'Immigration', title: 'Immigration: the timeline view', detail: 'Inside look', tone: 'blue' },
       ],
       '2026-10': [
-        { day: 3, title: 'Year-end planning begins', detail: 'Announcement', tone: 'sand' },
-        { day: 14, title: 'Insurance renewal questions', detail: 'Insight', tone: 'sage' },
-        { day: 24, title: 'Tax planning: final spots', detail: 'Book now', tone: 'sand' },
+        { day: 3, project: 'Tax planning', title: 'Year-end planning begins', detail: 'Announcement', tone: 'sand' },
+        { day: 14, project: 'Insurance', title: 'Insurance renewal questions', detail: 'Insight', tone: 'sage' },
+        { day: 24, project: 'Tax planning', title: 'Tax planning: final spots', detail: 'Book now', tone: 'sand' },
       ],
     },
   },
@@ -183,19 +180,19 @@ const businessData: Business[] = [
     ],
     events: {
       '2026-08': [
-        { day: 5, title: 'Insurance review: a reset', detail: 'Announcement', tone: 'sage' },
-        { day: 19, title: 'The coverage check-in', detail: 'Book now', tone: 'sage' },
+        { day: 5, project: 'Insurance', title: 'Insurance review: a reset', detail: 'Announcement', tone: 'sage' },
+        { day: 19, project: 'Insurance', title: 'The coverage check-in', detail: 'Book now', tone: 'sage' },
       ],
       '2026-09': [
-        { day: 1, title: 'Insurance review week', detail: 'Announcement', tone: 'sage' },
-        { day: 6, title: 'Three questions to ask now', detail: 'Insight', tone: 'sage' },
-        { day: 15, title: 'Tax planning: the early look', detail: 'Inside look', tone: 'sand' },
-        { day: 20, title: 'Coverage stories from the field', detail: 'Proof', tone: 'blush' },
-        { day: 26, title: 'Immigration support, explained', detail: 'Insight', tone: 'blue' },
+        { day: 1, project: 'Insurance', title: 'Insurance review week', detail: 'Announcement', tone: 'sage' },
+        { day: 6, project: 'Insurance', title: 'Three questions to ask now', detail: 'Insight', tone: 'sage' },
+        { day: 15, project: 'Tax planning', title: 'Tax planning: the early look', detail: 'Inside look', tone: 'sand' },
+        { day: 20, project: 'Insurance', title: 'Coverage stories from the field', detail: 'Proof', tone: 'blush' },
+        { day: 26, project: 'Immigration', title: 'Immigration support, explained', detail: 'Insight', tone: 'blue' },
       ],
       '2026-10': [
-        { day: 7, title: 'Renewal season, without the rush', detail: 'Inside look', tone: 'sage' },
-        { day: 16, title: 'Insurance review office hours', detail: 'Book now', tone: 'sage' },
+        { day: 7, project: 'Insurance', title: 'Renewal season, without the rush', detail: 'Inside look', tone: 'sage' },
+        { day: 16, project: 'Insurance', title: 'Insurance review office hours', detail: 'Book now', tone: 'sage' },
         { day: 27, title: 'October questions, answered', detail: 'Recap', tone: 'muted' },
       ],
     },
@@ -359,15 +356,21 @@ function CalendarSurface() {
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
-  const monthPerformanceMetrics = glanceMetricDefinitions.map(({ key, label }) => {
-    const values = monthPosts
-      .map((post) => post.performance?.[key])
-      .filter((value): value is number => typeof value === 'number');
-    return {
-      label,
-      value: values.length ? values.reduce((total, value) => total + value, 0) : null,
-    };
-  });
+  const monthlyAirtime = getMonthlyAirtime(
+    activeBusiness.id,
+    activeBusiness.projects,
+    [
+      ...activeBusinessPosts,
+      ...events.filter((event) => event.project).map((event, index) => ({
+        id: `calendar-${monthKey(visibleMonth)}-${index}`,
+        businessId: activeBusiness.id,
+        project: event.project!,
+        date: `${monthKey(visibleMonth)}-${String(event.day).padStart(2, '0')}`,
+      })),
+    ],
+    visibleMonth.getFullYear(),
+    visibleMonth.getMonth() + 1,
+  );
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
   const selectedBestTime = selectedUserPost?.schedulingStatus === 'approved-suggestion'
     ? getBestTimeRecommendation(
@@ -709,23 +712,10 @@ function CalendarSurface() {
               <p className="insight-eyebrow">This month at a glance</p>
               <h2>Keep the signal warm.</h2>
               <p>{activeBusiness.focus}</p>
-              <div className="glance-metrics-caption">Recorded results this month</div>
-              <div className="glance-metrics" role="group" aria-label="Results recorded this month">
-                {monthPerformanceMetrics.map(({ label, value }) => (
-                  <div className="glance-metric" key={label}>
-                    <strong>{value === null ? '—' : performanceNumberFormatter.format(value)}</strong>
-                    <span>{label}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="focus-list">
-                {activeBusiness.palette.map((item) => (
-                  <div className="focus-row" key={item.label}>
-                    <span className={`focus-dot ${item.tone}`} />
-                    {item.label}
-                  </div>
-                ))}
-              </div>
+              <MonthlyAirtimeBars
+                rows={monthlyAirtime}
+                getTone={(service) => getPostTone(service, activeBusiness)}
+              />
               <div className="heartbeat">
                 <span className="heartbeat-mark"><Activity size={14} strokeWidth={1.8} /></span>
                 <div>
