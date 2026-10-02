@@ -74,6 +74,10 @@ export function applyModeSuggestions(
   if (previous === 'Announcement' && service.mode === 'evergreen') previous = 'Testimonial';
 
   const closingPreview = service.mode === 'campaign' && getCampaignPhase(service, cursor) === 'closing';
+  const canMoveApprovedSuggestion = (item: InsightPost) =>
+    item.businessId === service.businessId && item.project === service.name
+    && item.schedulingStatus === 'approved-suggestion'
+    && item.status !== 'skipped' && item.performance === undefined && item.date > today;
   for (let index = 0; index < (quiet ? 1 : closingPreview ? 3 : 2); index += 1) {
     if (service.mode === 'campaign' && cursor > service.endDate) break;
     const phase = service.mode === 'campaign' ? getCampaignPhase(service, cursor) : undefined;
@@ -89,7 +93,11 @@ export function applyModeSuggestions(
       const closingStart = addDaysToDate(service.endDate, -14);
       if (cursor < closingStart && intendedDate > closingStart) intendedDate = closingStart;
     }
-    const date = getPacedSuggestionDate(service, services, working, today, intendedDate, reserved);
+    // Let approved suggestions for this Service move to the newly proposed
+    // date instead of treating their old placement as a calendar collision.
+    const date = getPacedSuggestionDate(
+      service, services, working.filter((item) => !canMoveApprovedSuggestion(item)), today, intendedDate, reserved,
+    );
     if (!date) break;
     const postingPhase = service.mode === 'campaign' ? getCampaignPhase(service, date) : undefined;
     const floor = service.mode === 'evergreen' && getClosingCampaigns(services, service.businessId, date).length > 0;
@@ -99,6 +107,7 @@ export function applyModeSuggestions(
     const existing = working.filter((item) => item.businessId === service.businessId && item.project === service.name
       && item.status !== 'skipped' && item.date > cursor && item.date <= date
       && item.contentType === contentType
+      && (!canMoveApprovedSuggestion(item) || item.date === date)
       && (service.mode !== 'campaign' || getCampaignPhase(service, item.date) === postingPhase))
       .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))[0];
     if (existing) {
@@ -116,18 +125,24 @@ export function applyModeSuggestions(
     // Only revise this source's unposted, generated suggestions. Manual posts,
     // recorded results and other sources' plans are not ours to rewrite.
     const outdated = working.filter((item) => item.businessId === service.businessId && item.project === service.name
-      && item.sourcePostId === post.id && item.schedulingStatus === 'approved-suggestion'
-      && item.status !== 'skipped' && item.performance === undefined && item.date > cursor && item.date > today
+      && (item.sourcePostId === post.id || (item.contentType === contentType && item.date !== date))
+      && item.schedulingStatus === 'approved-suggestion'
+      && item.status !== 'skipped' && item.performance === undefined && item.date > today
       && (item.contentType !== contentType
+        || item.date !== date
         || (service.mode === 'campaign' && getCampaignPhase(service, item.date) !== postingPhase))
       && !(quiet && getClosingCampaigns(services, service.businessId, item.date).length))
-      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))[0];
+      .sort((a, b) => Number(b.contentType === contentType) - Number(a.contentType === contentType)
+        || a.date.localeCompare(b.date) || a.id.localeCompare(b.id))[0];
     if (outdated) proposal.replaces = {
       postId: outdated.id, title: outdated.title, contentType: outdated.contentType, date: outdated.date,
     };
     beats.push({ state: 'suggested', contentType, title, date, proposal });
     reserved.push(date);
-    const planned = { ...post, ...proposal, id: outdated?.id ?? `proposed-${index}-${date}`, performance: undefined };
+    const planned = {
+      ...post, ...proposal, id: outdated?.id ?? `proposed-${index}-${date}`,
+      performance: undefined, schedulingStatus: undefined,
+    };
     if (outdated) working.splice(working.findIndex((item) => item.id === outdated.id), 1, planned);
     else working.push(planned);
     cursor = date;

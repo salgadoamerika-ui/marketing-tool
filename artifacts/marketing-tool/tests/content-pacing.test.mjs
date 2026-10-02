@@ -109,6 +109,40 @@ test('Approved moves are recognized rather than duplicated on the next request',
   assert.ok(next.beats.every((beat) => beat.state === 'scheduled'));
 });
 
+test('A matching approved suggestion on an earlier or later date is proposed as an in-place move', () => {
+  const post = source(service.name, '2026-09-01');
+  for (const priorDate of ['2026-09-05', '2026-09-12']) {
+    const previous = {
+      ...post, id: `approved-${priorDate}`, contentType: 'Book now', title: 'Previously approved booking post',
+      date: priorDate, schedulingStatus: 'approved-suggestion', sourcePostId: 'earlier-source',
+    };
+    const plan = buildActionInsight('logged', post, [post, previous], '2026-09-02', [], [service]);
+    assert.deepEqual(plan.proposals[0].replaces, {
+      postId: previous.id, title: previous.title, contentType: previous.contentType, date: previous.date,
+    });
+    assert.equal(plan.proposals[0].date, '2026-09-09');
+    assert.equal(plan.proposals[0].contentType, previous.contentType);
+  }
+});
+
+test('Manual or measured posts are never moved by a new date suggestion', () => {
+  const post = source(service.name, '2026-09-01');
+  const manual = {
+    ...post, id: 'manual-booking', contentType: 'Book now', title: 'Manual booking post',
+    date: '2026-09-05',
+  };
+  const plan = buildActionInsight('logged', post, [post, manual], '2026-09-02', [], [service]);
+  assert.ok(plan.proposals.every((proposal) => !proposal.replaces));
+  assert.ok(plan.beats.some((beat) => beat.state === 'scheduled' && beat.existingPostId === manual.id));
+
+  const measured = {
+    ...manual, id: 'measured-booking', schedulingStatus: 'approved-suggestion',
+    sourcePostId: 'earlier-source', performance: { views: 100 },
+  };
+  const measuredPlan = buildActionInsight('logged', post, [post, measured], '2026-09-02', [], [service]);
+  assert.ok(measuredPlan.proposals.every((proposal) => !proposal.replaces));
+});
+
 test('The quiet flat-post ladder and persistent maintenance still control Service suggestions', () => {
   const measured = [1000, 1000, 10, 10, 10, 10].map((views, index) =>
     source(service.name, `2026-09-0${index + 1}`, { id: `flat-${index}`, performance: { views, saves: 0, bookings: 0 } }));

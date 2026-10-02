@@ -130,6 +130,76 @@ test('service mode create/edit stores dates, survives reload, isolates businesse
   }
 });
 
+test('an approved planned post moves to the newly suggested date only after Add', { timeout: 120000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const dateAfter = (date, days) => {
+    const value = new Date(`${date}T12:00:00`);
+    value.setDate(value.getDate() + days);
+    return value.toISOString().slice(0, 10);
+  };
+  const today = new Date().toISOString().slice(0, 10);
+  const sourceDate = dateAfter(today, 400);
+  const suggestedDate = dateAfter(sourceDate, 7);
+  const priorDate = dateAfter(sourceDate, 3);
+  const source = {
+    id: 'move-date-source', businessId: 'mosaic', project: 'Insurance', title: 'Move-date source',
+    date: sourceDate, contentType: 'Insight', platforms: ['Instagram'], distribution: 'organic',
+  };
+  const prior = {
+    ...source, id: 'move-date-approved', title: 'Earlier approved booking post', contentType: 'Book now',
+    date: priorDate, schedulingStatus: 'approved-suggestion', sourcePostId: 'previous-source',
+  };
+  const readPosts = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'date-move test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'date-move calendar');
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify([source, prior]))})`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'seeded date-move calendar');
+    await openPost(evaluate, source);
+    await clickButtonText(evaluate, 'Suggest next posts');
+    await waitFor(
+      () => evaluate("document.querySelector('.action-insight-popup')?.textContent.includes('Suggested update to a planned post')"),
+      'proposed move in the suggestion popup',
+    );
+    const popup = await evaluate("document.querySelector('.action-insight-popup').innerText");
+    assert.match(popup, /Earlier approved booking post/);
+    assert.match(popup, /Apply suggested changes/);
+    assert.match(popup, new RegExp(new Intl.DateTimeFormat('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+    }).format(new Date(`${suggestedDate}T12:00:00`))));
+    assert.equal((await readPosts(evaluate)).find((post) => post.id === prior.id).date, priorDate,
+      'Opening the popup must not move the approved post.');
+
+    await click(evaluate, '.action-insight-add');
+    await waitFor(async () => (await readPosts(evaluate)).find((post) => post.id === prior.id)?.date === suggestedDate,
+      'approved post moved after Add');
+    let saved = await readPosts(evaluate);
+    assert.equal(saved.filter((post) => post.id === prior.id).length, 1, 'The original post is updated, not duplicated.');
+    assert.equal(saved.find((post) => post.id === prior.id).contentType, 'Book now');
+    assert.equal(saved.some((post) => post.id === prior.id && post.date === priorDate), false);
+
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'date-move reload');
+    saved = await readPosts(evaluate);
+    assert.equal(saved.find((post) => post.id === prior.id).date, suggestedDate,
+      'The new placement persists after reload.');
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
 test('season month settings stay in the Month at a glance bubble and persist independently for every service', { timeout: 90000 }, async () => {
   const port = await getFreePort();
   const origin = `http://127.0.0.1:${port}`;

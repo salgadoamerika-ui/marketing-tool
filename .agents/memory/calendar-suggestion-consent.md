@@ -15,4 +15,8 @@ Conversion-gap feedback belongs in the saved-post results view, separate from th
 
 The user also reported that conversion gaps were not visibly triggering. Keeping results open makes the assessment and its unmet prerequisites observable without changing the sequence recommendation.
 
-**How to apply:** This applies to future sequence steps too. Keep existing calendar items unless the user deletes them; do not retroactively remove suggestions that were added under the previous flow. Keep the separate three-post data gate for performance-based learning rules, not for sequence suggestions. Use manual posts as learning evidence where appropriate, but show a best-time badge only on an added suggestion.
+Keep existing calendar items by default. When a popup recalculates the date for the same next-step content and finds an approved, unposted suggestion on another date for the same business and Service or Campaign, offer an explicit move. Only Add moves that existing suggestion in place; preserve its identity. Manual, published, measured, skipped, past, or other-business/offering posts must not be moved. A different source post does not block a date-only move of the same suggested content.
+
+**Why:** The user wants an approved suggestion's old placement removed when the popup proposes an earlier or later date, but only after explicitly choosing Add.
+
+**How to apply:** Keep date changes consent-based; don't silently move or duplicate approved calendar suggestions. Retain the existing boundaries for type-changing updates. Keep the separate three-post data gate for performance-based learning rules, not for sequence suggestions. Use manual posts as learning evidence where appropriate, but show a best-time badge only on an added suggestion.
