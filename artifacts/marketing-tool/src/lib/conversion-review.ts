@@ -1,5 +1,5 @@
 import { assessConversionGap } from './conversion-gap.ts';
-import { getConversionSuggestionPlans } from './conversion-gap-followups.ts';
+import { getConversionSequence } from './conversion-gap-followups.ts';
 import { addDaysToDate } from './follow-ups.ts';
 import type { InsightPost } from './action-insight';
 
@@ -14,11 +14,13 @@ export function buildConversionReview(
     && post.project === selected.project
     && post.status !== 'skipped'
   );
-  const plan = selected.status === 'skipped' ? undefined : getConversionSuggestionPlans(comparable)[0];
-  const subject = comparable.find((post) => post.id === plan?.triggerPostId) ?? selected;
-  const assessment = assessConversionGap(subject, comparable);
+  const assessment = assessConversionGap(selected, comparable);
+  const subject = assessment.status === 'detected'
+    ? comparable.find((post) => post.id === assessment.result.latestPostId)! : selected;
+  const sequence = getConversionSequence(selected, comparable, today);
+  const plan = sequence?.plan;
   if (!plan || assessment.status !== 'detected') {
-    return { subject, assessment, proposal: undefined };
+    return { subject, assessment, stage: sequence?.stage, proposal: undefined };
   }
 
   // Results may be recorded long after a post ran; do not backdate its follow-up.
@@ -40,6 +42,7 @@ export function buildConversionReview(
   return {
     subject,
     assessment,
+    stage: sequence?.stage,
     proposal: {
       ...plan,
       date,

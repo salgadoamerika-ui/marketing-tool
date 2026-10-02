@@ -2,3 +2,4 @@
 - [Learning-rule data gate](learning-rule-data-gate.md) — keep a three-post performance prerequisite for every learning rule, even when its trigger threshold changes.
 - [Calendar suggestion consent](calendar-suggestion-consent.md) — popup follows the content sequence without a metric gate; suggestions wait for Add.
 - [Airtime balance intent](airtime-balance-intent.md) — at-a-glance bars reflect monthly calendar volume, not aggregate results or recommended weekly capacity.
+- [Conversion service pattern](conversion-service-pattern.md) — last-three booking-to-views trend; newest-post flag, trust before offers, and recovery resets the episode.

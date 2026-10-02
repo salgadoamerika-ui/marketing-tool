@@ -625,7 +625,7 @@ test('learned timing stays business- and service-specific through saved results 
   }
 });
 
-test('saving results reveals conversion gaps, respects Skip, and adds trust then offer only on approval', { timeout: 120000 }, async () => {
+test('service trend marks only newest measured post, offers trust then referral, clears on recovery and resets', { timeout: 120000 }, async () => {
   const port = await getFreePort();
   const origin = `http://127.0.0.1:${port}`;
   const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
@@ -638,8 +638,8 @@ test('saving results reveals conversion gaps, respects Skip, and adds trust then
     distribution: 'organic', schedulingStatus: 'published', performance,
   });
   const posts = [
-    measured('first', '03', { views: 100, saves: 10, bookings: 0 }),
-    measured('second', '06', { views: 100, saves: 10, bookings: 4 }),
+    measured('first', '03', { views: 300, saves: 10, bookings: 1 }),
+    measured('second', '06', { views: 300, saves: 10, bookings: 1 }),
     measured('third', '08', undefined),
   ];
   const readPosts = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
@@ -655,38 +655,75 @@ test('saving results reveals conversion gaps, respects Skip, and adds trust then
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'conversion test calendar');
 
     await openPost(evaluate, posts[0]);
-    assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /2\/3 measured posts/);
+    assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-panel'))"), false, 'Nothing appears before the three-post gate.');
+    assert.equal(await evaluate("document.querySelectorAll('.event-conversion-gap').length"), 0);
     await clickButtonText(evaluate, 'Keep post');
 
     await openPost(evaluate, posts[2]);
-    await saveResults(evaluate, { ...posts[2], views: 100, saves: 10, bookings: 4 }, { keepOpen: true });
+    await saveResults(evaluate, { ...posts[2], views: 300, saves: 10, bookings: 1 }, { keepOpen: true });
     await waitFor(() => evaluate("Boolean(document.querySelector('.conversion-gap-detected'))"), 'gap after third result');
-    assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /Conversion check first/);
+    assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /latest 3 measured posts: 900 views/);
+    assert.equal(await evaluate("document.querySelectorAll('.event-conversion-gap').length"), 1);
+    assert.match(await evaluate("document.querySelector('.event-conversion-gap').closest('button').textContent"), /Conversion check third/);
     assert.equal((await readPosts(evaluate)).length, 3, 'Detection must not silently add a calendar post.');
     await clickButtonText(evaluate, 'Skip suggestion');
     assert.equal((await readPosts(evaluate)).length, 3, 'Skip must not create a follow-up.');
     await clickButtonText(evaluate, 'Keep post');
 
-    await openPost(evaluate, posts[0]);
+    await openPost(evaluate, posts[2]);
     await click(evaluate, '.conversion-gap-actions .save-post-button');
-    const trust = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'trust'), 'approved testimonial');
+    let trust = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'trust'), 'approved testimonial');
     assert.equal(trust.contentType, 'Testimonial');
-    assert.equal(trust.sourcePostId, 'first');
+    assert.equal(trust.sourcePostId, 'third');
     assert.equal(trust.schedulingStatus, 'approved-suggestion');
     await openPost(evaluate, trust);
     assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-actions'))"), false, 'Offer waits for testimonial results.');
-    await saveResults(evaluate, { ...trust, views: 100, saves: 10, bookings: 0 }, { keepOpen: true });
-    await waitFor(() => evaluate("document.querySelector('.conversion-gap-panel').textContent.includes('lower-barrier referral offer')"), 'offer after weak testimonial');
+    await saveResults(evaluate, { ...trust, views: 300, saves: 10, bookings: 1 }, { keepOpen: true });
+    assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-actions'))"), false, 'Future trust post cannot unlock an offer even with results.');
+    await clickButtonText(evaluate, 'Keep post');
+    // Simulate the approved trust post having run by rescheduling it to today.
+    const today = new Date().toISOString().slice(0, 10);
+    await evaluate(`(() => {
+      const saved = JSON.parse(localStorage.getItem('marketing-tool.user-posts'));
+      saved.find((post) => post.suggestionKind === 'trust').date = ${jsString(today)};
+      localStorage.setItem('marketing-tool.user-posts', JSON.stringify(saved));
+    })()`);
+    trust = { ...trust, date: today };
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after trust runs');
+    await openPost(evaluate, trust);
+    await waitFor(() => evaluate("document.querySelector('.conversion-gap-panel')?.textContent.includes('Trust didn’t move it')"), 'offer after weak testimonial');
     await click(evaluate, '.conversion-gap-actions .save-post-button');
     const offer = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'offer'), 'approved referral offer');
-    assert.equal(offer.sourcePostId, 'first');
+    assert.equal(offer.sourcePostId, 'third');
     assert.equal((await readPosts(evaluate)).length, 5);
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after reload');
     await openPost(evaluate, offer);
-    await saveResults(evaluate, { ...offer, views: 100, saves: 10, bookings: 0 }, { keepOpen: true });
+    await saveResults(evaluate, { ...offer, views: 300, saves: 10, bookings: 0 }, { keepOpen: true });
     assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-actions'))"), false, 'No duplicate or third conversion stage.');
     assert.equal((await readPosts(evaluate)).length, 5);
+    assert.equal(await evaluate("document.querySelectorAll('.event-conversion-gap').length"), 1);
+    await saveResults(evaluate, { ...offer, views: 300, saves: 10, bookings: 30 }, { keepOpen: true });
+    assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-panel'))"), false, 'Recovery removes the summary.');
+    assert.equal(await evaluate("document.querySelectorAll('.event-conversion-gap').length"), 0, 'Recovery clears every marker.');
+    await clickButtonText(evaluate, 'Keep post');
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'recovered calendar after reload');
+    await openPost(evaluate, offer);
+    assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-panel'))"), false, 'Recovery persists across reload.');
+    await clickButtonText(evaluate, 'Keep post');
+    const nextPosts = [1, 2, 3].map((offset) => ({
+      ...measured(`next${offset}`, '09', { views: 300, saves: 10, bookings: 1 }),
+      date: new Date(new Date(`${offer.date}T12:00:00Z`).getTime() + offset * 86400000).toISOString().slice(0, 10),
+    }));
+    const recoveredPosts = await readPosts(evaluate);
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify([...recoveredPosts, ...nextPosts]))})`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'new episode calendar');
+    await openPost(evaluate, nextPosts[2]);
+    assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /Step 1 · Build trust/);
+    assert.doesNotMatch(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /Step 2/);
   } finally {
     if (browser) await browser.close();
     await stopProcess(server.child);

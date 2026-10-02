@@ -514,6 +514,9 @@
 .conversion-gap-panel { display: grid; gap: 9px; border: 1px solid var(--line-strong); border-radius: 12px; background: #fffaf8; padding: 15px; }
 .conversion-gap-detected { border-color: #deb5c5; background: #fbf0f3; }
 .conversion-gap-panel h3 { margin: 0; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 500; }
+.conversion-gap-panel h3 { display: flex; align-items: center; gap: 7px; }
+.conversion-gap-panel h3 svg { color: var(--rose-deep); flex: none; }
+.event-conversion-gap { display: inline-flex; align-items: center; justify-content: center; margin-top: 4px; width: 23px; height: 23px; border-radius: 50%; border: 1px solid #dbb4c3; background: #f9e5ed; color: var(--rose-deep); vertical-align: middle; }
 .conversion-gap-panel p { margin: 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.55; }
 .conversion-gap-next { color: var(--ink); font-size: 12px; }
 .conversion-gap-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 3px; }

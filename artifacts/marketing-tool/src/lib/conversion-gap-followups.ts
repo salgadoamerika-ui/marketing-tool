@@ -1,16 +1,5 @@
-import type { PostPerformance } from '@/components/post-performance-form';
-import { getConversionGap } from './conversion-gap.ts';
+import { assessConversionGap, getMeasuredServicePosts, hasCompletePerformance, type ConversionPost } from './conversion-gap.ts';
 import { addDaysToDate } from './follow-ups.ts';
-
-type ConversionPost = {
-  id: string;
-  businessId: string;
-  project: string;
-  date: string;
-  performance?: PostPerformance;
-  suggestionKind?: string;
-  sourcePostId?: string;
-};
 
 export type ConversionSuggestionPlan = {
   kind: 'trust' | 'offer';
@@ -20,42 +9,48 @@ export type ConversionSuggestionPlan = {
   title: string;
 };
 
-function serviceKey(post: ConversionPost): string {
-  return JSON.stringify([post.businessId, post.project]);
+export type ConversionSequence = {
+  stage: 'trust' | 'waiting-trust' | 'offer' | 'waiting-offer';
+  plan?: ConversionSuggestionPlan;
+};
+
+export function getConversionSequence(service: ConversionPost, posts: ConversionPost[], today: string): ConversionSequence | undefined {
+  const assessment = assessConversionGap(service, posts);
+  if (assessment.status !== 'detected') return undefined;
+  const comparable = posts.filter((post) => post.businessId === service.businessId
+    && post.project === service.project && post.status !== 'skipped');
+  const measured = getMeasuredServicePosts(service, posts);
+  const episodeIndex = measured.findIndex((post) => post.id === assessment.episodePostId);
+  // Older approvals linked to the first weak post, rather than the third
+  // measured post. Honor those within the initial episode, never after recovery.
+  const currentSources = new Set(measured.slice(episodeIndex === 2 ? 0 : episodeIndex).map((post) => post.id));
+  const trust = comparable.find((post) => post.suggestionKind === 'trust'
+    && post.sourcePostId !== undefined && currentSources.has(post.sourcePostId));
+  const latest = measured[measured.length - 1];
+  if (!trust) return {
+    stage: 'trust',
+    plan: {
+      kind: 'trust', triggerPostId: latest.id, sourcePostId: latest.id,
+      date: addDaysToDate(latest.date, 2), title: `${service.project}: a client testimonial`,
+    },
+  };
+  if (!hasCompletePerformance(trust.performance) || trust.date > today) return { stage: 'waiting-trust' };
+  const offer = comparable.find((post) => post.suggestionKind === 'offer' && post.sourcePostId === trust.sourcePostId);
+  if (offer) return { stage: 'waiting-offer' };
+  return {
+    stage: 'offer',
+    plan: {
+      kind: 'offer', triggerPostId: latest.id, sourcePostId: trust.sourcePostId!,
+      date: addDaysToDate(latest.date, 2), title: `${service.project}: referral offer to book`,
+    },
+  };
 }
 
-export function getConversionSuggestionPlans(posts: ConversionPost[]): ConversionSuggestionPlan[] {
-  const trustServices = new Set(posts.filter((post) => post.suggestionKind === 'trust').map(serviceKey));
-  const offerSources = new Set(
-    posts.filter((post) => post.suggestionKind === 'offer').map((post) => post.sourcePostId),
-  );
-  const plans: ConversionSuggestionPlan[] = [];
-
-  for (const post of [...posts].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
-    if (!getConversionGap(post, posts)) continue;
-
-    if (post.suggestionKind === 'trust') {
-      const sourcePostId = post.sourcePostId;
-      if (!sourcePostId || !posts.some((source) => source.id === sourcePostId) || offerSources.has(sourcePostId)) continue;
-      offerSources.add(sourcePostId);
-      plans.push({
-        kind: 'offer',
-        triggerPostId: post.id,
-        sourcePostId,
-        date: addDaysToDate(post.date, 2),
-        title: `${post.project}: referral offer to book`,
-      });
-    } else if (post.suggestionKind !== 'offer' && !trustServices.has(serviceKey(post))) {
-      trustServices.add(serviceKey(post));
-      plans.push({
-        kind: 'trust',
-        triggerPostId: post.id,
-        sourcePostId: post.id,
-        date: addDaysToDate(post.date, 2),
-        title: `${post.project}: a client testimonial`,
-      });
-    }
-  }
-
-  return plans;
+export function getConversionSuggestionPlans(posts: ConversionPost[], today: string): ConversionSuggestionPlan[] {
+  const services = new Map<string, ConversionPost>();
+  for (const post of posts) services.set(JSON.stringify([post.businessId, post.project]), post);
+  return [...services.values()].flatMap((service) => {
+    const sequence = getConversionSequence(service, posts, today);
+    return sequence?.plan ? [sequence.plan] : [];
+  });
 }

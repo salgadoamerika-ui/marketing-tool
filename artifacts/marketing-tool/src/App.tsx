@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
@@ -12,6 +12,7 @@ import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
 import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
 import { getMonthlyAirtime } from '@/lib/monthly-airtime';
 import { buildConversionReview } from '@/lib/conversion-review';
+import { getConversionGapMarkers } from '@/lib/conversion-gap';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -32,6 +33,7 @@ type CalendarEvent = {
   tone: EventTone;
   id?: string;
   bestTime?: BestTimeRecommendation;
+  conversionGap?: string;
 };
 
 type Distribution = 'organic' | 'paid';
@@ -375,6 +377,7 @@ function CalendarSurface() {
     visibleMonth.getMonth() + 1,
   );
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const conversionMarkers = useMemo(() => getConversionGapMarkers(userPosts), [userPosts]);
   const conversionReview = selectedUserPost ? buildConversionReview(
     selectedUserPost,
     userPosts,
@@ -396,6 +399,7 @@ function CalendarSurface() {
     title: post.title,
     detail: getPostDetail(post),
     tone: getPostTone(post.project, activeBusiness),
+    ...(conversionMarkers.has(post.id) ? { conversionGap: post.project } : {}),
     ...(post.schedulingStatus === 'approved-suggestion'
       ? { bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts) }
       : {}),
@@ -702,6 +706,13 @@ function CalendarSurface() {
                           <>
                             {event.title}
                             {event.detail && <small>{event.detail}</small>}
+                            {event.conversionGap && (
+                              <span className="event-conversion-gap" role="img"
+                                aria-label={`Conversion gap for ${event.conversionGap}`}
+                                title="Conversion gap across the latest 3 posts. Open for the summary.">
+                                <HeartHandshake size={13} strokeWidth={1.8} aria-hidden="true" />
+                              </span>
+                            )}
                             {event.bestTime && (
                               <span
                                 aria-label={`${event.bestTime.label}. ${event.bestTime.detail}`}
@@ -716,7 +727,7 @@ function CalendarSurface() {
 
                         return event.id ? (
                           <button
-                            aria-label={`Open saved post: ${event.title}${event.bestTime ? `. ${event.bestTime.label}. ${event.bestTime.detail}` : ''}`}
+                            aria-label={`Open saved post: ${event.title}${event.conversionGap ? '. Conversion gap — open for summary' : ''}${event.bestTime ? `. ${event.bestTime.label}. ${event.bestTime.detail}` : ''}`}
                             className={`event-chip event-chip-button event-${event.tone}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
@@ -1056,9 +1067,9 @@ function CalendarSurface() {
                   postedTime={selectedUserPost.postedTime}
                   onSave={handleSaveResults}
                 />
-                {conversionReview && (
+                {conversionReview?.assessment.status === 'detected' && conversionMarkers.has(selectedUserPost.id) && (
                   <ConversionGapPanel
-                    key={`${conversionReview.subject.id}-${JSON.stringify(conversionReview.subject.performance)}-${conversionReview.assessment.postCount}-${conversionReview.proposal?.kind ?? 'none'}`}
+                    key={`${JSON.stringify(conversionReview.assessment.result)}-${conversionReview.stage}`}
                     review={conversionReview}
                     onAdd={handleAddConversionSuggestion}
                   />

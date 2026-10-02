@@ -1,0 +1,22 @@
+Rewrite the conversion-gap rule completely with the following logic.
+
+WHAT IT MEASURES — a conversion ratio, not a savings threshold:
+Compare bookings against the attention a post got (views and saves). The problem isn't low views — it's when views/saves are decent but bookings don't follow. Example: 300 views but only 1 booking is a conversion gap — lots of interest, almost no action. Something isn't converting.
+
+JUDGE IT AS A PATTERN ACROSS THE LAST 3 POSTS, not one post:
+Only evaluate once a service has at least 3 posts with performance numbers recorded. Look at the most recent 3 posts for that service. If, across those 3, posts are consistently getting views/saves but very few bookings (a low booking-to-views ratio — roughly under 1–2% of views converting to bookings), flag the service as having a conversion problem. This is about the trend over the last 3 posts, not singling out one post.
+
+WHERE IT SHOWS UP:
+Put a small conversion-gap icon on the most recent post I just entered data for (the newest one). The icon marks that this service has a conversion issue right now. If the service later recovers (a newer post converts well and the ratio improves), clear the icon.
+
+WHAT IT SAYS WHEN I TAP/OPEN IT:
+A short summary that reads the last 3 posts' data and explains something isn't working — people are interested (views/saves) but not booking. It should NOT blame one specific post; it summarizes the pattern across the three.
+
+THE FIX — offered as a TWO-STEP SEQUENCE, not both at once:
+
+Step 1 — Trust first: when the conversion gap first appears, the only recommendation is 'build trust' — suggest a Proof/testimonial post, with an 'Add' button to drop that post onto the calendar. Do NOT offer a discount yet. The summary should say something like 'interest isn't converting — let's try proof first.'
+Step 2 — Discount only if trust didn't work: the app needs to remember that a trust post was already added for this service. After that trust post has run and there's new performance data, if the conversion gap is STILL present, escalate: now recommend 'lower the barrier' — a discount or referral offer, with an 'Add' button. The summary should now say something like 'trust didn't move it — time to lower the barrier.'
+
+So the full logic is: detect conversion gap (over last 3 posts, by ratio) → show icon on newest post → offer trust first → if trust also doesn't work → then offer a discount → clear everything if the service recovers.
+
+Keep the honesty gate throughout: nothing appears until the service has 3+ posts with performance data. Style the icon, summary, and buttons to match the app's soft aesthetic. Explain what you changed.

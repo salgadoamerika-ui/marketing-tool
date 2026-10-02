@@ -9,7 +9,7 @@ Best-time recommendations should appear only on suggestions that have been appro
 
 The popup's recommended post is the next step in the content sequence, not a performance-based recommendation. It can show recorded numbers as context, but it must not require three measured posts or let a conversion-gap finding replace the sequence step. A skipped post should not be treated as a published step.
 
-Conversion-gap feedback belongs in the saved-post results view, separate from that sequence popup. Saving results must leave the check visible, including explanations for incomplete metrics or insufficient comparable history, rather than silently closing the view.
+Conversion-gap feedback belongs in the saved-post results view, separate from that sequence popup. Saving results must leave a detected gap visible rather than silently closing the view. Following the service-pattern rewrite, show no conversion icon or summary before three complete comparable results; the newest measured post carries the current service flag.
 
 **Why:** The user replaced an earlier automatic-scheduling flow with an explicit choice after seeing it; they want to retain control without a full-screen interruption. They later corrected a conflation of this popup with the three-post performance rule and clarified that time advice should apply only to approved suggestions, not posts already entered manually.
 
