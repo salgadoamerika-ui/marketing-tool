@@ -377,7 +377,10 @@
 .monthly-airtime-caption { color: var(--rose-deep); font-size: 8px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .monthly-airtime-list { display: grid; gap: 11px; margin: 12px 0 0; padding: 0; list-style: none; }
 .monthly-airtime-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) 38px; align-items: center; gap: 8px; }
-.monthly-airtime-name { color: var(--ink); font-size: 10px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.monthly-airtime-service { min-width: 0; display: grid; gap: 2px; }
+.monthly-airtime-service-name { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.monthly-airtime-name { min-width: 0; overflow: hidden; color: var(--ink); font-size: 10px; font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.monthly-airtime-season { color: var(--rose-deep); font-size: 8px; font-weight: 650; }
 .monthly-airtime-track { height: 7px; overflow: hidden; border-radius: 999px; background: rgba(95, 66, 78, .07); }
 .monthly-airtime-tag { border-radius: 999px; padding: 3px 4px; color: var(--plum-soft); background: rgba(255, 253, 251, .65); font-size: 8px; font-weight: 650; line-height: 1.2; text-align: center; }
 .monthly-airtime-tag-peak { color: #88435e; background: #f1dce5; }

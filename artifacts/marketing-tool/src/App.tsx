@@ -15,6 +15,12 @@ import { getMonthlyAirtime } from '@/lib/monthly-airtime';
 import { buildConversionReview } from '@/lib/conversion-review';
 import { getConversionGapMarkers } from '@/lib/conversion-gap';
 import { getFlatPostState } from '@/lib/flat-post-ladder';
+import {
+  loadServiceSeasonSelections,
+  normalizeSeasonMonths,
+  serviceSeasonKey,
+  serviceSeasonsStorageKey,
+} from '@/lib/service-seasons';
 import { loadServices, modeLabel, normalizeService, servicesStorageKey, validateService, type ServiceDefinition } from '@/lib/services';
 import NotFound from '@/pages/not-found';
 import {
@@ -360,6 +366,8 @@ function CalendarSurface() {
     ];
     return loadServices(window.localStorage.getItem(servicesStorageKey), defaults);
   });
+  const [seasonMonthsByService, setSeasonMonthsByService] = useState(() =>
+    loadServiceSeasonSelections(window.localStorage.getItem(serviceSeasonsStorageKey)));
   const [isServiceManagerOpen, setIsServiceManagerOpen] = useState(false);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
@@ -464,6 +472,26 @@ function CalendarSurface() {
       return 'This device could not save the change. Free some storage and try again.';
     }
     setServices(updated);
+    return undefined;
+  };
+
+  const handleSaveSeasonMonths = (service: string, months: number[]): string | undefined => {
+    const validService = activeBusiness.projects.includes(service);
+    if (!validService) return 'This service is no longer available in this business.';
+    let normalized: number[];
+    try {
+      normalized = normalizeSeasonMonths(months);
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Choose valid months for this service.';
+    }
+    const key = serviceSeasonKey(activeBusiness.id, service);
+    const updated = { ...seasonMonthsByService, [key]: normalized };
+    try {
+      window.localStorage.setItem(serviceSeasonsStorageKey, JSON.stringify(updated));
+    } catch {
+      return 'This device could not save the season settings. Free some storage and try again.';
+    }
+    setSeasonMonthsByService(updated);
     return undefined;
   };
 
@@ -830,7 +858,11 @@ function CalendarSurface() {
               <p>{activeBusiness.focus}</p>
               <MonthlyAirtimeBars
                 rows={monthlyAirtime}
+                businessId={activeBusiness.id}
                 getTone={(service) => getPostTone(service, activeBusiness)}
+                month={visibleMonth.getMonth() + 1}
+                seasonMonthsByService={seasonMonthsByService}
+                onSaveSeasonMonths={handleSaveSeasonMonths}
               />
               <div className="heartbeat">
                 <span className="heartbeat-mark"><Activity size={14} strokeWidth={1.8} /></span>

@@ -130,6 +130,62 @@ test('service mode create/edit stores dates, survives reload, isolates businesse
   }
 });
 
+test('season month settings stay in the Month at a glance bubble and persist independently for every service', { timeout: 90000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const services = ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'];
+  const key = (business, service) => JSON.stringify([business, service]);
+  const readSeasons = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.service-seasons') ?? '{}')");
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'season selection test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    assert.equal(await evaluate("document.querySelectorAll('.monthly-airtime-row').length"), 5);
+    assert.equal(await evaluate("document.querySelectorAll('.monthly-airtime-row [aria-label^=\"Set \"]').length"), 5);
+    assert.equal(await evaluate("Boolean([...document.querySelectorAll('.monthly-airtime-row button')].every(button => button.closest('.monthly-airtime')) && document.querySelector('.insight-card.tint .monthly-airtime'))"), true);
+
+    const selectedMonths = [1, 2, 3, 4, 9];
+    for (let index = 0; index < services.length; index += 1) {
+      const service = services[index];
+      await click(evaluate, `[aria-label="Set ${service} in-season months"]`);
+      assert.equal(await evaluate("document.querySelectorAll('.season-month-dialog .airtime-month-toggle').length"), 12);
+      await clickButtonText(evaluate, ['January', 'February', 'March', 'April', 'September'][index]);
+      await clickButtonText(evaluate, 'Save');
+      assert.deepEqual((await readSeasons(evaluate))[key('mosaic', service)], [selectedMonths[index]]);
+    }
+    assert.equal(await evaluate("document.querySelectorAll('.monthly-airtime-season').length"), 1, 'The selected calendar month is marked in season.');
+    await selectBusiness(evaluate, 'Northline Financial');
+    assert.equal(await evaluate("document.querySelectorAll('.monthly-airtime-row').length"), 5);
+    await click(evaluate, '[aria-label="Set Insurance in-season months"]');
+    assert.equal(await evaluate("Boolean(document.querySelector('.season-month-dialog .airtime-month-toggle[aria-pressed=\"true\"]'))"), false);
+    await clickButtonText(evaluate, 'August');
+    await clickButtonText(evaluate, 'Save');
+    assert.deepEqual((await readSeasons(evaluate))[key('northline', 'Insurance')], [8]);
+    assert.deepEqual((await readSeasons(evaluate))[key('mosaic', 'Insurance')], [9]);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after saving service seasons');
+    assert.deepEqual(await readSeasons(evaluate), {
+      [key('mosaic', 'Fall programs')]: [1],
+      [key('mosaic', 'Tax planning')]: [2],
+      [key('mosaic', 'Divorce')]: [3],
+      [key('mosaic', 'Immigration')]: [4],
+      [key('mosaic', 'Insurance')]: [9],
+      [key('northline', 'Insurance')]: [8],
+    });
+    assert.equal(await evaluate("document.querySelectorAll('.monthly-airtime-season').length"), 1, 'The active month-season indicator returns after reload.');
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
 async function getFreePort() {
   const server = createServer();
   await new Promise((resolve, reject) => {

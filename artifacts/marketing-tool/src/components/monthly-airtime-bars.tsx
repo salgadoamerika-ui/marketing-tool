@@ -1,12 +1,25 @@
+import { useState } from 'react';
+import { CalendarDays } from 'lucide-react';
 import type { MonthlyAirtimeRow } from '@/lib/monthly-airtime';
+import { serviceSeasonKey } from '@/lib/service-seasons';
+import { ServiceSeasonDialog } from '@/components/service-season-dialog';
 
 export function MonthlyAirtimeBars({
   rows,
   getTone,
+  businessId,
+  month,
+  seasonMonthsByService,
+  onSaveSeasonMonths,
 }: {
   rows: MonthlyAirtimeRow[];
   getTone: (service: string) => string;
+  businessId: string;
+  month: number;
+  seasonMonthsByService: Record<string, number[]>;
+  onSaveSeasonMonths: (service: string, months: number[]) => string | undefined;
 }) {
+  const [editingService, setEditingService] = useState<string | null>(null);
   return (
     <div className="monthly-airtime">
       <div className="monthly-airtime-caption">Airtime balance</div>
@@ -18,7 +31,22 @@ export function MonthlyAirtimeBars({
               : row.boosted && row.postCount > 1 ? ' · Above-average views: 50% boost' : '');
           return (
             <li className="monthly-airtime-row" key={row.service} title={detail}>
-              <span className="monthly-airtime-name">{row.service}</span>
+              <div className="monthly-airtime-service">
+                <div className="monthly-airtime-service-name">
+                  <span className="monthly-airtime-name">{row.service}</span>
+                  <button
+                    aria-label={`Set ${row.service} in-season months`}
+                    className="airtime-season-edit"
+                    onClick={() => setEditingService(row.service)}
+                    title={`Set ${row.service} in-season months`}
+                    type="button"
+                  >
+                    <CalendarDays size={13} strokeWidth={1.8} />
+                  </button>
+                </div>
+                {seasonMonthsByService[serviceSeasonKey(businessId, row.service)]?.includes(month)
+                  && <span className="monthly-airtime-season">In season</span>}
+              </div>
               <div
                 className="monthly-airtime-track"
                 role="meter"
@@ -50,6 +78,15 @@ export function MonthlyAirtimeBars({
           use service order for the Peak tag.
         </p>
       </details>
+      {editingService && (
+        <ServiceSeasonDialog
+          key={editingService}
+          service={editingService}
+          selectedMonths={seasonMonthsByService[serviceSeasonKey(businessId, editingService)] ?? []}
+          onClose={() => setEditingService(null)}
+          onSave={(months) => onSaveSeasonMonths(editingService, months)}
+        />
+      )}
     </div>
   );
 }
