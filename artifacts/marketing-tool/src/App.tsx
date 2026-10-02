@@ -691,6 +691,8 @@ function CalendarSurface() {
             && existing.sourcePostId === suggestion.sourcePostId && existing.contentType === suggestion.contentType
             && existing.date === suggestion.date))];
       });
+      setSelectedPostId(null);
+      setVisibleMonth(new Date(`${suggestions[0].date}T12:00:00`));
       showActionMessage(`${suggestions.length} suggested ${suggestions.length === 1 ? 'change was' : 'changes were'} applied to the calendar.`);
     }
     setActionInsight(null);

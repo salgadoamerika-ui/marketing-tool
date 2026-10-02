@@ -9,7 +9,7 @@ type Props = {
 
 export function ActionInsightPopup({ insight, onAdd, onSkip }: Props) {
   return (
-    <aside aria-labelledby="action-insight-title" aria-live="polite" className="action-insight-popup">
+    <aside aria-labelledby="action-insight-title" aria-live="polite" className="action-insight-popup action-insight-popup-sequence">
       <button aria-label="Dismiss insight" className="modal-close action-insight-close" onClick={onSkip} type="button">
         <X size={16} strokeWidth={1.8} />
       </button>
@@ -17,39 +17,41 @@ export function ActionInsightPopup({ insight, onAdd, onSkip }: Props) {
         <span aria-hidden="true" className="action-insight-icon"><Sparkles size={17} strokeWidth={1.8} /></span>
         <p className="action-insight-kicker">A little insight · {insight.action}</p>
       </div>
-      <h2 id="action-insight-title">{insight.title}</h2>
-      <p className="action-insight-evidence">{insight.evidence}</p>
-      <div className="action-insight-next">
-        <strong>Why this next step?</strong>
-        <p>{insight.recommendation}</p>
-      </div>
-      {insight.beats.length > 0 && (
-        <div aria-label="Content sequence" className="action-insight-beats">
-          {insight.beats.map((beat, index) => (
-            <div className={`action-insight-proposal action-insight-beat-${beat.state}`} key={`${beat.contentType}-${beat.date}-${index}`}>
-              <span>
-                {beat.state === 'scheduled'
-                  ? 'Already on your calendar'
-                  : beat.state === 'blocked' ? 'No available date for this step'
-                    : beat.proposal?.replaces ? 'Suggested update to a planned post' : 'Suggested next post'}
-              </span>
-              <strong>{beat.title}</strong>
-              {beat.proposal?.replaces && <small>
-                Currently: {beat.proposal.replaces.title} · {beat.proposal.replaces.contentType} ·{' '}
-                {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                  .format(new Date(`${beat.proposal.replaces.date}T12:00:00`))}
-              </small>}
-              <small>
-                {beat.state === 'blocked' ? 'Choose another date to keep this step.' : <>
-                  {new Intl.DateTimeFormat('en-US', {
-                    month: 'short', day: 'numeric', year: 'numeric',
-                  }).format(new Date(`${beat.date}T12:00:00`))} · {beat.contentType}
-                </>}
-              </small>
-            </div>
-          ))}
+      <div aria-label="Suggested posts and explanation" className="action-insight-content" role="region" tabIndex={0}>
+        <h2 id="action-insight-title">{insight.title}</h2>
+        <p className="action-insight-evidence">{insight.evidence}</p>
+        <div className="action-insight-next">
+          <strong>Why this next step?</strong>
+          <p>{insight.recommendation}</p>
         </div>
-      )}
+        {insight.beats.length > 0 && (
+          <div aria-label="Content sequence" className="action-insight-beats">
+            {insight.beats.map((beat, index) => (
+              <div className={`action-insight-proposal action-insight-beat-${beat.state}`} key={`${beat.contentType}-${beat.date}-${index}`}>
+                <span>
+                  {beat.state === 'scheduled'
+                    ? 'Already on your calendar'
+                    : beat.state === 'blocked' ? 'No available date for this step'
+                      : beat.proposal?.replaces ? 'Suggested update to a planned post' : 'Suggested next post'}
+                </span>
+                <strong>{beat.title}</strong>
+                {beat.proposal?.replaces && <small>
+                  Currently: {beat.proposal.replaces.title} · {beat.proposal.replaces.contentType} ·{' '}
+                  {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    .format(new Date(`${beat.proposal.replaces.date}T12:00:00`))}
+                </small>}
+                <small>
+                  {beat.state === 'blocked' ? 'Choose another date to keep this step.' : <>
+                    {new Intl.DateTimeFormat('en-US', {
+                      month: 'short', day: 'numeric', year: 'numeric',
+                    }).format(new Date(`${beat.date}T12:00:00`))} · {beat.contentType}
+                  </>}
+                </small>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="action-insight-actions">
         {insight.proposals.length > 0 && (
           <button className="save-post-button action-insight-add" onClick={onAdd} type="button">

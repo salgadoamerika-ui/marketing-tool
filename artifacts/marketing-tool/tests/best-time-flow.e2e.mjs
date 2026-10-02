@@ -143,7 +143,9 @@ test('an approved planned post moves to the newly suggested date only after Add'
     return value.toISOString().slice(0, 10);
   };
   const today = new Date().toISOString().slice(0, 10);
-  const sourceDate = dateAfter(today, 400);
+  const futureMonth = new Date(`${dateAfter(today, 400)}T12:00:00`);
+  futureMonth.setMonth(futureMonth.getMonth() + 1, 0);
+  const sourceDate = futureMonth.toISOString().slice(0, 10);
   const suggestedDate = dateAfter(sourceDate, 7);
   const priorDate = dateAfter(sourceDate, 3);
   const source = {
@@ -181,13 +183,31 @@ test('an approved planned post moves to the newly suggested date only after Add'
     assert.equal((await readPosts(evaluate)).find((post) => post.id === prior.id).date, priorDate,
       'Opening the popup must not move the approved post.');
 
-    await click(evaluate, '.action-insight-add');
+    await browser.resize(390, 640);
+    await evaluate("document.querySelector('.action-insight-content').scrollTop = document.querySelector('.action-insight-content').scrollHeight");
+    await browser.clickVisible('.action-insight-close');
+    assert.equal((await readPosts(evaluate)).find((post) => post.id === prior.id).date, priorDate,
+      'Closing a scrolled popup must not apply a move.');
+    await openPost(evaluate, source);
+    await clickButtonText(evaluate, 'Suggest next posts');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-add'))"), 'reopened move popup');
+    await browser.clickVisible('.action-insight-add');
     await waitFor(async () => (await readPosts(evaluate)).find((post) => post.id === prior.id)?.date === suggestedDate,
       'approved post moved after Add');
     let saved = await readPosts(evaluate);
     assert.equal(saved.filter((post) => post.id === prior.id).length, 1, 'The original post is updated, not duplicated.');
     assert.equal(saved.find((post) => post.id === prior.id).contentType, 'Book now');
     assert.equal(saved.some((post) => post.id === prior.id && post.date === priorDate), false);
+    assert.equal(await evaluate("Boolean(document.querySelector('[aria-labelledby=\"selected-post-title\"]'))"), false);
+    assert.equal(await evaluate("document.querySelector('.month-nav-label').textContent.trim()"),
+      new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date(`${suggestedDate}T12:00:00`)),
+      'Applying a suggestion must show its calendar month.');
+    const movedTitle = saved.find((post) => post.id === prior.id).title;
+    assert.equal(await evaluate(`(() => {
+      const event = [...document.querySelectorAll('button.event-chip-button')]
+        .find((button) => button.textContent.includes(${jsString(movedTitle)}));
+      return event?.closest('.day-cell')?.querySelector('.day-number')?.textContent.trim();
+    })()`), String(Number(suggestedDate.slice(-2))), 'The moved post is rendered on its new day.');
 
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'date-move reload');
@@ -421,6 +441,27 @@ async function startCdpPage(url) {
       profileDirectory,
       socket,
       evaluate,
+      resize: (width, height) => send('Emulation.setDeviceMetricsOverride', {
+        width, height, deviceScaleFactor: 1, mobile: false,
+      }),
+      clickVisible: async (selector) => {
+        const point = await evaluate(`(() => {
+          const element = document.querySelector(${jsString(selector)});
+          if (!element) throw new Error('Missing clickable control: ' + ${jsString(selector)});
+          const bounds = element.getBoundingClientRect();
+          const x = bounds.left + bounds.width / 2;
+          const y = bounds.top + bounds.height / 2;
+          if (!bounds.width || !bounds.height || x < 0 || x >= innerWidth || y < 0 || y >= innerHeight) {
+            throw new Error('Control is outside the viewport: ' + ${jsString(selector)});
+          }
+          if (!element.contains(document.elementFromPoint(x, y))) {
+            throw new Error('Another element blocks the control: ' + ${jsString(selector)});
+          }
+          return { x, y };
+        })()`);
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+      },
       reload: async () => {
         const marker = `reload-${Date.now()}-${Math.random()}`;
         await evaluate(`document.documentElement.dataset.testReloadMarker = ${jsString(marker)}`);

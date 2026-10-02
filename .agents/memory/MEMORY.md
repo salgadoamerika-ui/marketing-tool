@@ -5,4 +5,4 @@
 - [Conversion service pattern](conversion-service-pattern.md) — last-three booking-to-views trend; newest-post flag, trust before offers, and recovery resets the episode.
 - [Invisible flat-post ladder](flat-post-ladder.md) — hidden weak-view streak shapes retry, fresh approach and monthly pacing; recovery restores ordinary suggestions.
 - [Service mode intent](service-mode-intent.md) — distinct lifecycles and Campaign priority; cadence stays internal, while insights explain strategy and real results.
-- [Browser readiness](browser-readiness.md) — delayed initial load events can race reload checks; confirm a new document before testing persistence.
+- [Browser readiness](browser-readiness.md) — prove reloads use a new document; use hit-tested pointer clicks, not DOM clicks, to verify popup controls.
