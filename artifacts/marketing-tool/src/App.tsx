@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, Settings2, X } from 'lucide-react';
+import { CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, Settings2, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
@@ -9,12 +9,14 @@ import { PostPerformanceForm, type PostPerformance } from '@/components/post-per
 import { ServiceManager } from '@/components/service-manager';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
+import { buildActionInsight, type ActionInsight, type InsightPost } from '@/lib/action-insight';
 import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
 import { getMonthlyAirtime } from '@/lib/monthly-airtime';
 import { buildConversionReview } from '@/lib/conversion-review';
 import { getConversionGapMarkers } from '@/lib/conversion-gap';
 import { getFlatPostState } from '@/lib/flat-post-ladder';
+import { buildPostRationale } from '@/lib/post-rationale';
+import { getOverperformer } from '@/lib/overperformer';
 import {
   loadServiceSeasonSelections,
   normalizeSeasonMonths,
@@ -90,15 +92,7 @@ type Business = {
 const userPostsStorageKey = 'marketing-tool.user-posts';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
-const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
-const contentTypeRationales: Record<string, string> = {
-  Announcement: 'Opens the campaign. You lead with awareness before asking for anything.',
-  'Inside look': "You've announced — now show them inside to turn interest into desire.",
-  'Book now': "The audience is warm. Now's when the ask converts.",
-  Proof: 'Proof beats claims — real results move people who are interested but unsure.',
-  Insight: 'Value-first content builds trust before you ask for the booking.',
-  Recap: 'Keeps the service visible and reinforces what you offer.',
-};
+const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Testimonial', 'Pricing', 'Book now', 'Last chance', 'Recap', 'Promo', 'Fresh angle'];
 const businessData: Business[] = [
   {
     id: 'mosaic',
@@ -150,7 +144,7 @@ const businessData: Business[] = [
     id: 'northline',
     name: 'Northline Financial',
     descriptor: 'Keep the useful work in motion.',
-    focus: 'Year-end planning is moving forward while the weekly rhythm stays visible.',
+    focus: 'Year-end planning is moving forward with useful guidance for prospective clients.',
     projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
     palette: [
       { label: 'Fall programs', tone: 'rose' },
@@ -182,7 +176,7 @@ const businessData: Business[] = [
   {
     id: 'harbor',
     name: 'Harbor Coverage',
-    descriptor: 'A steadier rhythm for the people you serve.',
+    descriptor: 'Useful guidance for the people you serve.',
     focus: 'Insurance leads the calendar, with a few useful cross-service reminders alongside it.',
     projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
     palette: [
@@ -214,6 +208,18 @@ const businessData: Business[] = [
 ];
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const seededCalendarPosts: InsightPost[] = businessData.flatMap((business) =>
+  Object.entries(business.events).flatMap(([month, events]) =>
+    events.filter((event) => event.project).map((event, index) => ({
+      id: `seed-${business.id}-${month}-${index}`,
+      businessId: business.id, project: event.project!, title: event.title,
+      contentType: event.detail ?? 'Post', date: `${month}-${String(event.day).padStart(2, '0')}`,
+    }))));
+const seededCalendarDates = Object.fromEntries(businessData.map((business) => [
+  business.id,
+  Object.entries(business.events).flatMap(([month, events]) =>
+    events.map((event) => `${month}-${String(event.day).padStart(2, '0')}`)),
+]));
 const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
 
 function monthKey(date: Date) {
@@ -352,6 +358,7 @@ function formatPostDate(date: string) {
 
 function CalendarSurface() {
   const [activeBusinessId, setActiveBusinessId] = useState('mosaic');
+  const [todayKey, setTodayKey] = useState(() => formatDateInput(new Date()));
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
   const [statusMessage, setStatusMessage] = useState('');
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
@@ -413,10 +420,10 @@ function CalendarSurface() {
   const conversionMarkers = useMemo(() => getConversionGapMarkers(userPosts), [userPosts]);
   const conversionReview = selectedUserPost ? buildConversionReview(
     selectedUserPost,
-    userPosts,
+    [...userPosts, ...seededCalendarPosts],
     formatDateInput(new Date()),
-    Object.entries(activeBusiness.events).flatMap(([month, monthEvents]) =>
-      monthEvents.map((event) => `${month}-${String(event.day).padStart(2, '0')}`)),
+    seededCalendarDates[selectedUserPost.businessId] ?? [],
+    services,
   ) : null;
   const selectedBestTime = selectedUserPost?.schedulingStatus === 'approved-suggestion'
     ? getBestTimeRecommendation(
@@ -441,7 +448,25 @@ function CalendarSurface() {
     ...events,
     ...monthPosts.map(postAsEvent),
   ];
-  const todayKey = formatDateInput(new Date());
+  useEffect(() => {
+    const refreshDay = () => setTodayKey(formatDateInput(new Date()));
+    const timer = window.setInterval(refreshDay, 60_000);
+    window.addEventListener('focus', refreshDay);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshDay);
+    };
+  }, []);
+  useEffect(() => {
+    setActionInsight((current) => {
+      if (!current?.sourcePostId) return current;
+      const source = userPosts.find((post) => post.id === current.sourcePostId);
+      if (!source) return null;
+      const refreshed = buildActionInsight(current.action, source, [...userPosts, ...seededCalendarPosts],
+        todayKey, seededCalendarDates[source.businessId] ?? [], services);
+      return JSON.stringify(current) === JSON.stringify(refreshed) ? current : refreshed;
+    });
+  }, [services, userPosts, todayKey]);
 
   useEffect(() => {
     try {
@@ -614,9 +639,10 @@ function CalendarSurface() {
     setActionInsight(buildActionInsight(
       'logged',
       savedPost,
-      postsAfterSave,
+      [...postsAfterSave, ...seededCalendarPosts],
       todayKey,
-      activeBusinessPosts.map((post) => post.date),
+      seededCalendarDates[savedPost.businessId] ?? [],
+      services,
     ));
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
@@ -626,18 +652,29 @@ function CalendarSurface() {
   const handleAddInsightSuggestions = () => {
     if (!actionInsight) return;
 
-    const suggestions = actionInsight.proposals.flatMap((proposal): UserPost[] => {
+    const source = userPosts.find((post) => post.id === (actionInsight.sourcePostId ?? actionInsight.proposals[0]?.triggerPostId));
+    if (!source) return;
+    const refreshed = buildActionInsight(actionInsight.action, source, [...userPosts, ...seededCalendarPosts],
+      formatDateInput(new Date()), seededCalendarDates[source.businessId] ?? [], services);
+    if (JSON.stringify(refreshed.proposals) !== JSON.stringify(actionInsight.proposals)) {
+      setActionInsight(refreshed);
+      showActionMessage('The calendar or Campaign dates changed. Review the refreshed suggestions before adding.');
+      return;
+    }
+    const suggestions = refreshed.proposals.flatMap((proposal): UserPost[] => {
       const sourcePost = userPosts.find((post) => post.id === proposal.sourcePostId);
       if (!sourcePost) return [];
+      const original = proposal.replaces ? userPosts.find((post) => post.id === proposal.replaces!.postId) : undefined;
       return [{
-        id: createPostId(),
+        ...original,
+        id: original?.id ?? createPostId(),
         businessId: sourcePost.businessId,
         project: sourcePost.project,
         contentType: proposal.contentType,
         title: proposal.title,
         date: proposal.date,
-        platforms: sourcePost.platforms,
-        distribution: 'organic',
+        platforms: original?.platforms ?? sourcePost.platforms,
+        distribution: original?.distribution ?? 'organic',
         schedulingStatus: 'approved-suggestion',
         sourcePostId: proposal.sourcePostId,
         suggestionKind: proposal.kind,
@@ -645,8 +682,16 @@ function CalendarSurface() {
     });
 
     if (suggestions.length > 0) {
-      setUserPosts((current) => [...current, ...suggestions]);
-      showActionMessage(`${suggestions.length} suggested ${suggestions.length === 1 ? 'post was' : 'posts were'} added to the calendar.`);
+      const replacementIds = new Set(refreshed.proposals.flatMap((proposal) => proposal.replaces ? [proposal.replaces.postId] : []));
+      setUserPosts((current) => {
+        const revised = current.map((existing) => replacementIds.has(existing.id)
+          ? suggestions.find((suggestion) => suggestion.id === existing.id) ?? existing : existing);
+        return [...revised, ...suggestions.filter((suggestion) => !replacementIds.has(suggestion.id)
+          && !revised.some((existing) => existing.schedulingStatus === 'approved-suggestion'
+            && existing.sourcePostId === suggestion.sourcePostId && existing.contentType === suggestion.contentType
+            && existing.date === suggestion.date))];
+      });
+      showActionMessage(`${suggestions.length} suggested ${suggestions.length === 1 ? 'change was' : 'changes were'} applied to the calendar.`);
     }
     setActionInsight(null);
   };
@@ -671,16 +716,28 @@ function CalendarSurface() {
     setUserPosts(postsAfterSave);
     const savedPost = postsAfterSave.find((post) => post.id === selectedUserPost.id)!;
     const flatState = getFlatPostState(savedPost, postsAfterSave, todayKey);
-    setActionInsight(flatState.action !== 'none' && flatState.latestPostId === savedPost.id
-      ? buildActionInsight('results', savedPost, postsAfterSave, todayKey, activeBusinessPosts.map((post) => post.date))
+    const service = services.find((item) => item.businessId === savedPost.businessId && item.name === savedPost.project);
+    const winner = getOverperformer(savedPost, postsAfterSave.filter((post) => (post as InsightPost).status !== 'skipped' && post.date <= todayKey));
+    setActionInsight((flatState.action !== 'none' && flatState.latestPostId === savedPost.id) || winner || service?.mode === 'campaign'
+      ? buildActionInsight('results', savedPost, [...postsAfterSave, ...seededCalendarPosts], todayKey, seededCalendarDates[savedPost.businessId] ?? [], services)
       : null);
     // Keep results open so the conversion assessment (including unmet gates)
     // is visible immediately, independently of content-sequence suggestions.
   };
 
   const handleAddConversionSuggestion = () => {
-    const proposal = conversionReview?.proposal;
-    if (!proposal || proposal.blocked) return;
+    if (!selectedUserPost) return;
+    const refreshed = buildConversionReview(selectedUserPost, [...userPosts, ...seededCalendarPosts],
+      formatDateInput(new Date()), seededCalendarDates[selectedUserPost.businessId] ?? [], services);
+    const proposal = refreshed.proposal;
+    if (!proposal || proposal.blocked) {
+      showActionMessage('There is no eligible follow-up date. A closed Campaign cannot add new suggestions.');
+      return;
+    }
+    if (JSON.stringify(proposal) !== JSON.stringify(conversionReview?.proposal)) {
+      showActionMessage('The calendar or Campaign dates changed. Review the updated follow-up before adding.');
+      return;
+    }
     const source = userPosts.find((post) => post.id === proposal.sourcePostId);
     if (!source) return;
     const suggestion: UserPost = {
@@ -696,7 +753,9 @@ function CalendarSurface() {
       suggestionKind: proposal.kind,
       sourcePostId: proposal.sourcePostId,
     };
-    setUserPosts((current) => [...current, suggestion]);
+    setUserPosts((current) => current.some((existing) =>
+      existing.sourcePostId === suggestion.sourcePostId && existing.suggestionKind === suggestion.suggestionKind)
+      ? current : [...current, suggestion]);
     setActionInsight(null);
     setSelectedPostId(null);
     setVisibleMonth(new Date(`${suggestion.date}T12:00:00`));
@@ -864,13 +923,6 @@ function CalendarSurface() {
                 seasonMonthsByService={seasonMonthsByService}
                 onSaveSeasonMonths={handleSaveSeasonMonths}
               />
-              <div className="heartbeat">
-                <span className="heartbeat-mark"><Activity size={14} strokeWidth={1.8} /></span>
-                <div>
-                  <strong>Weekly heartbeat</strong>
-                  <span>One check-in keeps every service moving.</span>
-                </div>
-              </div>
             </section>
 
             <section className="insight-card">
@@ -1194,15 +1246,18 @@ function CalendarSurface() {
                     onAdd={handleAddConversionSuggestion}
                   />
                 )}
-                {contentTypeRationales[selectedUserPost.contentType] && (
-                  <section aria-labelledby="post-rationale-title" className="post-rationale">
-                    <h3 id="post-rationale-title">Why this move</h3>
-                    <p>{contentTypeRationales[selectedUserPost.contentType]}</p>
-                  </section>
-                )}
+                <section aria-labelledby="post-rationale-title" className="post-rationale">
+                  <h3 id="post-rationale-title">Why this move</h3>
+                  <p>{buildPostRationale(selectedUserPost, [...userPosts, ...seededCalendarPosts], todayKey, services)}</p>
+                </section>
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
+                  <button className="save-post-button" onClick={() => {
+                    setActionInsight(buildActionInsight('completed', selectedUserPost,
+                      [...userPosts, ...seededCalendarPosts], formatDateInput(new Date()), seededCalendarDates[selectedUserPost.businessId] ?? [], services));
+                    closeSelectedPost();
+                  }} type="button">Suggest next posts</button>
                   <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>
                 </div>
               </div>

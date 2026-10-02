@@ -28,7 +28,7 @@ export function buildFlatPostInsight(
     ? 'Worth another shot — timing may have been off. Repost the same content before trying a brand-new move.'
     : kind === 'fresh-angle'
       ? 'Keep the topic, but change the opening or format. Try a fresh approach rather than moving to a new subject.'
-      : 'Keep this service in the mix with a useful monthly check-in. Give your other services more room between posts.';
+      : 'Keep this Service useful with a practical check-in. Focus on a question clients can act on rather than repeating the last sales pitch.';
   const evidence = `“${source.title}” for ${source.project}.`;
   if (existing) return {
     action, title: 'Your next beat is already set', evidence,
@@ -42,7 +42,7 @@ export function buildFlatPostInsight(
 
   const contentType = kind === 'repost' ? source.contentType : kind === 'fresh-angle' ? 'Fresh angle' : 'Insight';
   const postTitle = kind === 'repost' ? source.title
-    : kind === 'fresh-angle' ? `${source.title} — a fresh approach` : `${source.project}: a useful monthly check-in`;
+    : kind === 'fresh-angle' ? `${source.title} — a fresh approach` : `${source.project}: a useful check-in`;
   const intendedDate = kind === 'maintenance'
     ? getMaintenanceSuggestionDate(service, posts, today)
     : addDaysToDate(source.date > today ? source.date : today, 2);

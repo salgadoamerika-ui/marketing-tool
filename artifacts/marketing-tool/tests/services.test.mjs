@@ -38,9 +38,10 @@ test('bad storage, unknown modes and duplicate identities fail explicitly instea
   assert.throws(() => loadServices(JSON.stringify([ongoing, ongoing]), []));
   assert.throws(() => loadServices(JSON.stringify([ongoing, { ...ongoing, id: 'copy', name: 'insurance' }]), []));
 });
-test('mode and campaign deadlines do not change content suggestions at this stage', () => {
+test('saved Service and Campaign definitions now change content suggestion policy', () => {
   const source = { ...ongoing, project: ongoing.name, title: 'What coverage includes', contentType: 'Announcement', date: '2026-09-22' };
-  const actual = buildActionInsight('logged', source, [source], source.date);
+  const actual = buildActionInsight('logged', source, [source], source.date, [], [ongoing]);
   const withDates = { ...source, ...campaign, project: ongoing.name };
-  assert.deepEqual(buildActionInsight('logged', withDates, [withDates], source.date), actual);
+  assert.notDeepEqual(buildActionInsight('logged', withDates, [withDates], source.date, [], [campaign]), actual);
+  assert.equal(buildActionInsight('logged', withDates, [withDates], '2026-12-31', [], [campaign]).proposals.length, 0);
 });

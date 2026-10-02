@@ -1,6 +1,8 @@
 import type { PostPerformance } from '@/components/post-performance-form';
 import { addDaysToDate, getFollowUpPlans } from './follow-ups.ts';
 import { buildFlatPostInsight } from './flat-post-suggestions.ts';
+import { applyModeSuggestions } from './mode-suggestions.ts';
+import type { ServiceDefinition } from './services.ts';
 
 export type InsightAction = 'logged' | 'results' | 'completed' | 'skipped';
 export type SuggestionKind = 'automatic' | 'reschedule' | 'repost' | 'fresh-angle' | 'maintenance';
@@ -13,6 +15,7 @@ export type InsightPost = {
   contentType: string;
   date: string;
   status?: 'completed' | 'skipped';
+  schedulingStatus?: 'published' | 'approved-suggestion';
   suggestionKind?: string;
   sourcePostId?: string;
   performance?: PostPerformance;
@@ -25,6 +28,7 @@ export type InsightProposal = {
   contentType: string;
   title: string;
   date: string;
+  replaces?: { postId: string; title: string; contentType: string; date: string };
 };
 
 export type InsightSequenceBeat = {
@@ -37,6 +41,7 @@ export type InsightSequenceBeat = {
 };
 
 export type ActionInsight = {
+  sourcePostId?: string;
   action: InsightAction;
   title: string;
   evidence: string;
@@ -74,7 +79,7 @@ function uploadedNumbers(performance?: PostPerformance): string {
   return recorded.length ? ` Uploaded results: ${recorded.join(', ')}.` : '';
 }
 
-export function buildActionInsight(
+function buildBaseActionInsight(
   action: InsightAction,
   post: InsightPost,
   posts: InsightPost[],
@@ -192,4 +197,13 @@ export function buildActionInsight(
     beats,
     proposals,
   };
+}
+
+export function buildActionInsight(
+  action: InsightAction, post: InsightPost, posts: InsightPost[], today = post.date,
+  occupiedDates: string[] = [], services?: ServiceDefinition[],
+): ActionInsight {
+  const base = buildBaseActionInsight(action, post, posts, today, occupiedDates);
+  const result = services ? applyModeSuggestions(base, post, posts, today, occupiedDates, services) : base;
+  return { ...result, sourcePostId: post.id };
 }

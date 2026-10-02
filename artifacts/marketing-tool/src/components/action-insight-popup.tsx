@@ -29,10 +29,16 @@ export function ActionInsightPopup({ insight, onAdd, onSkip }: Props) {
             <div className={`action-insight-proposal action-insight-beat-${beat.state}`} key={`${beat.contentType}-${beat.date}-${index}`}>
               <span>
                 {beat.state === 'scheduled'
-                  ? 'Your next beat is already set'
-                  : beat.state === 'blocked' ? 'No open date this week' : 'Suggested next beat'}
+                  ? 'Already on your calendar'
+                  : beat.state === 'blocked' ? 'No available date for this step'
+                    : beat.proposal?.replaces ? 'Suggested update to a planned post' : 'Suggested next post'}
               </span>
               <strong>{beat.title}</strong>
+              {beat.proposal?.replaces && <small>
+                Currently: {beat.proposal.replaces.title} · {beat.proposal.replaces.contentType} ·{' '}
+                {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                  .format(new Date(`${beat.proposal.replaces.date}T12:00:00`))}
+              </small>}
               <small>
                 {beat.state === 'blocked' ? 'Choose another date to keep this step.' : <>
                   {new Intl.DateTimeFormat('en-US', {
@@ -47,7 +53,8 @@ export function ActionInsightPopup({ insight, onAdd, onSkip }: Props) {
       <div className="action-insight-actions">
         {insight.proposals.length > 0 && (
           <button className="save-post-button action-insight-add" onClick={onAdd} type="button">
-            {insight.proposals.length > 1 ? 'Add missing moves' : 'Add to calendar'}
+            {insight.proposals.some((proposal) => proposal.replaces)
+              ? 'Apply suggested changes' : insight.proposals.length > 1 ? 'Add missing moves' : 'Add to calendar'}
           </button>
         )}
         <button className="cancel-button action-insight-skip" onClick={onSkip} type="button">

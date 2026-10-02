@@ -389,6 +389,7 @@
 .monthly-airtime-method { margin-top: 12px; color: var(--muted-foreground); }
 .monthly-airtime-method summary { font-size: 9px; cursor: pointer; }
 .monthly-airtime-method p { margin-top: 7px; font-size: 9px; line-height: 1.5; }
+.content-pacing-note { margin-top: 12px !important; padding: 9px; border: 1px solid var(--rose-soft); border-radius: 8px; color: var(--rose-deep) !important; font-size: 10px !important; line-height: 1.5; }
 .heartbeat { position: relative; display: flex; align-items: flex-start; gap: 9px; margin-top: 15px; padding-top: 13px; }
 .heartbeat::before { position: absolute; top: 0; right: 0; left: 0; height: 1px; background: linear-gradient(90deg, rgba(168, 74, 110, .3), rgba(168, 74, 110, .08) 82%, transparent); content: ''; }
 .heartbeat-mark { display: grid; width: 27px; height: 27px; flex: none; place-items: center; border-radius: 8px; background: #f3dce5; color: var(--rose-deep); }

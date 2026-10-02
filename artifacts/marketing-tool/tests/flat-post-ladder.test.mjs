@@ -89,7 +89,8 @@ test('maintenance suggests a real monthly post and does not silently schedule or
   assert.equal(result.proposals[0].contentType, 'Insight');
   assert.equal(result.proposals[0].date, '2026-10-06', 'Thirty days after last service post, not a weekly beat.');
   assert.deepEqual(posts, history, 'Building a suggestion must not mutate posts.');
-  assert.match(result.recommendation, /monthly check-in/);
+  assert.match(result.recommendation, /practical check-in/);
+  assert.doesNotMatch(result.recommendation, /monthly|rhythm|pacing|floor/i);
 });
 
 test('approved retry/fresh/monthly suggestions are reused instead of duplicated', () => {
