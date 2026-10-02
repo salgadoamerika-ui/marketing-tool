@@ -74,6 +74,12 @@ const userPostsStorageKey = 'marketing-tool.user-posts';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Book now', 'Recap'];
+const glanceMetricDefinitions: Array<{ key: keyof PostPerformance; label: string }> = [
+  { key: 'views', label: 'Views' },
+  { key: 'saves', label: 'Saves' },
+  { key: 'bookings', label: 'Bookings' },
+];
+const performanceNumberFormatter = new Intl.NumberFormat('en-US');
 const contentTypeRationales: Record<string, string> = {
   Announcement: 'Opens the campaign. You lead with awareness before asking for anything.',
   'Inside look': "You've announced — now show them inside to turn interest into desire.",
@@ -353,6 +359,15 @@ function CalendarSurface() {
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
+  const monthPerformanceMetrics = glanceMetricDefinitions.map(({ key, label }) => {
+    const values = monthPosts
+      .map((post) => post.performance?.[key])
+      .filter((value): value is number => typeof value === 'number');
+    return {
+      label,
+      value: values.length ? values.reduce((total, value) => total + value, 0) : null,
+    };
+  });
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
   const selectedBestTime = selectedUserPost?.schedulingStatus === 'approved-suggestion'
     ? getBestTimeRecommendation(
@@ -694,6 +709,15 @@ function CalendarSurface() {
               <p className="insight-eyebrow">This month at a glance</p>
               <h2>Keep the signal warm.</h2>
               <p>{activeBusiness.focus}</p>
+              <div className="glance-metrics-caption">Recorded results this month</div>
+              <div className="glance-metrics" role="group" aria-label="Results recorded this month">
+                {monthPerformanceMetrics.map(({ label, value }) => (
+                  <div className="glance-metric" key={label}>
+                    <strong>{value === null ? '—' : performanceNumberFormatter.format(value)}</strong>
+                    <span>{label}</span>
+                  </div>
+                ))}
+              </div>
               <div className="focus-list">
                 {activeBusiness.palette.map((item) => (
                   <div className="focus-row" key={item.label}>
