@@ -260,6 +260,18 @@ async function dismissInsight(evaluate) {
   await evaluate("document.querySelector('button.action-insight-skip')?.click() ?? true");
 }
 
+async function resolveInsight(evaluate, action = 'skip') {
+  await waitFor(
+    () => evaluate("Boolean(document.querySelector('.action-insight-popup'))"),
+    'post insight popup',
+  );
+  await click(evaluate, action === 'add' ? '.action-insight-add' : '.action-insight-skip');
+  await waitFor(
+    () => evaluate("!document.querySelector('.action-insight-popup')"),
+    'post insight popup to close',
+  );
+}
+
 async function ensureMonth(evaluate, date) {
   const target = new Date(`${date}T12:00:00`);
   const targetMonth = `${new Intl.DateTimeFormat('en-US', { month: 'long' }).format(target)} ${target.getFullYear()}`;
@@ -279,7 +291,7 @@ async function ensureMonth(evaluate, date) {
   assert.fail(`Could not navigate to ${targetMonth}.`);
 }
 
-async function createPost(evaluate, post) {
+async function createPost(evaluate, post, insightAction = 'skip') {
   await click(evaluate, 'button.add-post');
   await waitFor(() => evaluate("Boolean(document.querySelector('.post-form'))"), 'new post form');
   await setField(evaluate, '.post-form .form-grid label:nth-of-type(1) select', post.service);
@@ -296,7 +308,18 @@ async function createPost(evaluate, post) {
   })()`);
   await click(evaluate, '.post-form-actions .save-post-button');
   await waitFor(() => evaluate("!document.querySelector('.post-form')"), 'post to be added to the calendar');
-  await dismissInsight(evaluate);
+  await resolveInsight(evaluate, insightAction);
+  if (insightAction === 'skip') {
+    const createdSuggestion = await evaluate(`(() => {
+      const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
+      const source = posts.find((item) => item.title === ${jsString(post.title)});
+      return posts.some((item) =>
+        item.sourcePostId === source?.id
+        && item.schedulingStatus === 'approved-suggestion'
+      );
+    })()`);
+    assert.equal(createdSuggestion, false, `Skipping the insight should not schedule a suggestion for ${post.title}.`);
+  }
 }
 
 async function openPost(evaluate, post) {
@@ -309,7 +332,7 @@ async function openPost(evaluate, post) {
     return true;
   })()`);
   await waitFor(
-    () => evaluate("Boolean(document.querySelector('[aria-label=\"Best time recommendation\"]'))"),
+    () => evaluate("Boolean(document.querySelector('[aria-labelledby=\"selected-post-title\"]'))"),
     `details for ${post.title}`,
   );
 }
@@ -367,6 +390,31 @@ async function assertCalendarMode(evaluate, post, mode) {
   assert.equal(hasModeBadge, true, `${post.title} should have a ${mode} timing badge in the calendar.`);
 }
 
+async function assertNoCalendarMode(evaluate, post) {
+  await clickButtonText(evaluate, 'Keep post');
+  await ensureMonth(evaluate, post.date);
+  const hasModeBadge = await evaluate(`(() => {
+    const event = [...document.querySelectorAll('button.event-chip-button')]
+      .find((button) => button.textContent.includes(${jsString(post.title)}));
+    return Boolean(event?.querySelector('.event-best-time'));
+  })()`);
+  assert.equal(hasModeBadge, false, `${post.title} should not show a timing badge.`);
+}
+
+async function findApprovedSuggestion(evaluate, sourcePost) {
+  const suggestion = await evaluate(`(() => {
+    const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
+    const source = posts.find((item) => item.title === ${jsString(sourcePost.title)});
+    return posts.find((item) =>
+      item.sourcePostId === source?.id
+      && item.schedulingStatus === 'approved-suggestion'
+      && item.contentType === 'Book now'
+    ) ?? null;
+  })()`);
+  assert.ok(suggestion, `An approved booking suggestion should be saved for ${sourcePost.title}.`);
+  return { title: suggestion.title, date: suggestion.date };
+}
+
 const learnedPosts = [
   { service: 'Tax planning', date: '2026-10-06', postedTime: '09:00', views: 600, title: 'Tax timing sample 1' },
   { service: 'Tax planning', date: '2026-10-13', postedTime: '10:30', views: 500, title: 'Tax timing sample 2' },
@@ -410,79 +458,101 @@ test('learned timing stays business- and service-specific through saved results 
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'fresh calendar after clearing storage');
 
+    let taxPlanningSuggestion;
     for (const [index, post] of learnedPosts.entries()) {
-      await createPost(evaluate, post);
+      await createPost(evaluate, post, index === 0 ? 'add' : 'skip');
+      if (index === 0) taxPlanningSuggestion = await findApprovedSuggestion(evaluate, post);
+
       await openPost(evaluate, post);
-      const beforeSaveExpected = index < 3
-        ? 'Best time · suggested'
-        : 'Best time · from your results: Tuesday mornings';
-      assert.equal(await readRecommendation(evaluate), beforeSaveExpected);
+      assert.equal(await readRecommendation(evaluate), '', 'Manually entered posts should not receive scheduling advice.');
       await saveResults(evaluate, post);
+
       await openPost(evaluate, post);
+      assert.equal(await readRecommendation(evaluate), '', 'Manual performance data should not make the post itself schedulable.');
+      await assertNoCalendarMode(evaluate, post);
+
+      await openPost(evaluate, taxPlanningSuggestion);
       const expected = index < 2
         ? 'Best time · suggested'
         : 'Best time · from your results: Tuesday mornings';
-      await waitFor(async () => (await readRecommendation(evaluate)) === expected, `${post.title} recommendation to update`);
+      await waitFor(async () => (await readRecommendation(evaluate)) === expected, `${post.title} timing suggestion to update`);
       assert.equal(await readRecommendation(evaluate), expected);
-      await assertCalendarMode(evaluate, post, index < 2 ? 'suggested' : 'learned');
+      await assertCalendarMode(evaluate, taxPlanningSuggestion, index < 2 ? 'suggested' : 'learned');
     }
 
     const correctedPost = { ...learnedPosts[1], views: 250 };
     await openPost(evaluate, learnedPosts[1]);
     await saveResults(evaluate, correctedPost);
-    await openPost(evaluate, learnedPosts[1]);
+    await openPost(evaluate, taxPlanningSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
-    await clickButtonText(evaluate, 'Keep post');
+    await assertCalendarMode(evaluate, taxPlanningSuggestion, 'learned');
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after correcting saved results');
     await openPost(evaluate, learnedPosts[0]);
+    assert.equal(await readRecommendation(evaluate), '');
+    await assertNoCalendarMode(evaluate, learnedPosts[0]);
+    await openPost(evaluate, taxPlanningSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
-    await assertCalendarMode(evaluate, learnedPosts[0], 'learned');
+    await assertCalendarMode(evaluate, taxPlanningSuggestion, 'learned');
 
     await openPost(evaluate, learnedPosts[3]);
     await saveResults(evaluate, { ...learnedPosts[3], postedTime: undefined });
-    await openPost(evaluate, learnedPosts[3]);
+    await openPost(evaluate, taxPlanningSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
-    await assertCalendarMode(evaluate, learnedPosts[3], 'suggested');
+    await assertCalendarMode(evaluate, taxPlanningSuggestion, 'suggested');
 
     await selectBusiness(evaluate, 'Northline Financial');
+    let northlineSuggestion;
     for (const [index, post] of secondBusinessPosts.entries()) {
-      await createPost(evaluate, post);
+      await createPost(evaluate, post, index === 0 ? 'add' : 'skip');
+      if (index === 0) northlineSuggestion = await findApprovedSuggestion(evaluate, post);
       await openPost(evaluate, post);
-      assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
+      assert.equal(await readRecommendation(evaluate), '');
       await saveResults(evaluate, post);
       await openPost(evaluate, post);
+      assert.equal(await readRecommendation(evaluate), '');
+      await assertNoCalendarMode(evaluate, post);
+      await openPost(evaluate, northlineSuggestion);
       const expected = index < 2
         ? 'Best time · suggested'
         : 'Best time · from your results: Monday evenings';
-      await waitFor(async () => (await readRecommendation(evaluate)) === expected, `${post.title} recommendation to update`);
+      await waitFor(async () => (await readRecommendation(evaluate)) === expected, `${post.title} timing suggestion to update`);
       assert.equal(await readRecommendation(evaluate), expected);
-      await assertCalendarMode(evaluate, post, index < 2 ? 'suggested' : 'learned');
+      await assertCalendarMode(evaluate, northlineSuggestion, index < 2 ? 'suggested' : 'learned');
     }
 
     await selectBusiness(evaluate, 'Mosaic Legal');
+    let insuranceSuggestion;
     for (const [index, post] of isolatedServicePosts.entries()) {
-      await createPost(evaluate, post);
+      await createPost(evaluate, post, index === 0 ? 'add' : 'skip');
+      if (index === 0) insuranceSuggestion = await findApprovedSuggestion(evaluate, post);
       await openPost(evaluate, post);
-      assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
+      assert.equal(await readRecommendation(evaluate), '');
       await saveResults(evaluate, post);
       await openPost(evaluate, post);
+      assert.equal(await readRecommendation(evaluate), '');
+      await assertNoCalendarMode(evaluate, post);
+      await openPost(evaluate, insuranceSuggestion);
       const expected = index < 2
         ? 'Best time · suggested'
         : 'Best time · from your results: Thursday evenings';
-      await waitFor(async () => (await readRecommendation(evaluate)) === expected, `${post.title} recommendation to update`);
+      await waitFor(async () => (await readRecommendation(evaluate)) === expected, `${post.title} timing suggestion to update`);
       assert.equal(await readRecommendation(evaluate), expected);
-      await assertCalendarMode(evaluate, post, index < 2 ? 'suggested' : 'learned');
+      await assertCalendarMode(evaluate, insuranceSuggestion, index < 2 ? 'suggested' : 'learned');
     }
 
     await selectBusiness(evaluate, 'Mosaic Legal');
     await openPost(evaluate, learnedPosts[2]);
-    assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
-    await clickButtonText(evaluate, 'Keep post');
+    assert.equal(await readRecommendation(evaluate), '');
+    await assertNoCalendarMode(evaluate, learnedPosts[2]);
     await selectBusiness(evaluate, 'Northline Financial');
-    await openPost(evaluate, secondBusinessPosts[2]);
+    await openPost(evaluate, northlineSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Monday evenings');
-    await clickButtonText(evaluate, 'Keep post');
+    await assertCalendarMode(evaluate, northlineSuggestion, 'learned');
+    await selectBusiness(evaluate, 'Mosaic Legal');
+    await openPost(evaluate, insuranceSuggestion);
+    assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
+    await assertCalendarMode(evaluate, insuranceSuggestion, 'learned');
 
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after reload');
@@ -493,12 +563,18 @@ test('learned timing stays business- and service-specific through saved results 
       const savedMeasuredPosts = posts.filter((post) => measuredTitles.has(post.title));
       const allResultsSaved = savedMeasuredPosts.every((post) =>
         Number.isSafeInteger(post.performance?.views)
+        && post.schedulingStatus === 'published'
       );
       return savedMeasuredPosts.length === allMeasuredPosts.length && allResultsSaved
         ? savedMeasuredPosts.length
         : false;
     }, 'all measured posts and corrected results to persist');
     assert.equal(savedCount, allMeasuredPosts.length);
+    const approvedSuggestionsPersisted = await evaluate(`(() => {
+      const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
+      return posts.filter((post) => post.schedulingStatus === 'approved-suggestion').length;
+    })()`);
+    assert.ok(approvedSuggestionsPersisted >= 6, 'Approved suggestions should retain their status after refresh.');
     const persistedCorrections = await evaluate(`(() => {
       const titles = ${jsString([learnedPosts[1].title, learnedPosts[3].title])};
       const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
@@ -527,15 +603,20 @@ test('learned timing stays business- and service-specific through saved results 
     ]));
 
     await openPost(evaluate, learnedPosts[2]);
+    assert.equal(await readRecommendation(evaluate), '');
+    await assertNoCalendarMode(evaluate, learnedPosts[2]);
+    await openPost(evaluate, taxPlanningSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · suggested');
-    await clickButtonText(evaluate, 'Keep post');
+    await assertCalendarMode(evaluate, taxPlanningSuggestion, 'suggested');
+
     await selectBusiness(evaluate, 'Northline Financial');
-    await openPost(evaluate, secondBusinessPosts[2]);
+    await openPost(evaluate, northlineSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Monday evenings');
-    await clickButtonText(evaluate, 'Keep post');
+    await assertCalendarMode(evaluate, northlineSuggestion, 'learned');
     await selectBusiness(evaluate, 'Mosaic Legal');
-    await openPost(evaluate, isolatedServicePosts[2]);
+    await openPost(evaluate, insuranceSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
+    await assertCalendarMode(evaluate, insuranceSuggestion, 'learned');
   } finally {
     if (browser) await browser.close();
     await stopProcess(server.child);

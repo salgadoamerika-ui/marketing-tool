@@ -1,10 +1,12 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
 import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
 import NotFound from '@/pages/not-found';
 import {
@@ -40,6 +42,8 @@ type UserPost = {
   postedTime?: string;
   platforms: Platform[];
   distribution: Distribution;
+  schedulingStatus?: 'published' | 'approved-suggestion';
+  sourcePostId?: string;
   performance?: PostPerformance;
   budget?: number;
   runLength?: number;
@@ -78,35 +82,6 @@ const contentTypeRationales: Record<string, string> = {
   Insight: 'Value-first content builds trust before you ask for the booking.',
   Recap: 'Keeps the service visible and reinforces what you offer.',
 };
-// Phase 3 — the brain: what move naturally comes next after each content type
-const followUpMap: Record<string, Array<{ offset: number; contentType: string; label: string }>> = {
-  'Announcement': [
-    { offset: 2, contentType: 'Inside look', label: 'show them inside' },
-    { offset: 5, contentType: 'Book now', label: 'make the ask' },
-  ],
-  'Inside look': [
-    { offset: 2, contentType: 'Proof', label: 'back it with proof' },
-    { offset: 4, contentType: 'Book now', label: 'convert the interest' },
-  ],
-  'Book now': [
-    { offset: 3, contentType: 'Proof', label: 'reinforce trust' },
-  ],
-  'Proof': [
-    { offset: 3, contentType: 'Book now', label: 'ask while trust is high' },
-  ],
-  'Insight': [
-    { offset: 4, contentType: 'Book now', label: 'turn value into a booking' },
-  ],
-  'Recap': [
-    { offset: 5, contentType: 'Insight', label: 'keep the rhythm going' },
-  ],
-};
-
-function addDaysToDate(dateStr: string, days: number): string {
-  const d = new Date(`${dateStr}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 const businessData: Business[] = [
   {
     id: 'mosaic',
@@ -296,6 +271,10 @@ function isUserPost(value: unknown): value is UserPost {
       && typeof post.date === 'string'
       && (post.postedTime === undefined
         || (typeof post.postedTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(post.postedTime)))
+      && (post.schedulingStatus === undefined
+        || post.schedulingStatus === 'published'
+        || post.schedulingStatus === 'approved-suggestion')
+      && (post.sourcePostId === undefined || typeof post.sourcePostId === 'string')
       && (post.performance === undefined || isPostPerformance(post.performance))
       && Array.isArray(post.platforms)
       && post.platforms.every((platform) => typeof platform === 'string' && platform.trim().length > 0)
@@ -362,6 +341,7 @@ function CalendarSurface() {
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
+  const [actionInsight, setActionInsight] = useState<ActionInsight | null>(null);
   const [availablePlatforms, setAvailablePlatforms] = useState<Platform[]>(readAvailablePlatforms);
   const [isAddingPlatform, setIsAddingPlatform] = useState(false);
   const [newPlatformName, setNewPlatformName] = useState('');
@@ -374,7 +354,7 @@ function CalendarSurface() {
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
-  const selectedBestTime = selectedUserPost
+  const selectedBestTime = selectedUserPost?.schedulingStatus === 'approved-suggestion'
     ? getBestTimeRecommendation(
       selectedUserPost.businessId,
       selectedUserPost.project,
@@ -388,7 +368,9 @@ function CalendarSurface() {
     title: post.title,
     detail: getPostDetail(post),
     tone: getPostTone(post.project, activeBusiness),
-    bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts),
+    ...(post.schedulingStatus === 'approved-suggestion'
+      ? { bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts) }
+      : {}),
   });
   const calendarEvents = [
     ...events,
@@ -506,32 +488,49 @@ function CalendarSurface() {
       date: postForm.date,
       platforms: postForm.platforms,
       distribution: postForm.distribution,
+      schedulingStatus: 'published',
       ...(postForm.distribution === 'paid' ? { budget, runLength } : {}),
     };
-    // create suggested follow-up posts based on what was just logged
-    const followUps = followUpMap[savedPost.contentType] ?? [];
-    const suggestions: UserPost[] = followUps
-      .map((f) => ({
-        id: createPostId(),
-        businessId: activeBusiness.id,
-        project: savedPost.project,
-        contentType: f.contentType,
-        title: `${savedPost.project}: ${f.label}`,
-        date: addDaysToDate(savedPost.date, f.offset),
-        platforms: savedPost.platforms,
-        distribution: 'organic' as Distribution,
-      }))
-      // anti-duplicate: skip if a post of that type already exists within a few days
-      .filter((sugg) => !userPosts.some(
-        (p) => p.businessId === activeBusiness.id
-          && p.contentType === sugg.contentType
-          && Math.abs(new Date(p.date).getTime() - new Date(sugg.date).getTime()) < 4 * 86400000,
-      ));
 
-    setUserPosts((current) => [...current, savedPost, ...suggestions]);
+    const postsAfterSave = [...userPosts, savedPost];
+    setUserPosts(postsAfterSave);
+    setActionInsight(buildActionInsight(
+      'logged',
+      savedPost,
+      postsAfterSave,
+      todayKey,
+      activeBusinessPosts.map((post) => post.date),
+    ));
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
     showActionMessage(`Added “${savedPost.title}” to the calendar.`);
+  };
+
+  const handleAddInsightSuggestions = () => {
+    if (!actionInsight) return;
+
+    const suggestions = actionInsight.proposals.flatMap((proposal): UserPost[] => {
+      const sourcePost = userPosts.find((post) => post.id === proposal.sourcePostId);
+      if (!sourcePost) return [];
+      return [{
+        id: createPostId(),
+        businessId: sourcePost.businessId,
+        project: sourcePost.project,
+        contentType: proposal.contentType,
+        title: proposal.title,
+        date: proposal.date,
+        platforms: sourcePost.platforms,
+        distribution: 'organic',
+        schedulingStatus: 'approved-suggestion',
+        sourcePostId: proposal.sourcePostId,
+      }];
+    });
+
+    if (suggestions.length > 0) {
+      setUserPosts((current) => [...current, ...suggestions]);
+      showActionMessage(`${suggestions.length} suggested ${suggestions.length === 1 ? 'post was' : 'posts were'} added to the calendar.`);
+    }
+    setActionInsight(null);
   };
 
   const handleDeletePost = () => {
@@ -1022,6 +1021,13 @@ function CalendarSurface() {
               </div>
             </section>
           </div>
+        )}
+        {actionInsight && (
+          <ActionInsightPopup
+            insight={actionInsight}
+            onAdd={handleAddInsightSuggestions}
+            onSkip={() => setActionInsight(null)}
+          />
         )}
       </div>
     </main>
