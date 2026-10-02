@@ -198,7 +198,8 @@
   line-height: 1.55;
 }
 
-.header-actions { display: flex; align-items: center; gap: 12px; padding-bottom: 4px; }
+.header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-bottom: 4px; }
+.icon-button.manage-services { width: auto; padding-inline: 14px; }
 .month-nav { display: flex; align-items: center; gap: 9px; }
 .month-nav-label { min-width: 124px; color: var(--ink); font-size: 13px; font-weight: 600; text-align: center; }
 

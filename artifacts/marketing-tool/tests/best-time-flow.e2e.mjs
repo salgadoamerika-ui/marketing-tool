@@ -15,6 +15,106 @@ const monthIndexes = new Map(Array.from({ length: 12 }, (_, index) => [
   index,
 ]));
 
+test('service mode create/edit stores dates, survives reload, isolates businesses and leaves posts unchanged', { timeout: 90000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const source = {
+    id: 'mode-sample', businessId: 'mosaic', project: 'Insurance', title: 'Mode settings sample',
+    date: '2026-09-10', contentType: 'Insight', platforms: ['Instagram'],
+    distribution: 'organic', schedulingStatus: 'published', performance: { views: 100, saves: 10, bookings: 5 },
+  };
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'mode test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    const readServices = () => evaluate("JSON.parse(localStorage.getItem('marketing-tool.services') ?? '[]')");
+    const assertLabels = async () => assert.doesNotMatch(await evaluate('document.body.innerText'), /evergreen/i);
+    const fill = async (run, selector, value) => run(`(() => {
+      const input = document.querySelector(${jsString(selector)});
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(input, ${jsString(value)});
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    const fillDates = async (start, end) => {
+      await evaluate(`(() => {
+        const inputs = document.querySelectorAll('.sm-form input[type="date"]');
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        [${jsString(start)}, ${jsString(end)}].forEach((value, index) => {
+          setter.call(inputs[index], value);
+          inputs[index].dispatchEvent(new Event('input', { bubbles: true }));
+          inputs[index].dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      })()`);
+    };
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify([source]))})`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after seed');
+    assert.equal((await readServices()).length, 15);
+    await clickButtonText(evaluate, 'Manage services');
+    await click(evaluate, 'button[aria-label="Edit Insurance"]');
+    assert.equal(await evaluate("document.querySelectorAll('.sm-form input[type=\"date\"]').length"), 0);
+    const choiceText = await evaluate("document.querySelector('.sm-form').innerText");
+    assert.match(choiceText, /Something you offer ongoing — no end date\./);
+    assert.match(choiceText, /A push toward a deadline\./);
+    await click(evaluate, '.sm-form input[value="campaign"]');
+    await clickButtonText(evaluate, 'Save');
+    assert.match(await evaluate("document.querySelector('.sm-error').innerText"), /start date and a deadline/);
+    assert.equal((await readServices()).find((s) => s.id === 'mosaic:Insurance').mode, 'evergreen');
+    await fillDates('2026-09-01', '2026-10-31');
+    await clickButtonText(evaluate, 'Save');
+    await waitFor(async () => (await readServices()).find((s) => s.id === 'mosaic:Insurance')?.mode === 'campaign', 'saved campaign');
+    assert.equal((await readServices()).find((s) => s.id === 'northline:Insurance').mode, 'evergreen');
+    await assertLabels();
+    await click(evaluate, '.sm-header button');
+    await openPost(evaluate, source);
+    assert.match(await evaluate("document.querySelector('.post-detail-list').innerText"), /Mode\nCampaign/i);
+    assert.match(await evaluate("document.querySelector('.post-detail-list').innerText"), /Deadline/i);
+    await clickButtonText(evaluate, 'Keep post');
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'reload after campaign edit');
+    await clickButtonText(evaluate, 'Manage services');
+    await click(evaluate, 'button[aria-label="Edit Insurance"]');
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('.sm-form input[type=\"date\"]')].map(input => input.value)"), ['2026-09-01', '2026-10-31']);
+    await click(evaluate, '.sm-form input[value="evergreen"]');
+    await clickButtonText(evaluate, 'Save');
+    const ongoing = (await readServices()).find((s) => s.id === 'mosaic:Insurance');
+    assert.equal(ongoing.mode, 'evergreen');
+    assert.equal('startDate' in ongoing, false);
+    assert.equal('endDate' in ongoing, false);
+
+    await clickButtonText(evaluate, 'Add service');
+    await fill(evaluate, '.sm-form input[type="text"]', 'Winter intake');
+    await click(evaluate, '.sm-form input[value="campaign"]');
+    await fillDates('2026-11-01', '2026-12-01');
+    await clickButtonText(evaluate, 'Save');
+    const added = (await readServices()).find((s) => s.name === 'Winter intake');
+    assert.equal(added.mode, 'campaign');
+    assert.equal(added.businessId, 'mosaic');
+    assert.equal(added.endDate, '2026-12-01');
+    await clickButtonText(evaluate, 'Add service');
+    await fill(evaluate, '.sm-form input[type="text"]', 'insurance');
+    await clickButtonText(evaluate, 'Save');
+    assert.match(await evaluate("document.querySelector('.sm-error').innerText"), /already used/);
+    await clickButtonText(evaluate, 'Cancel');
+    await assertLabels();
+    await click(evaluate, '.sm-header button');
+    await clickButtonText(evaluate, 'Add post');
+    assert.ok(await evaluate("[...document.querySelector('.post-form select').options].some(option => option.value === 'Winter intake')"));
+    assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"), [source]);
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
 async function getFreePort() {
   const server = createServer();
   await new Promise((resolve, reject) => {
@@ -181,9 +281,13 @@ async function startCdpPage(url) {
       socket,
       evaluate,
       reload: async () => {
+        const marker = `reload-${Date.now()}-${Math.random()}`;
+        await evaluate(`document.documentElement.dataset.testReloadMarker = ${jsString(marker)}`);
         const loaded = waitForEvent('Page.loadEventFired');
         await send('Page.reload', { ignoreCache: true });
         await loaded;
+        await waitFor(() => evaluate(`document.documentElement.dataset.testReloadMarker !== ${jsString(marker)}
+          && Boolean(document.querySelector('button.add-post'))`), 'new calendar document after reload');
       },
       close: async () => {
         socket.close();

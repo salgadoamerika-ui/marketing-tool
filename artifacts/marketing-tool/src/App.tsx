@@ -6,6 +6,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
 import { MonthlyAirtimeBars } from '@/components/monthly-airtime-bars';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
+import { ServiceManager } from '@/components/service-manager';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
@@ -14,6 +15,7 @@ import { getMonthlyAirtime } from '@/lib/monthly-airtime';
 import { buildConversionReview } from '@/lib/conversion-review';
 import { getConversionGapMarkers } from '@/lib/conversion-gap';
 import { getFlatPostState } from '@/lib/flat-post-ladder';
+import { loadServices, modeLabel, normalizeService, servicesStorageKey, validateService, type ServiceDefinition } from '@/lib/services';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -96,7 +98,7 @@ const businessData: Business[] = [
     id: 'mosaic',
     name: 'Mosaic Legal',
     descriptor: 'One calm view for every service line.',
-    focus: 'Fall programs are carrying the month, with evergreen services kept warm.',
+    focus: 'Fall programs are carrying the month, with ongoing services kept visible.',
     projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
     palette: [
       { label: 'Fall programs', tone: 'rose' },
@@ -347,6 +349,18 @@ function CalendarSurface() {
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
   const [statusMessage, setStatusMessage] = useState('');
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
+  const [services, setServices] = useState<ServiceDefinition[]>(() => {
+    const defaults: ServiceDefinition[] = [
+      ...businessData.flatMap((business) => business.projects.map((name) => ({
+        id: `${business.id}:${name}`, businessId: business.id, name, mode: 'evergreen' as const,
+      }))),
+      ...userPosts.map((post) => ({
+        id: `${post.businessId}:${post.project}`, businessId: post.businessId, name: post.project, mode: 'evergreen' as const,
+      })),
+    ];
+    return loadServices(window.localStorage.getItem(servicesStorageKey), defaults);
+  });
+  const [isServiceManagerOpen, setIsServiceManagerOpen] = useState(false);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
@@ -357,7 +371,16 @@ function CalendarSurface() {
   const [platformError, setPlatformError] = useState('');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
-  const activeBusiness = businessData.find((business) => business.id === activeBusinessId) ?? businessData[0];
+  const business = businessData.find((business) => business.id === activeBusinessId) ?? businessData[0];
+  const activeServices = services.filter((service) => service.businessId === business.id);
+  const activeBusiness = {
+    ...business,
+    projects: activeServices.map((service) => service.name),
+    palette: activeServices.map((service) => ({
+      label: service.name,
+      tone: business.palette.find((item) => item.label === service.name)?.tone ?? 'muted' as EventTone,
+    })),
+  };
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
   const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
@@ -378,6 +401,7 @@ function CalendarSurface() {
     visibleMonth.getMonth() + 1,
   );
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const selectedService = activeServices.find((service) => service.name === selectedUserPost?.project);
   const conversionMarkers = useMemo(() => getConversionGapMarkers(userPosts), [userPosts]);
   const conversionReview = selectedUserPost ? buildConversionReview(
     selectedUserPost,
@@ -410,6 +434,38 @@ function CalendarSurface() {
     ...monthPosts.map(postAsEvent),
   ];
   const todayKey = formatDateInput(new Date());
+
+  useEffect(() => {
+    try {
+      const serialized = JSON.stringify(services);
+      if (window.localStorage.getItem(servicesStorageKey) !== serialized) {
+        window.localStorage.setItem(servicesStorageKey, serialized);
+      }
+    } catch {
+      setStatusMessage('Service information could not be saved on this device.');
+    }
+  }, [services]);
+
+  const handleSaveService = (draft: ServiceDefinition): string | undefined => {
+    const error = validateService(draft);
+    if (error) return error;
+    if (draft.businessId !== activeBusiness.id) return 'Choose a service in this business.';
+    const existing = services.find((service) => service.id === draft.id);
+    if (existing && (existing.businessId !== draft.businessId || existing.name !== draft.name.trim())) {
+      return 'The existing service name cannot be changed here.';
+    }
+    if (services.some((service) => service.id !== draft.id && service.businessId === draft.businessId
+      && service.name.toLowerCase() === draft.name.trim().toLowerCase())) return 'That name is already used in this business.';
+    const saved = normalizeService(draft);
+    const updated = existing ? services.map((service) => service.id === saved.id ? saved : service) : [...services, saved];
+    try {
+      window.localStorage.setItem(servicesStorageKey, JSON.stringify(updated));
+    } catch {
+      return 'This device could not save the change. Free some storage and try again.';
+    }
+    setServices(updated);
+    return undefined;
+  };
 
   useEffect(() => {
     window.localStorage.setItem(userPostsStorageKey, JSON.stringify(userPosts));
@@ -658,6 +714,9 @@ function CalendarSurface() {
             <p className="calendar-subtitle">{activeBusiness.descriptor} {activeBusiness.focus}</p>
           </div>
           <div className="header-actions">
+            <button className="icon-button manage-services" onClick={() => setIsServiceManagerOpen(true)} type="button">
+              Manage services
+            </button>
             <div className="month-nav" aria-label="Change month">
               <button aria-label="Previous month" className="icon-button" onClick={() => shiftMonth(-1)} type="button">
                 <ChevronLeft size={18} strokeWidth={1.7} />
@@ -796,6 +855,14 @@ function CalendarSurface() {
           </aside>
         </div>
 
+        {isServiceManagerOpen && (
+          <ServiceManager
+            services={activeServices}
+            businessName={activeBusiness.name}
+            onSave={handleSaveService}
+            onClose={() => setIsServiceManagerOpen(false)}
+          />
+        )}
         {isPostFormOpen && (
           <div
             className="post-modal-backdrop"
@@ -1050,6 +1117,16 @@ function CalendarSurface() {
                   </section>
                 )}
                 <div className="post-detail-list">
+                  {selectedService && <div>
+                    <span>Mode</span>
+                    <strong>{modeLabel(selectedService.mode)}</strong>
+                  </div>}
+                  {selectedService?.mode === 'campaign' && (
+                    <div>
+                      <span>Deadline</span>
+                      <strong>{formatPostDate(selectedService.endDate)}</strong>
+                    </div>
+                  )}
                   <div>
                     <span>Date</span>
                     <strong>{formatPostDate(selectedUserPost.date)}</strong>
