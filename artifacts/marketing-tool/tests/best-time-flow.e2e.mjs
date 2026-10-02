@@ -59,6 +59,21 @@ test('service mode create/edit stores dates, survives reload, isolates businesse
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after seed');
     assert.equal((await readServices()).length, 15);
     await clickButtonText(evaluate, 'Manage services');
+    const visualStyles = await evaluate(`(() => {
+      const dialog = document.querySelector('.sm-dialog');
+      const heading = document.querySelector('.sm-title');
+      const button = document.querySelector('.manage-services');
+      return {
+        dialogWidth: parseFloat(getComputedStyle(dialog).width),
+        dialogRadius: getComputedStyle(dialog).borderRadius,
+        headingFont: getComputedStyle(heading).fontFamily,
+        buttonRadius: getComputedStyle(button).borderRadius,
+      };
+    })()`);
+    assert.ok(visualStyles.dialogWidth <= 650);
+    assert.equal(visualStyles.dialogRadius, '20px');
+    assert.match(visualStyles.headingFont, /Fraunces/);
+    assert.equal(visualStyles.buttonRadius, '999px', 'The text button should be a pill rather than an oversized circle.');
     await click(evaluate, 'button[aria-label="Edit Insurance"]');
     assert.equal(await evaluate("document.querySelectorAll('.sm-form input[type=\"date\"]').length"), 0);
     const choiceText = await evaluate("document.querySelector('.sm-form').innerText");

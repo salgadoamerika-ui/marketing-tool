@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, X } from 'lucide-react';
+import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, Settings2, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
@@ -715,6 +715,7 @@ function CalendarSurface() {
           </div>
           <div className="header-actions">
             <button className="icon-button manage-services" onClick={() => setIsServiceManagerOpen(true)} type="button">
+              <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
               Manage services
             </button>
             <div className="month-nav" aria-label="Change month">
