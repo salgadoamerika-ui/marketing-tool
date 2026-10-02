@@ -1,3 +1,5 @@
+import { getFlatPostState } from './flat-post-ladder.ts';
+
 export type AirtimeService = {
   name: string;
   seasonMonths: number[];
@@ -102,9 +104,8 @@ export function getAirtimeAllocations(
     const earlierAverage = measured.length > 1
       ? average(measured.slice(0, -1).map((post) => post.views))
       : undefined;
-    const recentThree = measured.slice(-AIRTIME_RULES.minimumMeasuredPosts);
-    const consistentlyWeak = hasEnoughData
-      && recentThree.every((post) => post.views < averageViews!);
+    const flatState = getFlatPostState({ businessId, project: service.name }, posts, monthEnd);
+    const consistentlyWeak = flatState.action === 'maintenance';
     const aboveAverage = hasEnoughData
       && earlierAverage !== undefined
       && recentViews !== undefined
@@ -116,7 +117,7 @@ export function getAirtimeAllocations(
           : 'flat';
 
     const status = consistentlyWeak ? 'maintenance' : 'active';
-    const tryNewAngle = inSeason && signal === 'flat';
+    const tryNewAngle = flatState.action === 'fresh-angle';
     const rawScore = AIRTIME_RULES.baseScore
       + (inSeason ? AIRTIME_RULES.seasonBoost : 0)
       + (signal === 'above-average' ? AIRTIME_RULES.attentionBoost : 0)

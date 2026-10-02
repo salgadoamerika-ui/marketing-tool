@@ -7,7 +7,7 @@ New calendar posts proposed by insights must be opt-in. Show the evidence and re
 
 Best-time recommendations should appear only on suggestions that have been approved and added to the calendar. Manually entered posts may contribute performance data, but they are already posted and should not receive a best-time badge.
 
-The popup's recommended post is the next step in the content sequence, not a performance-based recommendation. It can show recorded numbers as context, but it must not require three measured posts or let a conversion-gap finding replace the sequence step. A skipped post should not be treated as a published step.
+By default the popup recommends the next step in the content sequence without requiring measured posts; a conversion-gap finding must not replace that step. The user's later flat-post ladder is an explicit exception: after its three-post data gate, it silently adapts ordinary suggestions to retry, refresh the approach, or pace the service monthly. A skipped post should not be treated as a published step.
 
 Conversion-gap feedback belongs in the saved-post results view, separate from that sequence popup. Saving results must leave a detected gap visible rather than silently closing the view. Following the service-pattern rewrite, show no conversion icon or summary before three complete comparable results; the newest measured post carries the current service flag.
 

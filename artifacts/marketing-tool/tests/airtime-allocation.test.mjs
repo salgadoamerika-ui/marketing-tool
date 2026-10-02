@@ -58,20 +58,21 @@ test('performance does not adjust the score before three results', () => {
   assert.equal(divorce.airtimeScore, AIRTIME_RULES.baseScore);
 });
 
-test('three consecutive below-average results enter maintenance at the one-post monthly floor', () => {
+test('four evaluated below-average results enter maintenance at the one-post monthly floor', () => {
   const posts = [
     post('a', 'Divorce', 120, '2026-04-01'),
     post('b', 'Divorce', 110, '2026-05-01'),
     post('c', 'Divorce', 40, '2026-06-01'),
     post('d', 'Divorce', 30, '2026-07-01'),
     post('e', 'Divorce', 20, '2026-08-01'),
+    post('f', 'Divorce', 10, '2026-09-01'),
   ];
   const result = getAirtimeAllocations('mosaic', services, posts, 2026, 9);
   const divorce = result.allocations.find((item) => item.service === 'Divorce');
 
   assert.equal(divorce.signal, 'consistently-weak');
   assert.equal(divorce.status, 'maintenance');
-  assert.equal(divorce.averageViews, 64);
+  assert.equal(divorce.averageViews, 55);
   assert.equal(divorce.airtimeScore, AIRTIME_RULES.scoreFloor);
   assert.equal(divorce.postsPerWeek, AIRTIME_RULES.monthlyFloor / 4);
 });
@@ -87,7 +88,7 @@ test('in-season flat results stay active while weak results enter maintenance', 
   assert.equal(flat.signal, 'flat');
   assert.equal(flat.status, 'active');
   assert.equal(flat.airtimeScore, AIRTIME_RULES.baseScore + AIRTIME_RULES.seasonBoost);
-  assert.equal(flat.tryNewAngle, true);
+  assert.equal(flat.tryNewAngle, false);
 
   const weakPosts = [
     post('a', 'Fall programs', 120, '2026-04-01'),
@@ -95,6 +96,7 @@ test('in-season flat results stay active while weak results enter maintenance', 
     post('c', 'Fall programs', 40, '2026-06-01'),
     post('d', 'Fall programs', 30, '2026-07-01'),
     post('e', 'Fall programs', 20, '2026-08-01'),
+    post('f', 'Fall programs', 10, '2026-09-01'),
   ];
   const weak = getAirtimeAllocations('mosaic', services, weakPosts, 2026, 9)
     .allocations.find((item) => item.service === 'Fall programs');
@@ -136,6 +138,7 @@ test('maintenance services hold a nonzero floor while active services receive ex
     post('c', 'Divorce', 40, '2026-06-01'),
     post('d', 'Divorce', 30, '2026-07-01'),
     post('e', 'Divorce', 20, '2026-08-01'),
+    post('f', 'Divorce', 10, '2026-09-01'),
   ];
   const result = getAirtimeAllocations('mosaic', services, weakPosts, 2026, 9);
   const maintenance = result.allocations.find((item) => item.service === 'Divorce');

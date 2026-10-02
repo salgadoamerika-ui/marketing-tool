@@ -1,8 +1,9 @@
 import type { PostPerformance } from '@/components/post-performance-form';
 import { addDaysToDate, getFollowUpPlans } from './follow-ups.ts';
+import { buildFlatPostInsight } from './flat-post-suggestions.ts';
 
 export type InsightAction = 'logged' | 'results' | 'completed' | 'skipped';
-export type SuggestionKind = 'automatic' | 'reschedule';
+export type SuggestionKind = 'automatic' | 'reschedule' | 'repost' | 'fresh-angle' | 'maintenance';
 
 export type InsightPost = {
   id: string;
@@ -117,6 +118,9 @@ export function buildActionInsight(
       proposals: proposal ? [proposal] : [],
     };
   }
+
+  const flatInsight = buildFlatPostInsight(action, post, posts, today, occupiedDates);
+  if (flatInsight) return flatInsight;
 
   const plans = getFollowUpPlans(post, posts, occupiedDates);
   const beats: InsightSequenceBeat[] = plans.map((plan) => {

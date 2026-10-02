@@ -13,6 +13,7 @@ import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/be
 import { getMonthlyAirtime } from '@/lib/monthly-airtime';
 import { buildConversionReview } from '@/lib/conversion-review';
 import { getConversionGapMarkers } from '@/lib/conversion-gap';
+import { getFlatPostState } from '@/lib/flat-post-ladder';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -51,7 +52,7 @@ type UserPost = {
   distribution: Distribution;
   schedulingStatus?: 'published' | 'approved-suggestion';
   sourcePostId?: string;
-  suggestionKind?: 'automatic' | 'reschedule' | 'trust' | 'offer';
+  suggestionKind?: 'automatic' | 'reschedule' | 'trust' | 'offer' | 'repost' | 'fresh-angle' | 'maintenance';
   performance?: PostPerformance;
   budget?: number;
   runLength?: number;
@@ -408,7 +409,7 @@ function CalendarSurface() {
     ...events,
     ...monthPosts.map(postAsEvent),
   ];
-  const todayKey = '2026-09-10';
+  const todayKey = formatDateInput(new Date());
 
   useEffect(() => {
     window.localStorage.setItem(userPostsStorageKey, JSON.stringify(userPosts));
@@ -555,6 +556,7 @@ function CalendarSurface() {
         distribution: 'organic',
         schedulingStatus: 'approved-suggestion',
         sourcePostId: proposal.sourcePostId,
+        suggestionKind: proposal.kind,
       }];
     });
 
@@ -569,6 +571,7 @@ function CalendarSurface() {
     if (!selectedUserPost) return;
 
     setUserPosts((current) => current.filter((post) => post.id !== selectedUserPost.id));
+    setActionInsight(null);
     setSelectedPostId(null);
     showActionMessage(`Deleted “${selectedUserPost.title}” from the calendar.`);
   };
@@ -576,11 +579,17 @@ function CalendarSurface() {
   const handleSaveResults = (performance: PostPerformance, postedTime?: string) => {
     if (!selectedUserPost) return;
 
-    setUserPosts((current) => current.map((post) =>
+    const postsAfterSave = userPosts.map((post) =>
       post.id === selectedUserPost.id
         ? { ...post, performance, postedTime: postedTime || undefined }
         : post
-    ));
+    );
+    setUserPosts(postsAfterSave);
+    const savedPost = postsAfterSave.find((post) => post.id === selectedUserPost.id)!;
+    const flatState = getFlatPostState(savedPost, postsAfterSave, todayKey);
+    setActionInsight(flatState.action !== 'none' && flatState.latestPostId === savedPost.id
+      ? buildActionInsight('results', savedPost, postsAfterSave, todayKey, activeBusinessPosts.map((post) => post.date))
+      : null);
     // Keep results open so the conversion assessment (including unmet gates)
     // is visible immediately, independently of content-sequence suggestions.
   };
@@ -604,6 +613,7 @@ function CalendarSurface() {
       sourcePostId: proposal.sourcePostId,
     };
     setUserPosts((current) => [...current, suggestion]);
+    setActionInsight(null);
     setSelectedPostId(null);
     setVisibleMonth(new Date(`${suggestion.date}T12:00:00`));
     showActionMessage(`Added “${suggestion.title}” to the calendar.`);

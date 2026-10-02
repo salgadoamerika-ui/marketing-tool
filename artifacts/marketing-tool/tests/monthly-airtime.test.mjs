@@ -60,7 +60,7 @@ test('services with zero or one post retain the visible minimum', () => {
 });
 
 test('consistently weak services stay at maintenance floor even with many monthly posts', () => {
-  const history = [120, 110, 40, 30, 20].map((views, i) =>
+  const history = [120, 110, 40, 30, 20, 10].map((views, i) =>
     post(`history-${i}`, 'Divorce', `2026-0${i + 4}-01`, { performance: { views } }));
   const rows = calculate([...history, ...volume('Divorce', 8), ...volume('Insurance', 3)]);
   assert.equal(find(rows, 'Divorce').maintenance, true);

@@ -326,7 +326,8 @@ async function openPost(evaluate, post) {
   await ensureMonth(evaluate, post.date);
   await evaluate(`(() => {
     const event = [...document.querySelectorAll('button.event-chip-button')]
-      .find((button) => button.textContent.includes(${jsString(post.title)}));
+      .find((button) => button.textContent.includes(${jsString(post.title)})
+        && button.closest('.day-cell')?.querySelector('.day-number')?.textContent.trim() === ${jsString(String(Number(post.date.slice(-2))))});
     if (!event) throw new Error('Saved calendar post not found: ' + ${jsString(post.title)});
     event.click();
     return true;
@@ -366,8 +367,10 @@ async function saveResults(evaluate, post, { keepOpen = false } = {}) {
     () => evaluate("Boolean(document.querySelector('.post-performance-saved'))"),
     `confirmation and conversion assessment after saving ${post.title}`,
   );
-  if (!keepOpen) await clickButtonText(evaluate, 'Keep post');
-  await dismissInsight(evaluate);
+  if (!keepOpen) {
+    await clickButtonText(evaluate, 'Keep post');
+    await dismissInsight(evaluate);
+  }
   const persistedPost = await waitFor(async () => {
     const posts = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
     return posts.find((item) =>
@@ -619,6 +622,102 @@ test('learned timing stays business- and service-specific through saved results 
     await openPost(evaluate, insuranceSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
     await assertCalendarMode(evaluate, insuranceSuggestion, 'learned');
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
+test('flat-post policy stays invisible while normal approvals retry, refresh and pace the service monthly', { timeout: 120000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const measured = (id, day, views) => ({
+    id, businessId: 'mosaic', project: 'Insurance', contentType: 'Insight',
+    title: `Coverage detail ${id}`, date: `2026-09-${day}`, platforms: ['Instagram'],
+    distribution: 'organic', schedulingStatus: 'published',
+    ...(views === undefined ? {} : { performance: { views, saves: 10, bookings: 5 } }),
+  });
+  const posts = [
+    measured('first', '01', 100), measured('second', '02', 100),
+    measured('third', '03', undefined), measured('fourth', '04', undefined),
+  ];
+  const readPosts = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
+  const assertInvisible = async (evaluate) => {
+    assert.doesNotMatch(await evaluate("document.body.innerText"), /strike|streak|ladder|scoreboard/i);
+  };
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'flat-post test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify(posts))})`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'flat-post calendar');
+
+    await openPost(evaluate, posts[2]);
+    await saveResults(evaluate, { ...posts[2], views: 50, saves: 10, bookings: 5 }, { keepOpen: true });
+    assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-popup'))"), false, 'First weak result has no new intervention.');
+    await assertInvisible(evaluate);
+    await clickButtonText(evaluate, 'Keep post');
+
+    await openPost(evaluate, posts[3]);
+    await saveResults(evaluate, { ...posts[3], views: 40, saves: 10, bookings: 5 }, { keepOpen: true });
+    await waitFor(() => evaluate("document.querySelector('.action-insight-popup')?.textContent.includes('timing may have been off')"), 'retry suggestion');
+    assert.equal((await readPosts(evaluate)).length, 4, 'No suggestion is added silently.');
+    await assertInvisible(evaluate);
+    await click(evaluate, '.action-insight-add');
+    const retry = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'repost'), 'approved repost');
+    assert.equal(retry.title, posts[3].title);
+    assert.equal(retry.contentType, posts[3].contentType);
+    assert.equal(retry.sourcePostId, posts[3].id);
+    await clickButtonText(evaluate, 'Keep post');
+
+    // The repost has now run; enter its result as the next service post.
+    await evaluate(`(() => {
+      const saved = JSON.parse(localStorage.getItem('marketing-tool.user-posts'));
+      saved.find((post) => post.id === ${jsString(retry.id)}).date = '2026-09-05';
+      localStorage.setItem('marketing-tool.user-posts', JSON.stringify(saved));
+    })()`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'repost after reload');
+    const ranRetry = { ...retry, date: '2026-09-05' };
+    await openPost(evaluate, ranRetry);
+    await saveResults(evaluate, { ...ranRetry, views: 30, saves: 10, bookings: 5 }, { keepOpen: true });
+    await waitFor(() => evaluate("document.querySelector('.action-insight-popup')?.textContent.includes('change the opening or format')"), 'fresh approach');
+    await assertInvisible(evaluate);
+    await click(evaluate, '.action-insight-skip');
+    assert.equal((await readPosts(evaluate)).length, 5);
+    await clickButtonText(evaluate, 'Keep post');
+
+    const nextPost = { service: 'Insurance', title: 'Coverage detail next', date: '2026-09-06' };
+    await createPost(evaluate, nextPost, 'skip');
+    await openPost(evaluate, nextPost);
+    await saveResults(evaluate, { ...nextPost, views: 20, saves: 10, bookings: 5 }, { keepOpen: true });
+    await waitFor(() => evaluate("document.querySelector('.action-insight-popup')?.textContent.includes('monthly check-in')"), 'monthly suggestion');
+    await assertInvisible(evaluate);
+    await click(evaluate, '.action-insight-add');
+    const monthly = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'maintenance'), 'approved monthly check-in');
+    assert.equal(monthly.date, '2026-10-06');
+    assert.equal((await readPosts(evaluate)).length, 7);
+    await clickButtonText(evaluate, 'Keep post');
+
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'monthly approval after reload');
+    await openPost(evaluate, nextPost);
+    await saveResults(evaluate, { ...nextPost, views: 20, saves: 10, bookings: 5 }, { keepOpen: true });
+    assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-add'))"), false, 'Resaving cannot duplicate the monthly post.');
+    assert.equal((await readPosts(evaluate)).length, 7);
+    await assertInvisible(evaluate);
+    await click(evaluate, '.action-insight-skip');
+    await saveResults(evaluate, { ...nextPost, views: 200, saves: 10, bookings: 5 }, { keepOpen: true });
+    assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-popup'))"), false, 'Recovery resets the internal policy without announcing a counter.');
+    assert.equal((await readPosts(evaluate)).length, 7, 'Recovery keeps previously approved calendar posts.');
   } finally {
     if (browser) await browser.close();
     await stopProcess(server.child);

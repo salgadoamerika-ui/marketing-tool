@@ -1,6 +1,7 @@
 import { assessConversionGap } from './conversion-gap.ts';
 import { getConversionSequence } from './conversion-gap-followups.ts';
 import { addDaysToDate } from './follow-ups.ts';
+import { getFlatPostState, getMaintenanceSuggestionDate } from './flat-post-ladder.ts';
 import type { InsightPost } from './action-insight';
 
 export function buildConversionReview(
@@ -24,7 +25,11 @@ export function buildConversionReview(
   }
 
   // Results may be recorded long after a post ran; do not backdate its follow-up.
-  const intendedDate = plan.date > today ? plan.date : addDaysToDate(today, 2);
+  let intendedDate = plan.date > today ? plan.date : addDaysToDate(today, 2);
+  if (getFlatPostState(selected, comparable, today).action === 'maintenance') {
+    const monthlyDate = getMaintenanceSuggestionDate(selected, comparable, today);
+    if (monthlyDate > intendedDate) intendedDate = monthlyDate;
+  }
   const occupied = new Set([
     ...occupiedDates,
     ...posts.filter((post) => post.businessId === selected.businessId && post.status !== 'skipped')

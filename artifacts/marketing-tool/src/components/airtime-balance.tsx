@@ -181,8 +181,8 @@ export function AirtimeBalance({
       <details className="airtime-method">
         <summary>How the score works</summary>
         <p>
-          Base 1 point; in-season +0.75; recent views above the prior average +0.5; three
-          consecutive results below the service average −0.85. Performance rules need
+          Base 1 point; in-season +0.75; recent views above the prior average +0.5;
+          persistently weak results −0.85. Performance rules need
           3 measured posts. Consistently weak services enter maintenance and hold one post per
           month; active services share the remaining weekly slots by score.
         </p>
