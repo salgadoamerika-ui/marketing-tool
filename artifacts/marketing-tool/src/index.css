@@ -511,6 +511,14 @@
 .post-performance-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
 .post-performance-actions .save-post-button { min-height: 36px; padding: 7px 14px; }
 .post-performance-saved { margin: 0; color: #4f7058; font-size: 11px; font-weight: 600; }
+.conversion-gap-panel { display: grid; gap: 9px; border: 1px solid var(--line-strong); border-radius: 12px; background: #fffaf8; padding: 15px; }
+.conversion-gap-detected { border-color: #deb5c5; background: #fbf0f3; }
+.conversion-gap-panel h3 { margin: 0; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 500; }
+.conversion-gap-panel p { margin: 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.55; }
+.conversion-gap-next { color: var(--ink); font-size: 12px; }
+.conversion-gap-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 3px; }
+.conversion-gap-actions button { min-height: 36px; font-size: 11px; }
+.conversion-gap-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .conversion-gap-hint { border: 1px solid #e8d7dd; border-radius: 12px; background: #fdf6f8; padding: 12px 15px; }
 .conversion-gap-hint strong { color: var(--rose-deep); font-size: 11px; }
 .conversion-gap-hint p { margin: 5px 0 0; color: var(--plum-soft); font-size: 11px; line-height: 1.5; }

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Activity, CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { ConversionGapPanel } from '@/components/conversion-gap-panel';
 import { MonthlyAirtimeBars } from '@/components/monthly-airtime-bars';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { Toaster } from '@/components/ui/toaster';
@@ -10,6 +11,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight } from '@/lib/action-insight';
 import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
 import { getMonthlyAirtime } from '@/lib/monthly-airtime';
+import { buildConversionReview } from '@/lib/conversion-review';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -47,6 +49,7 @@ type UserPost = {
   distribution: Distribution;
   schedulingStatus?: 'published' | 'approved-suggestion';
   sourcePostId?: string;
+  suggestionKind?: 'automatic' | 'reschedule' | 'trust' | 'offer';
   performance?: PostPerformance;
   budget?: number;
   runLength?: number;
@@ -372,6 +375,13 @@ function CalendarSurface() {
     visibleMonth.getMonth() + 1,
   );
   const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const conversionReview = selectedUserPost ? buildConversionReview(
+    selectedUserPost,
+    userPosts,
+    formatDateInput(new Date()),
+    Object.entries(activeBusiness.events).flatMap(([month, monthEvents]) =>
+      monthEvents.map((event) => `${month}-${String(event.day).padStart(2, '0')}`)),
+  ) : null;
   const selectedBestTime = selectedUserPost?.schedulingStatus === 'approved-suggestion'
     ? getBestTimeRecommendation(
       selectedUserPost.businessId,
@@ -567,7 +577,32 @@ function CalendarSurface() {
         ? { ...post, performance, postedTime: postedTime || undefined }
         : post
     ));
+    // Keep results open so the conversion assessment (including unmet gates)
+    // is visible immediately, independently of content-sequence suggestions.
+  };
+
+  const handleAddConversionSuggestion = () => {
+    const proposal = conversionReview?.proposal;
+    if (!proposal || proposal.blocked) return;
+    const source = userPosts.find((post) => post.id === proposal.sourcePostId);
+    if (!source) return;
+    const suggestion: UserPost = {
+      id: createPostId(),
+      businessId: source.businessId,
+      project: source.project,
+      contentType: proposal.contentType,
+      title: proposal.title,
+      date: proposal.date,
+      platforms: source.platforms,
+      distribution: 'organic',
+      schedulingStatus: 'approved-suggestion',
+      suggestionKind: proposal.kind,
+      sourcePostId: proposal.sourcePostId,
+    };
+    setUserPosts((current) => [...current, suggestion]);
     setSelectedPostId(null);
+    setVisibleMonth(new Date(`${suggestion.date}T12:00:00`));
+    showActionMessage(`Added “${suggestion.title}” to the calendar.`);
   };
 
   return (
@@ -1021,6 +1056,13 @@ function CalendarSurface() {
                   postedTime={selectedUserPost.postedTime}
                   onSave={handleSaveResults}
                 />
+                {conversionReview && (
+                  <ConversionGapPanel
+                    key={`${conversionReview.subject.id}-${JSON.stringify(conversionReview.subject.performance)}-${conversionReview.assessment.postCount}-${conversionReview.proposal?.kind ?? 'none'}`}
+                    review={conversionReview}
+                    onAdd={handleAddConversionSuggestion}
+                  />
+                )}
                 {contentTypeRationales[selectedUserPost.contentType] && (
                   <section aria-labelledby="post-rationale-title" className="post-rationale">
                     <h3 id="post-rationale-title">Why this move</h3>

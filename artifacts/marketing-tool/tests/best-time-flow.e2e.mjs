@@ -341,7 +341,7 @@ async function readRecommendation(evaluate) {
   return evaluate("document.querySelector('[aria-label=\"Best time recommendation\"] .post-best-time-label')?.textContent?.trim() ?? ''");
 }
 
-async function saveResults(evaluate, post) {
+async function saveResults(evaluate, post, { keepOpen = false } = {}) {
   await evaluate(`(() => {
     const form = document.querySelector('.post-performance');
     if (!form) throw new Error('Post results form is missing.');
@@ -354,8 +354,8 @@ async function saveResults(evaluate, post) {
       element.dispatchEvent(new Event('change', { bubbles: true }));
     };
     setValue(inputs[0], ${jsString(post.views ?? '')});
-    setValue(inputs[1], '0');
-    setValue(inputs[2], '0');
+    setValue(inputs[1], ${jsString(post.saves ?? 0)});
+    setValue(inputs[2], ${jsString(post.bookings ?? 0)});
     const time = form.querySelector('input[type=\"time\"]');
     if (!time) throw new Error('Actual posting time field is missing.');
     setValue(time, ${jsString(post.postedTime ?? '')});
@@ -363,9 +363,10 @@ async function saveResults(evaluate, post) {
     return true;
   })()`);
   await waitFor(
-    () => evaluate("!document.querySelector('[aria-labelledby=\"selected-post-title\"]')"),
-    `post details to close after saving ${post.title}`,
+    () => evaluate("Boolean(document.querySelector('.post-performance-saved'))"),
+    `confirmation and conversion assessment after saving ${post.title}`,
   );
+  if (!keepOpen) await clickButtonText(evaluate, 'Keep post');
   await dismissInsight(evaluate);
   const persistedPost = await waitFor(async () => {
     const posts = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
@@ -376,6 +377,7 @@ async function saveResults(evaluate, post) {
     );
   }, `saved metrics and posting time for ${post.title}`);
   assert.equal(persistedPost.performance.views, post.views);
+  return persistedPost;
 }
 
 async function assertCalendarMode(evaluate, post, mode) {
@@ -617,6 +619,74 @@ test('learned timing stays business- and service-specific through saved results 
     await openPost(evaluate, insuranceSuggestion);
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
     await assertCalendarMode(evaluate, insuranceSuggestion, 'learned');
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
+test('saving results reveals conversion gaps, respects Skip, and adds trust then offer only on approval', { timeout: 120000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const measured = (id, day, performance) => ({
+    id, businessId: 'mosaic', project: 'Insurance', contentType: 'Insight',
+    title: `Conversion check ${id}`, date: `2026-09-${day}`, platforms: ['Instagram'],
+    distribution: 'organic', schedulingStatus: 'published', performance,
+  });
+  const posts = [
+    measured('first', '03', { views: 100, saves: 10, bookings: 0 }),
+    measured('second', '06', { views: 100, saves: 10, bookings: 4 }),
+    measured('third', '08', undefined),
+  ];
+  const readPosts = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'conversion test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify(posts))})`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'conversion test calendar');
+
+    await openPost(evaluate, posts[0]);
+    assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /2\/3 measured posts/);
+    await clickButtonText(evaluate, 'Keep post');
+
+    await openPost(evaluate, posts[2]);
+    await saveResults(evaluate, { ...posts[2], views: 100, saves: 10, bookings: 4 }, { keepOpen: true });
+    await waitFor(() => evaluate("Boolean(document.querySelector('.conversion-gap-detected'))"), 'gap after third result');
+    assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /Conversion check first/);
+    assert.equal((await readPosts(evaluate)).length, 3, 'Detection must not silently add a calendar post.');
+    await clickButtonText(evaluate, 'Skip suggestion');
+    assert.equal((await readPosts(evaluate)).length, 3, 'Skip must not create a follow-up.');
+    await clickButtonText(evaluate, 'Keep post');
+
+    await openPost(evaluate, posts[0]);
+    await click(evaluate, '.conversion-gap-actions .save-post-button');
+    const trust = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'trust'), 'approved testimonial');
+    assert.equal(trust.contentType, 'Testimonial');
+    assert.equal(trust.sourcePostId, 'first');
+    assert.equal(trust.schedulingStatus, 'approved-suggestion');
+    await openPost(evaluate, trust);
+    assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-actions'))"), false, 'Offer waits for testimonial results.');
+    await saveResults(evaluate, { ...trust, views: 100, saves: 10, bookings: 0 }, { keepOpen: true });
+    await waitFor(() => evaluate("document.querySelector('.conversion-gap-panel').textContent.includes('lower-barrier referral offer')"), 'offer after weak testimonial');
+    await click(evaluate, '.conversion-gap-actions .save-post-button');
+    const offer = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'offer'), 'approved referral offer');
+    assert.equal(offer.sourcePostId, 'first');
+    assert.equal((await readPosts(evaluate)).length, 5);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after reload');
+    await openPost(evaluate, offer);
+    await saveResults(evaluate, { ...offer, views: 100, saves: 10, bookings: 0 }, { keepOpen: true });
+    assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-actions'))"), false, 'No duplicate or third conversion stage.');
+    assert.equal((await readPosts(evaluate)).length, 5);
   } finally {
     if (browser) await browser.close();
     await stopProcess(server.child);
