@@ -5,6 +5,7 @@ import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
 import { MonthlyAirtimeBars } from '@/components/monthly-airtime-bars';
+import { BusinessDialog } from '@/components/business-dialog';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { ServiceManager } from '@/components/service-manager';
 import { Toaster } from '@/components/ui/toaster';
@@ -90,10 +91,12 @@ type Business = {
 };
 
 const userPostsStorageKey = 'marketing-tool.user-posts';
+const userBusinessesStorageKey = 'marketing-tool.businesses';
+const activeBusinessStorageKey = 'marketing-tool.active-business-id';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
 const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Testimonial', 'Pricing', 'Book now', 'Last chance', 'Recap', 'Promo', 'Fresh angle'];
-const businessData: Business[] = [
+const sampleBusinesses: Business[] = [
   {
     id: 'mosaic',
     name: 'Mosaic Legal',
@@ -208,19 +211,64 @@ const businessData: Business[] = [
 ];
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const seededCalendarPosts: InsightPost[] = businessData.flatMap((business) =>
+const seededCalendarPosts: InsightPost[] = sampleBusinesses.flatMap((business) =>
   Object.entries(business.events).flatMap(([month, events]) =>
     events.filter((event) => event.project).map((event, index) => ({
       id: `seed-${business.id}-${month}-${index}`,
       businessId: business.id, project: event.project!, title: event.title,
       contentType: event.detail ?? 'Post', date: `${month}-${String(event.day).padStart(2, '0')}`,
     }))));
-const seededCalendarDates = Object.fromEntries(businessData.map((business) => [
+const seededCalendarDates = Object.fromEntries(sampleBusinesses.map((business) => [
   business.id,
   Object.entries(business.events).flatMap(([month, events]) =>
     events.map((event) => `${month}-${String(event.day).padStart(2, '0')}`)),
 ]));
 const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
+
+function createBusinessWorkspace(id: string, name: string): Business {
+  return {
+    id,
+    name,
+    descriptor: 'A separate workspace for this business.',
+    focus: 'Add a Service or Campaign to begin building this calendar.',
+    projects: [],
+    palette: [],
+    events: {},
+  };
+}
+
+function readUserBusinesses(): Business[] {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const serialized = window.localStorage.getItem(userBusinessesStorageKey);
+    if (!serialized) return [];
+    const parsed: unknown = JSON.parse(serialized);
+    if (!Array.isArray(parsed)) throw new Error('Saved businesses are not a list.');
+
+    const ids = new Set(sampleBusinesses.map((business) => business.id));
+    const names = new Set(sampleBusinesses.map((business) => business.name.toLowerCase()));
+    return parsed.map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error('A saved business entry is invalid.');
+      }
+      const { id, name } = entry as { id?: unknown; name?: unknown };
+      if (typeof id !== 'string' || !id.trim() || typeof name !== 'string' || !name.trim()) {
+        throw new Error('A saved business is missing its name or identifier.');
+      }
+      const cleanName = name.trim();
+      if (ids.has(id) || names.has(cleanName.toLowerCase())) {
+        throw new Error('Saved businesses contain a duplicate name or identifier.');
+      }
+      ids.add(id);
+      names.add(cleanName.toLowerCase());
+      return createBusinessWorkspace(id, cleanName);
+    });
+  } catch (error) {
+    console.warn('Saved businesses could not be loaded.', error);
+    return [];
+  }
+}
 
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -357,14 +405,21 @@ function formatPostDate(date: string) {
 }
 
 function CalendarSurface() {
-  const [activeBusinessId, setActiveBusinessId] = useState('mosaic');
+  const [userBusinesses, setUserBusinesses] = useState<Business[]>(readUserBusinesses);
+  const businesses = useMemo(() => [...sampleBusinesses, ...userBusinesses], [userBusinesses]);
+  const [activeBusinessId, setActiveBusinessId] = useState(() => {
+    const savedBusinessId = window.localStorage.getItem(activeBusinessStorageKey);
+    return savedBusinessId && businesses.some((item) => item.id === savedBusinessId)
+      ? savedBusinessId
+      : sampleBusinesses[0].id;
+  });
   const [todayKey, setTodayKey] = useState(() => formatDateInput(new Date()));
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
   const [statusMessage, setStatusMessage] = useState('');
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
   const [services, setServices] = useState<ServiceDefinition[]>(() => {
     const defaults: ServiceDefinition[] = [
-      ...businessData.flatMap((business) => business.projects.map((name) => ({
+      ...sampleBusinesses.flatMap((business) => business.projects.map((name) => ({
         id: `${business.id}:${name}`, businessId: business.id, name, mode: 'evergreen' as const,
       }))),
       ...userPosts.map((post) => ({
@@ -376,6 +431,7 @@ function CalendarSurface() {
   const [seasonMonthsByService, setSeasonMonthsByService] = useState(() =>
     loadServiceSeasonSelections(window.localStorage.getItem(serviceSeasonsStorageKey)));
   const [isServiceManagerOpen, setIsServiceManagerOpen] = useState(false);
+  const [isBusinessDialogOpen, setIsBusinessDialogOpen] = useState(false);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
@@ -386,19 +442,29 @@ function CalendarSurface() {
   const [platformError, setPlatformError] = useState('');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
-  const business = businessData.find((business) => business.id === activeBusinessId) ?? businessData[0];
-  const activeServices = services.filter((service) => service.businessId === business.id);
-  const activeBusiness = {
+  const business = businesses.find((item) => item.id === activeBusinessId) ?? businesses[0];
+  const activeServices = useMemo(
+    () => services.filter((service) => service.businessId === business.id),
+    [services, business.id],
+  );
+  const activeBusiness = useMemo(() => ({
     ...business,
     projects: activeServices.map((service) => service.name),
     palette: activeServices.map((service) => ({
       label: service.name,
       tone: business.palette.find((item) => item.label === service.name)?.tone ?? 'muted' as EventTone,
     })),
-  };
+  }), [business, activeServices]);
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
   const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
-  const activeBusinessPosts = userPosts.filter((post) => post.businessId === activeBusiness.id);
+  const activeBusinessPosts = useMemo(
+    () => userPosts.filter((post) => post.businessId === activeBusiness.id),
+    [userPosts, activeBusiness.id],
+  );
+  const activeSeededCalendarPosts = useMemo(
+    () => seededCalendarPosts.filter((post) => post.businessId === activeBusiness.id),
+    [activeBusiness.id],
+  );
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const monthlyAirtime = getMonthlyAirtime(
     activeBusiness.id,
@@ -415,22 +481,27 @@ function CalendarSurface() {
     visibleMonth.getFullYear(),
     visibleMonth.getMonth() + 1,
   );
-  const selectedUserPost = userPosts.find((post) => post.id === selectedPostId);
+  const selectedUserPost = userPosts.find(
+    (post) => post.id === selectedPostId && post.businessId === activeBusiness.id,
+  );
   const selectedService = activeServices.find((service) => service.name === selectedUserPost?.project);
-  const conversionMarkers = useMemo(() => getConversionGapMarkers(userPosts), [userPosts]);
+  const conversionMarkers = useMemo(
+    () => getConversionGapMarkers(activeBusinessPosts),
+    [activeBusinessPosts],
+  );
   const conversionReview = selectedUserPost ? buildConversionReview(
     selectedUserPost,
-    [...userPosts, ...seededCalendarPosts],
+    [...activeBusinessPosts, ...activeSeededCalendarPosts],
     formatDateInput(new Date()),
-    seededCalendarDates[selectedUserPost.businessId] ?? [],
-    services,
+    seededCalendarDates[activeBusiness.id] ?? [],
+    activeServices,
   ) : null;
   const selectedBestTime = selectedUserPost?.schedulingStatus === 'approved-suggestion'
     ? getBestTimeRecommendation(
       selectedUserPost.businessId,
       selectedUserPost.project,
       selectedUserPost.platforms,
-      userPosts,
+      activeBusinessPosts,
     )
     : null;
   const postAsEvent = (post: UserPost): CalendarEvent => ({
@@ -441,7 +512,7 @@ function CalendarSurface() {
     tone: getPostTone(post.project, activeBusiness),
     ...(conversionMarkers.has(post.id) ? { conversionGap: post.project } : {}),
     ...(post.schedulingStatus === 'approved-suggestion'
-      ? { bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, userPosts) }
+      ? { bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, activeBusinessPosts) }
       : {}),
   });
   const calendarEvents = [
@@ -458,15 +529,30 @@ function CalendarSurface() {
     };
   }, []);
   useEffect(() => {
+    window.localStorage.setItem(
+      userBusinessesStorageKey,
+      JSON.stringify(userBusinesses.map(({ id, name }) => ({ id, name }))),
+    );
+  }, [userBusinesses]);
+  useEffect(() => {
+    window.localStorage.setItem(activeBusinessStorageKey, activeBusinessId);
+  }, [activeBusinessId]);
+  useEffect(() => {
     setActionInsight((current) => {
       if (!current?.sourcePostId) return current;
-      const source = userPosts.find((post) => post.id === current.sourcePostId);
-      if (!source) return null;
-      const refreshed = buildActionInsight(current.action, source, [...userPosts, ...seededCalendarPosts],
-        todayKey, seededCalendarDates[source.businessId] ?? [], services);
+      const source = activeBusinessPosts.find((post) => post.id === current.sourcePostId);
+      if (!source || source.businessId !== activeBusiness.id) return null;
+      const refreshed = buildActionInsight(
+        current.action,
+        source,
+        [...activeBusinessPosts, ...activeSeededCalendarPosts],
+        todayKey,
+        seededCalendarDates[activeBusiness.id] ?? [],
+        activeServices,
+      );
       return JSON.stringify(current) === JSON.stringify(refreshed) ? current : refreshed;
     });
-  }, [services, userPosts, todayKey]);
+  }, [activeBusiness.id, activeBusinessPosts, activeSeededCalendarPosts, activeServices, todayKey]);
 
   useEffect(() => {
     try {
@@ -639,10 +725,10 @@ function CalendarSurface() {
     setActionInsight(buildActionInsight(
       'logged',
       savedPost,
-      [...postsAfterSave, ...seededCalendarPosts],
+      [...postsAfterSave.filter((post) => post.businessId === activeBusiness.id), ...activeSeededCalendarPosts],
       todayKey,
-      seededCalendarDates[savedPost.businessId] ?? [],
-      services,
+      seededCalendarDates[activeBusiness.id] ?? [],
+      activeServices,
     ));
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
@@ -652,19 +738,24 @@ function CalendarSurface() {
   const handleAddInsightSuggestions = () => {
     if (!actionInsight) return;
 
-    const source = userPosts.find((post) => post.id === (actionInsight.sourcePostId ?? actionInsight.proposals[0]?.triggerPostId));
-    if (!source) return;
-    const refreshed = buildActionInsight(actionInsight.action, source, [...userPosts, ...seededCalendarPosts],
-      formatDateInput(new Date()), seededCalendarDates[source.businessId] ?? [], services);
+    const source = activeBusinessPosts.find((post) => post.id === (actionInsight.sourcePostId ?? actionInsight.proposals[0]?.triggerPostId));
+    if (!source || source.businessId !== activeBusiness.id) {
+      setActionInsight(null);
+      return;
+    }
+    const refreshed = buildActionInsight(actionInsight.action, source, [...activeBusinessPosts, ...activeSeededCalendarPosts],
+      formatDateInput(new Date()), seededCalendarDates[activeBusiness.id] ?? [], activeServices);
     if (JSON.stringify(refreshed.proposals) !== JSON.stringify(actionInsight.proposals)) {
       setActionInsight(refreshed);
       showActionMessage('The calendar or Campaign dates changed. Review the refreshed suggestions before adding.');
       return;
     }
     const suggestions = refreshed.proposals.flatMap((proposal): UserPost[] => {
-      const sourcePost = userPosts.find((post) => post.id === proposal.sourcePostId);
+      const sourcePost = activeBusinessPosts.find((post) => post.id === proposal.sourcePostId);
       if (!sourcePost) return [];
-      const original = proposal.replaces ? userPosts.find((post) => post.id === proposal.replaces!.postId) : undefined;
+      const original = proposal.replaces
+        ? activeBusinessPosts.find((post) => post.id === proposal.replaces!.postId)
+        : undefined;
       return [{
         ...original,
         id: original?.id ?? createPostId(),
@@ -717,11 +808,12 @@ function CalendarSurface() {
     );
     setUserPosts(postsAfterSave);
     const savedPost = postsAfterSave.find((post) => post.id === selectedUserPost.id)!;
-    const flatState = getFlatPostState(savedPost, postsAfterSave, todayKey);
-    const service = services.find((item) => item.businessId === savedPost.businessId && item.name === savedPost.project);
-    const winner = getOverperformer(savedPost, postsAfterSave.filter((post) => (post as InsightPost).status !== 'skipped' && post.date <= todayKey));
+    const businessPostsAfterSave = postsAfterSave.filter((post) => post.businessId === activeBusiness.id);
+    const flatState = getFlatPostState(savedPost, businessPostsAfterSave, todayKey);
+    const service = activeServices.find((item) => item.name === savedPost.project);
+    const winner = getOverperformer(savedPost, businessPostsAfterSave.filter((post) => (post as InsightPost).status !== 'skipped' && post.date <= todayKey));
     setActionInsight((flatState.action !== 'none' && flatState.latestPostId === savedPost.id) || winner || service?.mode === 'campaign'
-      ? buildActionInsight('results', savedPost, [...postsAfterSave, ...seededCalendarPosts], todayKey, seededCalendarDates[savedPost.businessId] ?? [], services)
+      ? buildActionInsight('results', savedPost, [...businessPostsAfterSave, ...activeSeededCalendarPosts], todayKey, seededCalendarDates[activeBusiness.id] ?? [], activeServices)
       : null);
     // Keep results open so the conversion assessment (including unmet gates)
     // is visible immediately, independently of content-sequence suggestions.
@@ -729,8 +821,8 @@ function CalendarSurface() {
 
   const handleAddConversionSuggestion = () => {
     if (!selectedUserPost) return;
-    const refreshed = buildConversionReview(selectedUserPost, [...userPosts, ...seededCalendarPosts],
-      formatDateInput(new Date()), seededCalendarDates[selectedUserPost.businessId] ?? [], services);
+    const refreshed = buildConversionReview(selectedUserPost, [...activeBusinessPosts, ...activeSeededCalendarPosts],
+      formatDateInput(new Date()), seededCalendarDates[activeBusiness.id] ?? [], activeServices);
     const proposal = refreshed.proposal;
     if (!proposal || proposal.blocked) {
       showActionMessage('There is no eligible follow-up date. A closed Campaign cannot add new suggestions.');
@@ -740,7 +832,7 @@ function CalendarSurface() {
       showActionMessage('The calendar or Campaign dates changed. Review the updated follow-up before adding.');
       return;
     }
-    const source = userPosts.find((post) => post.id === proposal.sourcePostId);
+    const source = activeBusinessPosts.find((post) => post.id === proposal.sourcePostId);
     if (!source) return;
     const suggestion: UserPost = {
       id: createPostId(),
@@ -764,19 +856,52 @@ function CalendarSurface() {
     showActionMessage(`Added “${suggestion.title}” to the calendar.`);
   };
 
+  const handleCreateBusiness = (rawName: string) => {
+    const name = rawName.trim();
+    if (!name) return 'Enter a name for this business.';
+    if (businesses.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      return 'A business with that name already exists.';
+    }
+
+    const newBusiness = createBusinessWorkspace(`business-${createPostId()}`, name);
+    const nextBusinesses = [...userBusinesses, newBusiness];
+    try {
+      window.localStorage.setItem(
+        userBusinessesStorageKey,
+        JSON.stringify(nextBusinesses.map(({ id, name: businessName }) => ({ id, name: businessName }))),
+      );
+    } catch {
+      return 'This business could not be saved on this device.';
+    }
+
+    setUserBusinesses(nextBusinesses);
+    setActiveBusinessId(newBusiness.id);
+    setVisibleMonth(new Date(`${todayKey}T12:00:00`));
+    setStatusMessage('');
+    setActionInsight(null);
+    setSelectedPostId(null);
+    setIsServiceManagerOpen(false);
+    closePostForm();
+    setIsBusinessDialogOpen(false);
+    return undefined;
+  };
+
   return (
     <main className="calendar-page">
       <div className="calendar-shell">
         <nav className="business-tabs" aria-label="Businesses">
-          {businessData.map((business) => (
+          {businesses.map((business) => (
             <button
+              aria-pressed={business.id === activeBusiness.id}
               className={`business-tab ${business.id === activeBusiness.id ? 'active' : ''}`}
               key={business.id}
               onClick={() => {
                 setActiveBusinessId(business.id);
                 setStatusMessage('');
+                setActionInsight(null);
                 closeSelectedPost();
                 closePostForm();
+                setIsServiceManagerOpen(false);
               }}
               type="button"
             >
@@ -787,7 +912,12 @@ function CalendarSurface() {
           <button
             aria-label="Add a business"
             className="business-tab business-tab-add"
-            onClick={() => showActionMessage('Business workspaces will stay separate as this calendar grows.')}
+            onClick={() => {
+              setActionInsight(null);
+              closeSelectedPost();
+              closePostForm();
+              setIsBusinessDialogOpen(true);
+            }}
             type="button"
           >
             <Plus size={17} strokeWidth={1.7} />
@@ -945,9 +1075,16 @@ function CalendarSurface() {
         {isServiceManagerOpen && (
           <ServiceManager
             services={activeServices}
+            businessId={activeBusiness.id}
             businessName={activeBusiness.name}
             onSave={handleSaveService}
             onClose={() => setIsServiceManagerOpen(false)}
+          />
+        )}
+        {isBusinessDialogOpen && (
+          <BusinessDialog
+            onCreate={handleCreateBusiness}
+            onClose={() => setIsBusinessDialogOpen(false)}
           />
         )}
         {isPostFormOpen && (
@@ -1250,14 +1387,22 @@ function CalendarSurface() {
                 )}
                 <section aria-labelledby="post-rationale-title" className="post-rationale">
                   <h3 id="post-rationale-title">Why this move</h3>
-                  <p>{buildPostRationale(selectedUserPost, [...userPosts, ...seededCalendarPosts], todayKey, services)}</p>
+                  <p>{buildPostRationale(
+                    selectedUserPost,
+                    [...activeBusinessPosts, ...activeSeededCalendarPosts],
+                    todayKey,
+                    activeServices,
+                  )}</p>
                 </section>
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
                   <button className="save-post-button" onClick={() => {
                     setActionInsight(buildActionInsight('completed', selectedUserPost,
-                      [...userPosts, ...seededCalendarPosts], formatDateInput(new Date()), seededCalendarDates[selectedUserPost.businessId] ?? [], services));
+                      [...activeBusinessPosts, ...activeSeededCalendarPosts],
+                      formatDateInput(new Date()),
+                      seededCalendarDates[activeBusiness.id] ?? [],
+                      activeServices));
                     closeSelectedPost();
                   }} type="button">Suggest next posts</button>
                   <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>

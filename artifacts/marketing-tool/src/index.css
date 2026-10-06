@@ -466,6 +466,8 @@
   box-shadow: 0 28px 80px rgba(68, 43, 56, .22);
 }
 
+.business-dialog { width: min(100%, 510px); }
+
 .post-modal-header {
   display: flex;
   align-items: flex-start;

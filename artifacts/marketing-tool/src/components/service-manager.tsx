@@ -5,6 +5,7 @@ import './service-manager.css';
 
 type ServiceManagerProps = {
   services: ServiceDefinition[];
+  businessId: string;
   businessName: string;
   onSave: (service: ServiceDefinition) => string | undefined;
   onClose: () => void;
@@ -37,7 +38,7 @@ function describe(service: ServiceDefinition) {
     : modeLabel(service.mode);
 }
 
-export function ServiceManager({ services, businessName, onSave, onClose }: ServiceManagerProps) {
+export function ServiceManager({ services, businessId, businessName, onSave, onClose }: ServiceManagerProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -87,7 +88,7 @@ export function ServiceManager({ services, businessName, onSave, onClose }: Serv
   const startAdd = () => {
     setDraft({
       id: crypto.randomUUID(),
-      businessId: services[0]?.businessId ?? '',
+      businessId,
       name: '',
       mode: 'evergreen',
       startDate: '',

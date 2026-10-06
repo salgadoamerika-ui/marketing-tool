@@ -72,6 +72,16 @@ test('repost keeps the same title, topic and content type with a normal timing e
   assert.match(result.recommendation, /Worth another shot — timing may have been off/);
 });
 
+test('service pacing preserves the flat-post reason while adjusting the suggested date', () => {
+  const posts = history.slice(0, 4);
+  const result = buildActionInsight('results', posts.at(-1), posts, '2026-10-02', [], [
+    { id: 'mosaic:Insurance', businessId: 'mosaic', name: 'Insurance', mode: 'evergreen' },
+  ]);
+  assert.equal(result.proposals.length, 1);
+  assert.equal(result.proposals[0].kind, 'repost');
+  assert.match(result.recommendation, /Worth another shot — timing may have been off/);
+});
+
 test('fresh approach retains the topic and suggests one move, never the normal booking sequence', () => {
   const result = insight(history.slice(0, 5));
   assert.equal(result.proposals.length, 1);

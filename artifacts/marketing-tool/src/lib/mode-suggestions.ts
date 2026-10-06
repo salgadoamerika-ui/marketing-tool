@@ -54,10 +54,7 @@ export function applyModeSuggestions(
     return {
       ...base, beats, proposals: beats.flatMap((beat) => beat.proposal ? [beat.proposal] : []),
       recommendation: beats[0]
-        ? buildPostRationale(
-          posts.find((item) => item.id === beats[0].existingPostId)
-            ?? { ...post, ...beats[0], performance: undefined, sourcePostId: beats[0].proposal?.sourcePostId ?? post.id },
-          posts, today, services)
+        ? base.recommendation
         : 'There is no available date for this follow-up. Existing posts have not been changed.',
     };
   }

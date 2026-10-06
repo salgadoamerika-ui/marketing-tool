@@ -130,6 +130,120 @@ test('service mode create/edit stores dates, survives reload, isolates businesse
   }
 });
 
+test('business tabs isolate posts, insights, services and airtime; new workspaces persist independently', { timeout: 120000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const mosaicPost = {
+    id: 'workspace-mosaic-post', businessId: 'mosaic', project: 'Insurance',
+    title: 'Mosaic-only workspace post', date: '2026-09-19', contentType: 'Insight',
+    platforms: ['Instagram'], distribution: 'organic', schedulingStatus: 'published',
+  };
+  const northlinePost = {
+    id: 'workspace-northline-post', businessId: 'northline', project: 'Insurance',
+    title: 'Northline-only workspace post', date: '2026-09-19', contentType: 'Insight',
+    platforms: ['Instagram'], distribution: 'organic', schedulingStatus: 'published',
+  };
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'business workspace test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    const readServices = () => evaluate("JSON.parse(localStorage.getItem('marketing-tool.services') ?? '[]')");
+    const airtimeNames = () => evaluate(
+      "[...document.querySelectorAll('.monthly-airtime-name')].map((item) => item.textContent.trim())",
+    );
+
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify([mosaicPost, northlinePost]))})`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'business calendar after seed');
+    assert.match(await evaluate('document.body.innerText'), /Mosaic-only workspace post/);
+    assert.doesNotMatch(await evaluate('document.body.innerText'), /Northline-only workspace post/);
+
+    await clickButtonText(evaluate, 'Manage services');
+    await clickButtonText(evaluate, 'Add service');
+    await setField(evaluate, '.sm-form input[type="text"]', 'Mosaic custom service');
+    await clickButtonText(evaluate, 'Save');
+    await waitFor(async () => (await readServices()).some((service) => service.name === 'Mosaic custom service'), 'Mosaic service save');
+    await click(evaluate, '.sm-header button');
+
+    await click(evaluate, 'button[aria-label="Open saved post: Mosaic-only workspace post"]');
+    await clickButtonText(evaluate, 'Suggest next posts');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'Mosaic insight');
+    await browser.clickVisible('.business-tabs .business-tab:nth-child(2)');
+    await waitFor(
+      () => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Northline Financial'"),
+      'Northline tab switch',
+    );
+    assert.doesNotMatch(await evaluate('document.body.innerText'), /Mosaic-only workspace post/);
+    assert.match(await evaluate('document.body.innerText'), /Northline-only workspace post/);
+    assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-popup'))"), false);
+    assert.equal((await airtimeNames()).includes('Mosaic custom service'), false);
+
+    await clickButtonText(evaluate, 'Manage services');
+    await clickButtonText(evaluate, 'Add service');
+    await setField(evaluate, '.sm-form input[type="text"]', 'Northline custom service');
+    await clickButtonText(evaluate, 'Save');
+    await waitFor(async () => (await readServices()).some((service) => service.name === 'Northline custom service'), 'Northline service save');
+    assert.equal((await readServices()).find((service) => service.name === 'Northline custom service').businessId, 'northline');
+    await click(evaluate, '.sm-header button');
+    assert.ok((await airtimeNames()).includes('Northline custom service'));
+
+    await browser.clickVisible('button[aria-label="Add a business"]');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.business-dialog'))"), 'new business form');
+    await setField(evaluate, '#business-name', 'Atlas Studio');
+    await browser.clickVisible('.business-dialog button[type="submit"]');
+    await waitFor(
+      () => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Atlas Studio'"),
+      'new workspace activation',
+    );
+    assert.equal(await evaluate("document.querySelectorAll('.event-chip-button').length"), 0);
+    assert.deepEqual(await airtimeNames(), []);
+
+    await clickButtonText(evaluate, 'Manage services');
+    assert.match(await evaluate("document.querySelector('.sm-empty').innerText"), /No services yet/);
+    await clickButtonText(evaluate, 'Add service');
+    await setField(evaluate, '.sm-form input[type="text"]', 'Atlas onboarding');
+    await clickButtonText(evaluate, 'Save');
+    await waitFor(async () => (await readServices()).some((service) => service.name === 'Atlas onboarding'), 'Atlas service save');
+    const atlasId = await evaluate(
+      "JSON.parse(localStorage.getItem('marketing-tool.businesses')).find((business) => business.name === 'Atlas Studio').id",
+    );
+    assert.equal((await readServices()).find((service) => service.name === 'Atlas onboarding').businessId, atlasId);
+    await click(evaluate, '.sm-header button');
+    assert.deepEqual(await airtimeNames(), ['Atlas onboarding']);
+
+    await browser.reload();
+    await waitFor(
+      () => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Atlas Studio'"),
+      'saved workspace after reload',
+    );
+    assert.equal(await evaluate("localStorage.getItem('marketing-tool.active-business-id')"), atlasId);
+    assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"), [mosaicPost, northlinePost]);
+    assert.deepEqual(await airtimeNames(), ['Atlas onboarding']);
+    assert.equal(await evaluate("document.querySelectorAll('.event-chip-button').length"), 0);
+
+    await browser.clickVisible('.business-tabs .business-tab:nth-child(1)');
+    await waitFor(
+      () => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Mosaic Legal'"),
+      'Mosaic workspace after reload',
+    );
+    assert.match(await evaluate('document.body.innerText'), /Mosaic-only workspace post/);
+    assert.doesNotMatch(await evaluate('document.body.innerText'), /Northline-only workspace post/);
+    assert.ok((await airtimeNames()).includes('Northline custom service') === false);
+    assert.ok((await airtimeNames()).includes('Atlas onboarding') === false);
+    assert.ok((await airtimeNames()).includes('Mosaic custom service'));
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
 test('an approved planned post moves to the newly suggested date only after Add', { timeout: 120000 }, async () => {
   const port = await getFreePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -394,6 +508,12 @@ test('season month settings stay in the Month at a glance bubble and persist ind
       [key('mosaic', 'Insurance')]: [9],
       [key('northline', 'Insurance')]: [8],
     });
+    assert.equal(
+      await evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim()"),
+      'Northline Financial',
+      'The selected business workspace is restored after reload.',
+    );
+    await click(evaluate, 'button[aria-label="Previous month"]');
     assert.equal(await evaluate("document.querySelectorAll('.monthly-airtime-season').length"), 1, 'The active month-season indicator returns after reload.');
   } finally {
     if (browser) await browser.close();
@@ -1087,7 +1207,6 @@ test('flat-post policy stays invisible while normal approvals retry, refresh and
     assert.equal(retry.title, posts[3].title);
     assert.equal(retry.contentType, posts[3].contentType);
     assert.equal(retry.sourcePostId, posts[3].id);
-    await clickButtonText(evaluate, 'Keep post');
 
     // The repost has now run; enter its result as the next service post.
     await evaluate(`(() => {
@@ -1110,13 +1229,12 @@ test('flat-post policy stays invisible while normal approvals retry, refresh and
     await createPost(evaluate, nextPost, 'skip');
     await openPost(evaluate, nextPost);
     await saveResults(evaluate, { ...nextPost, views: 20, saves: 10, bookings: 5 }, { keepOpen: true });
-    await waitFor(() => evaluate("document.querySelector('.action-insight-popup')?.textContent.includes('monthly check-in')"), 'monthly suggestion');
+    await waitFor(() => evaluate("document.querySelector('.action-insight-popup')?.textContent.includes('practical check-in')"), 'maintenance suggestion');
     await assertInvisible(evaluate);
     await click(evaluate, '.action-insight-add');
     const monthly = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'maintenance'), 'approved monthly check-in');
-    assert.equal(monthly.date, '2026-10-06');
+    assert.equal(monthly.date, '2026-11-05', 'The existing Insurance post on October 6 keeps the next monthly check-in 30 days later.');
     assert.equal((await readPosts(evaluate)).length, 7);
-    await clickButtonText(evaluate, 'Keep post');
 
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'monthly approval after reload');
@@ -1126,7 +1244,7 @@ test('flat-post policy stays invisible while normal approvals retry, refresh and
     assert.equal((await readPosts(evaluate)).length, 7);
     await assertInvisible(evaluate);
     await click(evaluate, '.action-insight-skip');
-    await saveResults(evaluate, { ...nextPost, views: 200, saves: 10, bookings: 5 }, { keepOpen: true });
+    await saveResults(evaluate, { ...nextPost, views: 100, saves: 10, bookings: 5 }, { keepOpen: true });
     assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-popup'))"), false, 'Recovery resets the internal policy without announcing a counter.');
     assert.equal((await readPosts(evaluate)).length, 7, 'Recovery keeps previously approved calendar posts.');
   } finally {
