@@ -24,6 +24,13 @@ test('campaign dates are required, validated, and permit historical and same-day
 test('switching back to Service removes both dates, not just the displayed inputs', () => {
   assert.deepEqual(normalizeService({ ...campaign, mode: 'evergreen' }), ongoing);
 });
+test('service platforms and calendar colors survive saved-service hydration', () => {
+  const configured = { ...ongoing, platforms: ['Instagram', 'TikTok'], tone: 'sage' };
+  assert.deepEqual(normalizeService(configured), configured);
+  assert.deepEqual(loadServices(JSON.stringify([configured]), [ongoing]), [configured]);
+  assert.throws(() => normalizeService({ ...configured, platforms: [' '] }));
+  assert.throws(() => normalizeService({ ...configured, tone: 'not-a-calendar-color' }));
+});
 test('saved modes survive hydration while new defaults and old post projects are merged', () => {
   const extra = { ...ongoing, id: 'other', name: 'Tax planning' };
   const otherBusiness = { ...ongoing, id: 'harbor:Insurance', businessId: 'harbor' };

@@ -7,8 +7,11 @@
 .sm-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .sm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fffdfb; }
 .sm-row-main { min-width: 0; display: grid; gap: 3px; }
+.sm-row-title { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .sm-row-name { font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
 .sm-row-meta { color: var(--plum-soft); font-size: 12px; }
+.sm-color-dot { display: inline-block; width: 11px; height: 11px; flex: none; border-radius: 50%; }
+.sm-live { display: grid; gap: 10px; }
 .sm-empty { margin: 0; padding: 16px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--plum-soft); font-size: 12px; }
 .sm-form { display: grid; gap: 18px; padding: 0; border: 0; border-radius: 0; background: transparent; }
 .sm-form h3 { margin: 0; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 500; }
@@ -19,6 +22,10 @@
 .sm-field input[readonly] { background: #f6eeee; color: var(--plum-soft); }
 .sm-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 8px; }
 .sm-fieldset legend { padding: 0; margin-bottom: 8px; font-size: 12px; font-weight: 700; }
+.sm-fieldset legend b { color: var(--rose); }
+.sm-platform-fieldset { gap: 0; }
+.sm-platform-fieldset .platform-options { gap: 8px; }
+.sm-platform-fieldset .platform-option { min-height: 38px; padding: 7px 11px; }
 .sm-choice { display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fffdfb; cursor: pointer; transition: border-color .18s ease, background .18s ease; }
 .sm-choice:has(input:checked) { border-color: var(--rose); background: #fdf3f6; }
 .sm-choice:has(input:focus-visible) { outline: 2px solid var(--rose-deep); outline-offset: 2px; }
@@ -28,6 +35,13 @@
 .sm-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .sm-error { margin: 0; color: var(--rose-deep); font-size: 12px; font-weight: 600; }
 .sm-success { margin: 0; color: #426a50; font-size: 12px; font-weight: 600; }
+.sm-confirmation { display: grid; gap: 11px; padding: 14px 16px; border: 1px solid #d9e5d9; border-radius: 13px; background: #f4f8f3; }
+.sm-confirmation-heading { display: flex; align-items: center; gap: 10px; }
+.sm-confirmation-heading h3 { margin: 0; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 500; }
+.sm-confirmation-heading p { margin: 3px 0 0; color: var(--plum-soft); font-size: 11px; }
+.sm-confirmation-copy { margin: 0; color: var(--ink); font-size: 11px; line-height: 1.5; }
+.sm-confirmation-platforms { margin: 0; color: var(--plum-soft); font-size: 10px; }
+.sm-confirmation .sm-btn { justify-self: end; }
 .sm-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
 .sm-btn { min-height: 40px; padding: 9px 17px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 700; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); }
 .sm-btn:hover { background: #f9e9ee; }

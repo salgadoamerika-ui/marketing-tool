@@ -1,5 +1,5 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { type ServiceDefinition, modeLabel } from '../lib/services';
 import './service-manager.css';
 
@@ -298,7 +298,7 @@ export function ServiceManager({
                           })}
                           type="checkbox"
                         />
-                        <span className="platform-check">{selected && <span aria-hidden="true">✓</span>}</span>
+                        <span className="platform-check">{selected && <Check size={13} strokeWidth={2.2} />}</span>
                         {platform}
                       </label>
                     );

@@ -107,6 +107,8 @@ test('service mode create/edit stores dates, survives reload, isolates businesse
 
     await clickButtonText(evaluate, 'Add service');
     await fill(evaluate, '.sm-form input[type="text"]', 'Winter intake');
+    await click(evaluate, '.sm-platform-fieldset .platform-option:nth-child(1)');
+    await click(evaluate, '.sm-platform-fieldset .platform-option:nth-child(3)');
     await click(evaluate, '.sm-form input[value="campaign"]');
     await fillDates('2026-11-01', '2026-12-01');
     await clickButtonText(evaluate, 'Save');
@@ -114,6 +116,20 @@ test('service mode create/edit stores dates, survives reload, isolates businesse
     assert.equal(added.mode, 'campaign');
     assert.equal(added.businessId, 'mosaic');
     assert.equal(added.endDate, '2026-12-01');
+    assert.deepEqual(added.platforms, ['Instagram']);
+    assert.ok(added.tone);
+    assert.equal(await evaluate("document.querySelector('.sm-confirmation h3')?.textContent.trim()"), 'Winter intake is live');
+    assert.match(await evaluate("document.querySelector('.sm-confirmation-copy')?.textContent"), /calendar color.*airtime balance.*performance learning/i);
+    assert.match(await evaluate("document.querySelector('.sm-confirmation-platforms')?.textContent"), /Instagram/);
+    await waitFor(
+      () => evaluate("[...document.querySelectorAll('.monthly-airtime-name')].some((item) => item.textContent.trim() === 'Winter intake')"),
+      'new service airtime row',
+    );
+    assert.equal(
+      await evaluate("[...document.querySelectorAll('.legend-item')].find((item) => item.textContent.trim() === 'Winter intake')?.querySelector('.legend-swatch')?.className"),
+      `legend-swatch event-${added.tone}`,
+      'The service gets its own calendar color.',
+    );
     await clickButtonText(evaluate, 'Add service');
     await fill(evaluate, '.sm-form input[type="text"]', 'insurance');
     await clickButtonText(evaluate, 'Save');
@@ -123,6 +139,16 @@ test('service mode create/edit stores dates, survives reload, isolates businesse
     await click(evaluate, '.sm-header button');
     await clickButtonText(evaluate, 'Add post');
     assert.ok(await evaluate("[...document.querySelector('.post-form select').options].some(option => option.value === 'Winter intake')"));
+    await evaluate(`(() => {
+      const serviceSelect = document.querySelector('.post-form select');
+      serviceSelect.value = 'Winter intake';
+      serviceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    assert.deepEqual(
+      await evaluate("[...document.querySelectorAll('.post-form .platform-option.selected')].map((item) => item.textContent.trim())"),
+      ['Instagram'],
+      'The service platform setup is used as the default for its posts.',
+    );
     assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"), [source]);
   } finally {
     if (browser) await browser.close();
@@ -231,6 +257,8 @@ test('business tabs isolate posts, insights, services and airtime; new workspace
     assert.equal(atlasFirstService.name, 'Atlas onboarding');
     assert.equal(atlasFirstService.mode, 'campaign');
     assert.equal(atlasFirstService.endDate, '2026-12-20');
+    assert.deepEqual(atlasFirstService.platforms, ['Instagram', 'TikTok']);
+    assert.equal(atlasFirstService.tone, 'sage');
     assert.match(
       await evaluate("document.querySelector('.business-created-service')?.textContent"),
       /Campaign · deadline Dec 20, 2026/,
