@@ -197,26 +197,71 @@ test('business tabs isolate posts, insights, services and airtime; new workspace
     await browser.clickVisible('button[aria-label="Add a business"]');
     await waitFor(() => evaluate("Boolean(document.querySelector('.business-dialog'))"), 'new business form');
     await setField(evaluate, '#business-name', 'Atlas Studio');
-    await browser.clickVisible('.business-dialog button[type="submit"]');
+    await browser.clickVisible('label[for="business-accent-sage"]');
+    await setField(evaluate, '#business-service-name', 'Atlas onboarding');
+    await evaluate("document.querySelector('.business-dialog').scrollTop = document.querySelector('.business-dialog').scrollHeight");
+    await browser.clickVisible('.business-mode-option input[value="campaign"]');
+    await setField(evaluate, '#business-campaign-deadline', '2026-12-20');
+    await evaluate("document.querySelector('.business-dialog').scrollTop = document.querySelector('.business-dialog').scrollHeight");
+    await browser.clickVisible('label[for="business-platform-0"]');
+    await evaluate("document.querySelector('.business-dialog').scrollTop = document.querySelector('.business-dialog').scrollHeight");
+    await browser.clickVisible('.business-setup-form button[type="submit"]');
+    await waitFor(
+      () => evaluate("document.querySelector('.business-dialog h2')?.textContent.trim() === 'Atlas Studio is ready'"),
+      'business setup confirmation',
+    );
+    assert.equal(
+      await evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim()"),
+      'Northline Financial',
+      'The new business becomes active only after the confirmation step.',
+    );
+    assert.match(await evaluate("document.querySelector('.business-dialog').innerText"), /Its own calendar and business tab/);
+    assert.match(await evaluate("document.querySelector('.business-dialog').innerText"), /Its own airtime balance across its services/);
+    assert.match(await evaluate("document.querySelector('.business-dialog').innerText"), /An independent posting rhythm and check-in/);
+    assert.match(await evaluate("document.querySelector('.business-dialog').innerText"), /Separate performance tracking, learning, and suggestions/);
+    const atlasId = await evaluate(
+      "JSON.parse(localStorage.getItem('marketing-tool.businesses')).find((business) => business.name === 'Atlas Studio').id",
+    );
+    const atlasBusiness = await evaluate(
+      `JSON.parse(localStorage.getItem('marketing-tool.businesses')).find((business) => business.id === ${jsString(atlasId)})`,
+    );
+    assert.equal(atlasBusiness.accent, 'sage');
+    assert.deepEqual(atlasBusiness.platforms, ['Instagram', 'TikTok']);
+    const atlasFirstService = (await readServices()).find((service) => service.businessId === atlasId);
+    assert.equal(atlasFirstService.name, 'Atlas onboarding');
+    assert.equal(atlasFirstService.mode, 'campaign');
+    assert.equal(atlasFirstService.endDate, '2026-12-20');
+    assert.match(
+      await evaluate("document.querySelector('.business-created-service')?.textContent"),
+      /Campaign · deadline Dec 20, 2026/,
+    );
+    assert.match(await evaluate("document.querySelector('.business-created-platforms')?.textContent"), /Instagram · TikTok/);
+
+    await browser.clickVisible('.business-open-button');
     await waitFor(
       () => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Atlas Studio'"),
       'new workspace activation',
     );
     assert.equal(await evaluate("document.querySelectorAll('.event-chip-button').length"), 0);
-    assert.deepEqual(await airtimeNames(), []);
+    assert.deepEqual(await airtimeNames(), ['Atlas onboarding']);
 
     await clickButtonText(evaluate, 'Manage services');
-    assert.match(await evaluate("document.querySelector('.sm-empty').innerText"), /No services yet/);
+    assert.match(await evaluate("document.querySelector('.sm-list').innerText"), /Atlas onboarding/);
     await clickButtonText(evaluate, 'Add service');
-    await setField(evaluate, '.sm-form input[type="text"]', 'Atlas onboarding');
+    await setField(evaluate, '.sm-form input[type="text"]', 'Atlas follow-up');
     await clickButtonText(evaluate, 'Save');
-    await waitFor(async () => (await readServices()).some((service) => service.name === 'Atlas onboarding'), 'Atlas service save');
-    const atlasId = await evaluate(
-      "JSON.parse(localStorage.getItem('marketing-tool.businesses')).find((business) => business.name === 'Atlas Studio').id",
-    );
-    assert.equal((await readServices()).find((service) => service.name === 'Atlas onboarding').businessId, atlasId);
+    await waitFor(async () => (await readServices()).some((service) => service.name === 'Atlas follow-up'), 'Atlas service save');
+    assert.equal((await readServices()).find((service) => service.name === 'Atlas follow-up').businessId, atlasId);
     await click(evaluate, '.sm-header button');
-    assert.deepEqual(await airtimeNames(), ['Atlas onboarding']);
+    assert.deepEqual(await airtimeNames(), ['Atlas onboarding', 'Atlas follow-up']);
+
+    await click(evaluate, 'button.add-post');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.post-form'))"), 'post form with business platform defaults');
+    assert.deepEqual(
+      await evaluate("[...document.querySelectorAll('.platform-option.selected')].map((item) => item.textContent.trim())"),
+      ['Instagram', 'TikTok'],
+      'New posts start with only this business’s selected platforms.',
+    );
 
     await browser.reload();
     await waitFor(
@@ -225,7 +270,7 @@ test('business tabs isolate posts, insights, services and airtime; new workspace
     );
     assert.equal(await evaluate("localStorage.getItem('marketing-tool.active-business-id')"), atlasId);
     assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"), [mosaicPost, northlinePost]);
-    assert.deepEqual(await airtimeNames(), ['Atlas onboarding']);
+    assert.deepEqual(await airtimeNames(), ['Atlas onboarding', 'Atlas follow-up']);
     assert.equal(await evaluate("document.querySelectorAll('.event-chip-button').length"), 0);
 
     await browser.clickVisible('.business-tabs .business-tab:nth-child(1)');

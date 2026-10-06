@@ -1,11 +1,15 @@
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, Settings2, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
 import { MonthlyAirtimeBars } from '@/components/monthly-airtime-bars';
-import { BusinessDialog } from '@/components/business-dialog';
+import {
+  BusinessDialog,
+  type BusinessSetupInput,
+  type BusinessSetupResult,
+} from '@/components/business-dialog';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { ServiceManager } from '@/components/service-manager';
 import { Toaster } from '@/components/ui/toaster';
@@ -18,6 +22,7 @@ import { getConversionGapMarkers } from '@/lib/conversion-gap';
 import { getFlatPostState } from '@/lib/flat-post-ladder';
 import { buildPostRationale } from '@/lib/post-rationale';
 import { getOverperformer } from '@/lib/overperformer';
+import { getBusinessAccent, isBusinessAccent, type BusinessAccent } from '@/lib/business-accents';
 import {
   loadServiceSeasonSelections,
   normalizeSeasonMonths,
@@ -83,6 +88,8 @@ type PostForm = {
 type Business = {
   id: string;
   name: string;
+  accent: BusinessAccent;
+  platforms: Platform[];
   descriptor: string;
   focus: string;
   projects: string[];
@@ -100,6 +107,8 @@ const sampleBusinesses: Business[] = [
   {
     id: 'mosaic',
     name: 'Mosaic Legal',
+    accent: 'rose',
+    platforms: [...defaultPlatformOptions],
     descriptor: 'One calm view for every service line.',
     focus: 'Fall programs are carrying the month, with ongoing services kept visible.',
     projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
@@ -146,6 +155,8 @@ const sampleBusinesses: Business[] = [
   {
     id: 'northline',
     name: 'Northline Financial',
+    accent: 'sage',
+    platforms: [...defaultPlatformOptions],
     descriptor: 'Keep the useful work in motion.',
     focus: 'Year-end planning is moving forward with useful guidance for prospective clients.',
     projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
@@ -179,6 +190,8 @@ const sampleBusinesses: Business[] = [
   {
     id: 'harbor',
     name: 'Harbor Coverage',
+    accent: 'amber',
+    platforms: [...defaultPlatformOptions],
     descriptor: 'Useful guidance for the people you serve.',
     focus: 'Insurance leads the calendar, with a few useful cross-service reminders alongside it.',
     projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
@@ -225,14 +238,23 @@ const seededCalendarDates = Object.fromEntries(sampleBusinesses.map((business) =
 ]));
 const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
 
-function createBusinessWorkspace(id: string, name: string): Business {
+function createBusinessWorkspace(
+  id: string,
+  name: string,
+  accent: BusinessAccent = 'rose',
+  platforms: Platform[] = defaultPlatformOptions,
+  firstServiceName?: string,
+): Business {
+  const tone = getBusinessAccent(accent).tone;
   return {
     id,
     name,
+    accent,
+    platforms: [...platforms],
     descriptor: 'A separate workspace for this business.',
-    focus: 'Add a Service or Campaign to begin building this calendar.',
-    projects: [],
-    palette: [],
+    focus: firstServiceName ? 'A fresh calendar for your first Service or Campaign.' : 'Add a Service or Campaign to begin building this calendar.',
+    projects: firstServiceName ? [firstServiceName] : [],
+    palette: firstServiceName ? [{ label: firstServiceName, tone }] : [],
     events: {},
   };
 }
@@ -252,9 +274,20 @@ function readUserBusinesses(): Business[] {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
         throw new Error('A saved business entry is invalid.');
       }
-      const { id, name } = entry as { id?: unknown; name?: unknown };
+      const { id, name, accent, platforms } = entry as {
+        id?: unknown;
+        name?: unknown;
+        accent?: unknown;
+        platforms?: unknown;
+      };
       if (typeof id !== 'string' || !id.trim() || typeof name !== 'string' || !name.trim()) {
         throw new Error('A saved business is missing its name or identifier.');
+      }
+      if (platforms !== undefined && (!Array.isArray(platforms) || platforms.some((platform) => typeof platform !== 'string'))) {
+        throw new Error('A saved business has invalid platform selections.');
+      }
+      if (accent !== undefined && !isBusinessAccent(accent)) {
+        throw new Error('A saved business has an invalid tab accent.');
       }
       const cleanName = name.trim();
       if (ids.has(id) || names.has(cleanName.toLowerCase())) {
@@ -262,7 +295,16 @@ function readUserBusinesses(): Business[] {
       }
       ids.add(id);
       names.add(cleanName.toLowerCase());
-      return createBusinessWorkspace(id, cleanName);
+      const savedPlatforms = Array.isArray(platforms)
+        ? [...new Set(platforms.map((platform) => platform.trim()).filter(Boolean))]
+        : [...defaultPlatformOptions];
+      if (savedPlatforms.length === 0) throw new Error('A saved business needs at least one platform.');
+      return createBusinessWorkspace(
+        id,
+        cleanName,
+        accent === undefined ? 'rose' : accent,
+        savedPlatforms,
+      );
     });
   } catch (error) {
     console.warn('Saved businesses could not be loaded.', error);
@@ -295,13 +337,13 @@ function defaultPostDate(visibleMonth: Date) {
     : formatDateInput(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1));
 }
 
-function createPostForm(date: string): PostForm {
+function createPostForm(date: string, platforms: Platform[] = []): PostForm {
   return {
     project: '',
     contentType: '',
     title: '',
     date,
-    platforms: [],
+    platforms: [...platforms],
     distribution: 'organic',
     budget: '',
     runLength: '',
@@ -531,7 +573,7 @@ function CalendarSurface() {
   useEffect(() => {
     window.localStorage.setItem(
       userBusinessesStorageKey,
-      JSON.stringify(userBusinesses.map(({ id, name }) => ({ id, name }))),
+      JSON.stringify(userBusinesses.map(({ id, name, accent, platforms }) => ({ id, name, accent, platforms }))),
     );
   }, [userBusinesses]);
   useEffect(() => {
@@ -625,7 +667,7 @@ function CalendarSurface() {
   };
 
   const openPostForm = () => {
-    setPostForm(createPostForm(defaultPostDate(visibleMonth)));
+    setPostForm(createPostForm(defaultPostDate(visibleMonth), activeBusiness.platforms));
     setFormError('');
     setIsAddingPlatform(false);
     setNewPlatformName('');
@@ -856,34 +898,85 @@ function CalendarSurface() {
     showActionMessage(`Added “${suggestion.title}” to the calendar.`);
   };
 
-  const handleCreateBusiness = (rawName: string) => {
-    const name = rawName.trim();
-    if (!name) return 'Enter a name for this business.';
+  const handleCreateBusiness = (input: BusinessSetupInput): BusinessSetupResult => {
+    const name = input.name.trim();
+    if (!name) return { error: 'Enter a name for this business.' };
     if (businesses.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
-      return 'A business with that name already exists.';
+      return { error: 'A business with that name already exists.' };
     }
+    if (!isBusinessAccent(input.accent)) return { error: 'Choose a tab accent.' };
+    const serviceName = input.serviceName.trim();
+    const selectedPlatforms = [...new Set(input.platforms.filter((platform) => availablePlatforms.includes(platform)))];
+    if (selectedPlatforms.length === 0) return { error: 'Choose at least one available platform.' };
 
-    const newBusiness = createBusinessWorkspace(`business-${createPostId()}`, name);
+    const businessId = `business-${createPostId()}`;
+    const service: ServiceDefinition = input.mode === 'campaign'
+      ? {
+        id: `${businessId}:first-service`,
+        businessId,
+        name: serviceName,
+        mode: 'campaign',
+        startDate: input.startDate,
+        endDate: input.deadline,
+      }
+      : { id: `${businessId}:first-service`, businessId, name: serviceName, mode: 'evergreen' };
+    const serviceError = validateService(service);
+    if (serviceError) return { error: serviceError };
+
+    const newBusiness = createBusinessWorkspace(
+      businessId,
+      name,
+      input.accent,
+      selectedPlatforms,
+      service.name,
+    );
     const nextBusinesses = [...userBusinesses, newBusiness];
+    const nextServices = [...services, service];
+    const serializedBusinesses = JSON.stringify(nextBusinesses.map(({ id, name: businessName, accent, platforms }) => ({
+      id, name: businessName, accent, platforms,
+    })));
+    let previousBusinesses: string | null = null;
+    let wroteBusinesses = false;
     try {
-      window.localStorage.setItem(
-        userBusinessesStorageKey,
-        JSON.stringify(nextBusinesses.map(({ id, name: businessName }) => ({ id, name: businessName }))),
-      );
+      previousBusinesses = window.localStorage.getItem(userBusinessesStorageKey);
+      window.localStorage.setItem(userBusinessesStorageKey, serializedBusinesses);
+      wroteBusinesses = true;
+      window.localStorage.setItem(servicesStorageKey, JSON.stringify(nextServices));
     } catch {
-      return 'This business could not be saved on this device.';
+      if (wroteBusinesses) {
+        try {
+          if (previousBusinesses === null) window.localStorage.removeItem(userBusinessesStorageKey);
+          else window.localStorage.setItem(userBusinessesStorageKey, previousBusinesses);
+        } catch {
+          // Keep the original save error visible if the storage device is full.
+        }
+      }
+      return { error: 'This business and its first Service or Campaign could not be saved on this device.' };
     }
 
     setUserBusinesses(nextBusinesses);
-    setActiveBusinessId(newBusiness.id);
+    setServices(nextServices);
+    return {
+      business: {
+        id: newBusiness.id,
+        name: newBusiness.name,
+        accent: newBusiness.accent,
+        service,
+        platforms: selectedPlatforms,
+      },
+    };
+  };
+
+  const handleOpenCreatedBusiness = (businessId: string) => {
+    if (!userBusinesses.some((business) => business.id === businessId)) return;
+    setActiveBusinessId(businessId);
     setVisibleMonth(new Date(`${todayKey}T12:00:00`));
     setStatusMessage('');
     setActionInsight(null);
     setSelectedPostId(null);
-    setIsServiceManagerOpen(false);
     closePostForm();
+    setIsServiceManagerOpen(false);
     setIsBusinessDialogOpen(false);
-    return undefined;
   };
 
   return (
@@ -895,6 +988,7 @@ function CalendarSurface() {
               aria-pressed={business.id === activeBusiness.id}
               className={`business-tab ${business.id === activeBusiness.id ? 'active' : ''}`}
               key={business.id}
+              style={{ '--business-accent-color': getBusinessAccent(business.accent).color } as CSSProperties}
               onClick={() => {
                 setActiveBusinessId(business.id);
                 setStatusMessage('');
@@ -1083,7 +1177,9 @@ function CalendarSurface() {
         )}
         {isBusinessDialogOpen && (
           <BusinessDialog
+            platformOptions={availablePlatforms}
             onCreate={handleCreateBusiness}
+            onOpenBusiness={handleOpenCreatedBusiness}
             onClose={() => setIsBusinessDialogOpen(false)}
           />
         )}
