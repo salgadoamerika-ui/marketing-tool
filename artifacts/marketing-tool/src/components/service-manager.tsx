@@ -7,7 +7,9 @@ type ServiceManagerProps = {
   services: ServiceDefinition[];
   businessId: string;
   businessName: string;
-  onSave: (service: ServiceDefinition) => string | undefined;
+  platformOptions: string[];
+  defaultPlatforms: string[];
+  onSave: (service: ServiceDefinition) => string | ServiceDefinition;
   onClose: () => void;
 };
 
@@ -18,6 +20,7 @@ type Draft = {
   mode: ServiceDefinition['mode'];
   startDate: string;
   endDate: string;
+  platforms: string[];
   isNew: boolean;
 };
 
@@ -38,10 +41,19 @@ function describe(service: ServiceDefinition) {
     : modeLabel(service.mode);
 }
 
-export function ServiceManager({ services, businessId, businessName, onSave, onClose }: ServiceManagerProps) {
+export function ServiceManager({
+  services,
+  businessId,
+  businessName,
+  platformOptions,
+  defaultPlatforms,
+  onSave,
+  onClose,
+}: ServiceManagerProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [createdService, setCreatedService] = useState<ServiceDefinition | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const pressStartedOnBackdrop = useRef(false);
@@ -79,10 +91,12 @@ export function ServiceManager({ services, businessId, businessName, onSave, onC
       mode: service.mode,
       startDate: service.mode === 'campaign' ? service.startDate : '',
       endDate: service.mode === 'campaign' ? service.endDate : '',
+      platforms: [...(service.platforms ?? defaultPlatforms)],
       isNew: false,
     });
     setError('');
     setSuccess('');
+    setCreatedService(null);
   };
 
   const startAdd = () => {
@@ -93,10 +107,12 @@ export function ServiceManager({ services, businessId, businessName, onSave, onC
       mode: 'evergreen',
       startDate: '',
       endDate: '',
+      platforms: defaultPlatforms.filter((platform) => platformOptions.includes(platform)),
       isNew: true,
     });
     setError('');
     setSuccess('');
+    setCreatedService(null);
   };
 
   const patch = (changes: Partial<Draft>) => {
@@ -116,17 +132,31 @@ export function ServiceManager({ services, businessId, businessName, onSave, onC
     if (!draft) return;
     const name = draft.name.trim();
     if (!name) { setError('Enter a name for this service.'); return; }
+    if (draft.platforms.length === 0) { setError('Choose at least one platform.'); return; }
     let service: ServiceDefinition;
     if (draft.mode === 'campaign') {
       if (!draft.startDate || !draft.endDate) { setError('Choose both a start date and a deadline.'); return; }
       if (draft.startDate > draft.endDate) { setError('The deadline must be on or after the start date.'); return; }
-      service = { id: draft.id, businessId: draft.businessId, name, mode: 'campaign', startDate: draft.startDate, endDate: draft.endDate };
+      service = {
+        id: draft.id,
+        businessId: draft.businessId,
+        name,
+        mode: 'campaign',
+        startDate: draft.startDate,
+        endDate: draft.endDate,
+        platforms: draft.platforms,
+      };
     } else {
-      service = { id: draft.id, businessId: draft.businessId, name, mode: 'evergreen' };
+      service = { id: draft.id, businessId: draft.businessId, name, mode: 'evergreen', platforms: draft.platforms };
     }
     const result = onSave(service);
-    if (result) { setError(result); return; }
-    setSuccess(`Saved ${name} as a ${modeLabel(service.mode)}.`);
+    if (typeof result === 'string') { setError(result); return; }
+    if (draft.isNew) {
+      setCreatedService(result);
+      setSuccess('');
+    } else {
+      setSuccess(`Saved ${name} as a ${modeLabel(service.mode)}.`);
+    }
     setDraft(null);
     setError('');
   };
@@ -160,6 +190,26 @@ export function ServiceManager({ services, businessId, businessName, onSave, onC
         <div className="sm-body">
           <div className="sm-live" role="status" aria-live="polite">
             {success && <p className="sm-success">{success}</p>}
+            {createdService && (
+              <section className="sm-confirmation" aria-label={`${createdService.name} is live`}>
+                <div className="sm-confirmation-heading">
+                  <span className={`sm-color-dot event-${createdService.tone ?? 'muted'}`} aria-hidden="true" />
+                  <div>
+                    <h3>{createdService.name} is live</h3>
+                    <p>
+                      {createdService.mode === 'campaign'
+                        ? `Campaign · deadline ${formatDate(createdService.endDate)}`
+                        : 'Service · ongoing'}
+                    </p>
+                  </div>
+                </div>
+                <p className="sm-confirmation-copy">
+                  It now has its own calendar color, a place in {businessName}’s airtime balance, and separate performance learning and suggestions.
+                </p>
+                <p className="sm-confirmation-platforms">{createdService.platforms?.join(' · ')}</p>
+                <button className="sm-btn sm-btn-primary" onClick={onClose} type="button">Back to calendar</button>
+              </section>
+            )}
           </div>
 
           {services.length === 0 ? (
@@ -169,7 +219,10 @@ export function ServiceManager({ services, businessId, businessName, onSave, onC
               {services.map((service) => (
                 <li className="sm-row" key={service.id}>
                   <div className="sm-row-main">
-                    <span className="sm-row-name">{service.name}</span>
+                      <div className="sm-row-title">
+                        {service.tone && <span className={`sm-color-dot event-${service.tone}`} aria-hidden="true" />}
+                        <span className="sm-row-name">{service.name}</span>
+                      </div>
                     <span className="sm-row-meta">{describe(service)}</span>
                   </div>
                   <button
@@ -229,6 +282,29 @@ export function ServiceManager({ services, businessId, businessName, onSave, onC
                   </label>
                 </div>
               )}
+              <fieldset className="sm-fieldset sm-platform-fieldset">
+                <legend>Platforms for this service <b aria-hidden="true">*</b></legend>
+                <div className="platform-options">
+                  {platformOptions.map((platform) => {
+                    const selected = draft.platforms.includes(platform);
+                    return (
+                      <label className={`platform-option ${selected ? 'selected' : ''}`} key={platform}>
+                        <input
+                          checked={selected}
+                          onChange={() => patch({
+                            platforms: selected
+                              ? draft.platforms.filter((item) => item !== platform)
+                              : [...draft.platforms, platform],
+                          })}
+                          type="checkbox"
+                        />
+                        <span className="platform-check">{selected && <span aria-hidden="true">✓</span>}</span>
+                        {platform}
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
               <p className="sm-error" role="alert">{error}</p>
               <div className="sm-actions">
                 <button type="button" className="sm-btn" onClick={cancel}>Cancel</button>

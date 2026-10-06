@@ -29,7 +29,16 @@ import {
   serviceSeasonKey,
   serviceSeasonsStorageKey,
 } from '@/lib/service-seasons';
-import { loadServices, modeLabel, normalizeService, servicesStorageKey, validateService, type ServiceDefinition } from '@/lib/services';
+import {
+  loadServices,
+  modeLabel,
+  normalizeService,
+  serviceCalendarTones,
+  servicesStorageKey,
+  validateService,
+  type ServiceDefinition,
+  type ServiceTone,
+} from '@/lib/services';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -40,7 +49,13 @@ import {
 
 const queryClient = new QueryClient();
 
-type EventTone = 'rose' | 'lavender' | 'sage' | 'sand' | 'blue' | 'blush' | 'muted';
+type EventTone = ServiceTone;
+
+function nextServiceTone(usedTones: ServiceTone[]): ServiceTone {
+  const used = new Set(usedTones);
+  return serviceCalendarTones.find((tone) => !used.has(tone))
+    ?? serviceCalendarTones[usedTones.length % serviceCalendarTones.length];
+}
 
 type CalendarEvent = {
   day: number;
@@ -494,7 +509,7 @@ function CalendarSurface() {
     projects: activeServices.map((service) => service.name),
     palette: activeServices.map((service) => ({
       label: service.name,
-      tone: business.palette.find((item) => item.label === service.name)?.tone ?? 'muted' as EventTone,
+      tone: service.tone ?? business.palette.find((item) => item.label === service.name)?.tone ?? 'muted' as EventTone,
     })),
   }), [business, activeServices]);
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
@@ -607,7 +622,7 @@ function CalendarSurface() {
     }
   }, [services]);
 
-  const handleSaveService = (draft: ServiceDefinition): string | undefined => {
+  const handleSaveService = (draft: ServiceDefinition): string | ServiceDefinition => {
     const error = validateService(draft);
     if (error) return error;
     if (draft.businessId !== activeBusiness.id) return 'Choose a service in this business.';
@@ -617,7 +632,12 @@ function CalendarSurface() {
     }
     if (services.some((service) => service.id !== draft.id && service.businessId === draft.businessId
       && service.name.toLowerCase() === draft.name.trim().toLowerCase())) return 'That name is already used in this business.';
-    const saved = normalizeService(draft);
+    const requestedPlatforms = draft.platforms ?? existing?.platforms ?? activeBusiness.platforms;
+    const platforms = [...new Set(requestedPlatforms.filter((platform) => availablePlatforms.includes(platform)))];
+    if (platforms.length === 0) return 'Choose at least one available platform for this service or campaign.';
+    const existingTone = activeBusiness.palette.find((item) => item.label === draft.name.trim())?.tone;
+    const tone = existing?.tone ?? existingTone ?? nextServiceTone(activeBusiness.palette.map((item) => item.tone));
+    const saved = normalizeService({ ...draft, name: draft.name.trim(), platforms, tone });
     const updated = existing ? services.map((service) => service.id === saved.id ? saved : service) : [...services, saved];
     try {
       window.localStorage.setItem(servicesStorageKey, JSON.stringify(updated));
@@ -625,7 +645,7 @@ function CalendarSurface() {
       return 'This device could not save the change. Free some storage and try again.';
     }
     setServices(updated);
-    return undefined;
+    return saved;
   };
 
   const handleSaveSeasonMonths = (service: string, months: number[]): string | undefined => {
@@ -688,6 +708,17 @@ function CalendarSurface() {
 
   const updatePostForm = <K extends keyof PostForm>(field: K, value: PostForm[K]) => {
     setPostForm((current) => ({ ...current, [field]: value }));
+    setFormError('');
+  };
+
+  const selectPostService = (project: string) => {
+    const service = activeServices.find((item) => item.name === project);
+    const preferredPlatforms = service?.platforms ?? activeBusiness.platforms;
+    setPostForm((current) => ({
+      ...current,
+      project,
+      platforms: preferredPlatforms.filter((platform) => availablePlatforms.includes(platform)),
+    }));
     setFormError('');
   };
 
@@ -910,6 +941,7 @@ function CalendarSurface() {
     if (selectedPlatforms.length === 0) return { error: 'Choose at least one available platform.' };
 
     const businessId = `business-${createPostId()}`;
+    const serviceTone = getBusinessAccent(input.accent).tone;
     const service: ServiceDefinition = input.mode === 'campaign'
       ? {
         id: `${businessId}:first-service`,
@@ -918,8 +950,17 @@ function CalendarSurface() {
         mode: 'campaign',
         startDate: input.startDate,
         endDate: input.deadline,
+        platforms: selectedPlatforms,
+        tone: serviceTone,
       }
-      : { id: `${businessId}:first-service`, businessId, name: serviceName, mode: 'evergreen' };
+      : {
+        id: `${businessId}:first-service`,
+        businessId,
+        name: serviceName,
+        mode: 'evergreen',
+        platforms: selectedPlatforms,
+        tone: serviceTone,
+      };
     const serviceError = validateService(service);
     if (serviceError) return { error: serviceError };
 
@@ -1171,6 +1212,8 @@ function CalendarSurface() {
             services={activeServices}
             businessId={activeBusiness.id}
             businessName={activeBusiness.name}
+            platformOptions={availablePlatforms}
+            defaultPlatforms={activeBusiness.platforms}
             onSave={handleSaveService}
             onClose={() => setIsServiceManagerOpen(false)}
           />
@@ -1208,7 +1251,7 @@ function CalendarSurface() {
                   <label className="form-field">
                     <span>Service / project <b>*</b></span>
                     <select
-                      onChange={(event) => updatePostForm('project', event.target.value)}
+                      onChange={(event) => selectPostService(event.target.value)}
                       required
                       value={postForm.project}
                     >

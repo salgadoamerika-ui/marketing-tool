@@ -1,5 +1,13 @@
 export type ServiceMode = 'evergreen' | 'campaign';
-type ServiceIdentity = { id: string; businessId: string; name: string };
+export const serviceCalendarTones = ['rose', 'lavender', 'sage', 'sand', 'blue', 'blush', 'muted'] as const;
+export type ServiceTone = (typeof serviceCalendarTones)[number];
+type ServiceIdentity = {
+  id: string;
+  businessId: string;
+  name: string;
+  platforms?: string[];
+  tone?: ServiceTone;
+};
 export type ServiceDefinition = ServiceIdentity & (
   { mode: 'evergreen' } | { mode: 'campaign'; startDate: string; endDate: string }
 );
@@ -7,6 +15,10 @@ export type ServiceDefinition = ServiceIdentity & (
 export const servicesStorageKey = 'marketing-tool.services';
 export function modeLabel(mode: ServiceMode): string {
   return mode === 'campaign' ? 'Campaign' : 'Service';
+}
+
+export function isServiceTone(value: unknown): value is ServiceTone {
+  return serviceCalendarTones.some((tone) => tone === value);
 }
 
 function validDate(value: unknown): value is string {
@@ -20,6 +32,12 @@ export function validateService(service: ServiceDefinition): string | undefined 
     return 'Add a name for this service or campaign.';
   }
   if (service.mode !== 'evergreen' && service.mode !== 'campaign') return 'Choose Service or Campaign.';
+  if (service.platforms !== undefined
+    && (!Array.isArray(service.platforms) || service.platforms.length === 0
+      || service.platforms.some((platform) => typeof platform !== 'string' || !platform.trim()))) {
+    return 'Choose at least one platform for this service or campaign.';
+  }
+  if (service.tone !== undefined && !isServiceTone(service.tone)) return 'Choose a valid calendar color.';
   if (service.mode === 'campaign') {
     if (!validDate(service.startDate) || !validDate(service.endDate)) return 'Add a valid start date and deadline.';
     if (service.startDate > service.endDate) return 'The deadline must be on or after the start date.';
@@ -35,10 +53,25 @@ export function normalizeService(value: unknown): ServiceDefinition {
     throw new Error('Saved service information is invalid.');
   }
   const identity = { id: record.id, businessId: record.businessId, name: record.name.trim() };
+  let platforms: string[] | undefined;
+  if (record.platforms !== undefined) {
+    if (!Array.isArray(record.platforms) || record.platforms.some((platform) => typeof platform !== 'string' || !platform.trim())) {
+      throw new Error('Saved service platforms are invalid.');
+    }
+    platforms = [...new Set((record.platforms as string[]).map((platform) => platform.trim()))];
+    if (platforms.length === 0) throw new Error('Choose at least one platform for this service or campaign.');
+  }
+  if (record.tone !== undefined && !isServiceTone(record.tone)) {
+    throw new Error('Saved service color is invalid.');
+  }
+  const settings = {
+    ...(platforms ? { platforms } : {}),
+    ...(record.tone !== undefined ? { tone: record.tone as ServiceTone } : {}),
+  };
   // Existing entries without a mode remain ongoing; never invent a deadline.
   const mode = record.mode ?? 'evergreen';
   const service = {
-    ...identity, mode,
+    ...identity, ...settings, mode,
     ...(mode === 'campaign' ? { startDate: record.startDate, endDate: record.endDate } : {}),
   } as ServiceDefinition;
   const error = validateService(service);
