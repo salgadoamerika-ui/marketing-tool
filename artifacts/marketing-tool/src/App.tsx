@@ -10,11 +10,12 @@ import {
   type BusinessSetupInput,
   type BusinessSetupResult,
 } from '@/components/business-dialog';
+import { BusinessContentManager } from '@/components/business-content-manager';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { ServiceManager } from '@/components/service-manager';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { buildActionInsight, type ActionInsight, type InsightPost } from '@/lib/action-insight';
+import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
 import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
 import { getMonthlyAirtime } from '@/lib/monthly-airtime';
 import { buildConversionReview } from '@/lib/conversion-review';
@@ -23,6 +24,16 @@ import { getFlatPostState } from '@/lib/flat-post-ladder';
 import { buildPostRationale } from '@/lib/post-rationale';
 import { getOverperformer } from '@/lib/overperformer';
 import { getBusinessAccent, isBusinessAccent, type BusinessAccent } from '@/lib/business-accents';
+import {
+  createBusinessContentSettings,
+  defaultContentTypes,
+  defaultPlatformOptions,
+  deleteContentTypeAliases,
+  loadBusinessContentSettings,
+  renameContentTypeAliases,
+  resolveSeededContentType,
+  type BusinessContentSettings,
+} from '@/lib/business-content-settings';
 import {
   loadServiceSeasonSelections,
   normalizeSeasonMonths,
@@ -63,6 +74,7 @@ type CalendarEvent = {
   title: string;
   detail?: string;
   tone: EventTone;
+  contentTypeName?: string;
   id?: string;
   bestTime?: BestTimeRecommendation;
   conversionGap?: string;
@@ -70,6 +82,8 @@ type CalendarEvent = {
 
 type Distribution = 'organic' | 'paid';
 type Platform = string;
+type ContentCatalogKind = 'content type' | 'platform';
+type ContentCatalogOperation = 'add' | 'rename' | 'delete';
 
 type UserPost = {
   id: string;
@@ -116,8 +130,7 @@ const userPostsStorageKey = 'marketing-tool.user-posts';
 const userBusinessesStorageKey = 'marketing-tool.businesses';
 const activeBusinessStorageKey = 'marketing-tool.active-business-id';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
-const defaultPlatformOptions: Platform[] = ['Facebook', 'Instagram', 'TikTok'];
-const contentTypes = ['Announcement', 'Insight', 'Inside look', 'Proof', 'Testimonial', 'Pricing', 'Book now', 'Last chance', 'Recap', 'Promo', 'Fresh angle'];
+const businessContentSettingsStorageKey = 'marketing-tool.business-content-settings';
 const sampleBusinesses: Business[] = [
   {
     id: 'mosaic',
@@ -313,7 +326,6 @@ function readUserBusinesses(): Business[] {
       const savedPlatforms = Array.isArray(platforms)
         ? [...new Set(platforms.map((platform) => platform.trim()).filter(Boolean))]
         : [...defaultPlatformOptions];
-      if (savedPlatforms.length === 0) throw new Error('A saved business needs at least one platform.');
       return createBusinessWorkspace(
         id,
         cleanName,
@@ -387,6 +399,31 @@ function readAvailablePlatforms() {
   }
 }
 
+function readBusinessContentSettings(businesses: Business[]) {
+  return loadBusinessContentSettings(
+    window.localStorage.getItem(businessContentSettingsStorageKey),
+    businesses,
+    readAvailablePlatforms(),
+  );
+}
+
+function writeLocalStorageBatch(entries: Array<[string, string]>) {
+  const previous = entries.map(([key]) => [key, window.localStorage.getItem(key)] as const);
+  try {
+    entries.forEach(([key, value]) => window.localStorage.setItem(key, value));
+  } catch (error) {
+    previous.forEach(([key, value]) => {
+      try {
+        if (value === null) window.localStorage.removeItem(key);
+        else window.localStorage.setItem(key, value);
+      } catch {
+        // Preserve the original storage error.
+      }
+    });
+    throw error;
+  }
+}
+
 function isUserPost(value: unknown): value is UserPost {
   if (!value || typeof value !== 'object') return false;
   const post = value as Partial<UserPost>;
@@ -450,7 +487,50 @@ function getPostDetail(post: UserPost) {
   const distributionText = post.distribution === 'paid'
     ? `Paid · $${post.budget?.toLocaleString() ?? '0'} · ${post.runLength ?? 0}d`
     : 'Organic';
-  return `${post.contentType} · ${channelText} · ${distributionText}`;
+  return [post.contentType, channelText, distributionText].filter(Boolean).join(' · ');
+}
+
+function getContentTypeStyle(name: string): CSSProperties {
+  let hash = 2166136261;
+  for (const character of name) {
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  }
+  return { '--content-type-hue': String((hash >>> 0) % 360) } as CSSProperties;
+}
+
+function restrictInsightToAvailableTypes(
+  insight: ActionInsight,
+  availableTypes: string[],
+): ActionInsight {
+  const beats = insight.beats.filter((beat) => availableTypes.includes(beat.contentType));
+  const proposals = insight.proposals.filter((proposal) => availableTypes.includes(proposal.contentType));
+  if (beats.length === insight.beats.length && proposals.length === insight.proposals.length) return insight;
+  return {
+    ...insight,
+    beats,
+    proposals,
+    title: proposals.length
+      ? proposals.length === 1 ? `${proposals[0].contentType} is next in the sequence` : 'Next available moves'
+      : 'No available follow-up type',
+    recommendation: proposals.length
+      ? 'Some sequence steps were skipped because their content types are not enabled for this business.'
+      : 'No follow-up was added because this business does not have the required content types. Add a type in Manage content if you want to use it.',
+  };
+}
+
+function buildBusinessActionInsight(
+  action: InsightAction,
+  post: InsightPost,
+  posts: InsightPost[],
+  today: string,
+  occupiedDates: string[],
+  services: ServiceDefinition[],
+  availableTypes: string[],
+): ActionInsight {
+  return restrictInsightToAvailableTypes(
+    buildActionInsight(action, post, posts, today, occupiedDates, services),
+    availableTypes,
+  );
 }
 
 function formatPostDate(date: string) {
@@ -464,6 +544,8 @@ function formatPostDate(date: string) {
 function CalendarSurface() {
   const [userBusinesses, setUserBusinesses] = useState<Business[]>(readUserBusinesses);
   const businesses = useMemo(() => [...sampleBusinesses, ...userBusinesses], [userBusinesses]);
+  const [businessContentSettingsById, setBusinessContentSettingsById] = useState(() =>
+    readBusinessContentSettings(businesses));
   const [activeBusinessId, setActiveBusinessId] = useState(() => {
     const savedBusinessId = window.localStorage.getItem(activeBusinessStorageKey);
     return savedBusinessId && businesses.some((item) => item.id === savedBusinessId)
@@ -488,39 +570,53 @@ function CalendarSurface() {
   const [seasonMonthsByService, setSeasonMonthsByService] = useState(() =>
     loadServiceSeasonSelections(window.localStorage.getItem(serviceSeasonsStorageKey)));
   const [isServiceManagerOpen, setIsServiceManagerOpen] = useState(false);
+  const [isContentManagerOpen, setIsContentManagerOpen] = useState(false);
   const [isBusinessDialogOpen, setIsBusinessDialogOpen] = useState(false);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
   const [actionInsight, setActionInsight] = useState<ActionInsight | null>(null);
-  const [availablePlatforms, setAvailablePlatforms] = useState<Platform[]>(readAvailablePlatforms);
-  const [isAddingPlatform, setIsAddingPlatform] = useState(false);
-  const [newPlatformName, setNewPlatformName] = useState('');
-  const [platformError, setPlatformError] = useState('');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   const business = businesses.find((item) => item.id === activeBusinessId) ?? businesses[0];
+  const activeContentSettings = businessContentSettingsById[business.id]
+    ?? createBusinessContentSettings(business.platforms);
+  const availablePlatforms = activeContentSettings.platformOptions;
+  const contentTypes = activeContentSettings.contentTypes;
   const activeServices = useMemo(
     () => services.filter((service) => service.businessId === business.id),
     [services, business.id],
   );
   const activeBusiness = useMemo(() => ({
     ...business,
+    platforms: activeContentSettings.selectedPlatforms.filter((platform) => availablePlatforms.includes(platform)),
     projects: activeServices.map((service) => service.name),
     palette: activeServices.map((service) => ({
       label: service.name,
       tone: service.tone ?? business.palette.find((item) => item.label === service.name)?.tone ?? 'muted' as EventTone,
     })),
-  }), [business, activeServices]);
+  }), [business, activeServices, activeContentSettings, availablePlatforms]);
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
-  const events = activeBusiness.events[monthKey(visibleMonth)] ?? [];
+  const events = (activeBusiness.events[monthKey(visibleMonth)] ?? []).map((event) => {
+    const resolved = event.detail
+      ? resolveSeededContentType(event.detail, activeContentSettings)
+      : null;
+    return resolved === null
+      ? event
+      : { ...event, detail: resolved || undefined, contentTypeName: resolved || undefined };
+  });
   const activeBusinessPosts = useMemo(
     () => userPosts.filter((post) => post.businessId === activeBusiness.id),
     [userPosts, activeBusiness.id],
   );
   const activeSeededCalendarPosts = useMemo(
-    () => seededCalendarPosts.filter((post) => post.businessId === activeBusiness.id),
-    [activeBusiness.id],
+    () => seededCalendarPosts
+      .filter((post) => post.businessId === activeBusiness.id)
+      .map((post) => {
+        const resolved = resolveSeededContentType(post.contentType, activeContentSettings);
+        return resolved === null ? post : { ...post, contentType: resolved };
+      }),
+    [activeBusiness.id, activeContentSettings],
   );
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const monthlyAirtime = getMonthlyAirtime(
@@ -546,13 +642,17 @@ function CalendarSurface() {
     () => getConversionGapMarkers(activeBusinessPosts),
     [activeBusinessPosts],
   );
-  const conversionReview = selectedUserPost ? buildConversionReview(
+  const rawConversionReview = selectedUserPost ? buildConversionReview(
     selectedUserPost,
     [...activeBusinessPosts, ...activeSeededCalendarPosts],
     formatDateInput(new Date()),
     seededCalendarDates[activeBusiness.id] ?? [],
     activeServices,
   ) : null;
+  const conversionReview = rawConversionReview?.proposal
+    && !contentTypes.includes(rawConversionReview.proposal.contentType)
+    ? { ...rawConversionReview, proposal: undefined }
+    : rawConversionReview;
   const selectedBestTime = selectedUserPost?.schedulingStatus === 'approved-suggestion'
     ? getBestTimeRecommendation(
       selectedUserPost.businessId,
@@ -567,6 +667,7 @@ function CalendarSurface() {
     title: post.title,
     detail: getPostDetail(post),
     tone: getPostTone(post.project, activeBusiness),
+    ...(contentTypes.includes(post.contentType) ? { contentTypeName: post.contentType } : {}),
     ...(conversionMarkers.has(post.id) ? { conversionGap: post.project } : {}),
     ...(post.schedulingStatus === 'approved-suggestion'
       ? { bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, activeBusinessPosts) }
@@ -599,17 +700,18 @@ function CalendarSurface() {
       if (!current?.sourcePostId) return current;
       const source = activeBusinessPosts.find((post) => post.id === current.sourcePostId);
       if (!source || source.businessId !== activeBusiness.id) return null;
-      const refreshed = buildActionInsight(
+      const refreshed = buildBusinessActionInsight(
         current.action,
         source,
         [...activeBusinessPosts, ...activeSeededCalendarPosts],
         todayKey,
         seededCalendarDates[activeBusiness.id] ?? [],
         activeServices,
+        contentTypes,
       );
       return JSON.stringify(current) === JSON.stringify(refreshed) ? current : refreshed;
     });
-  }, [activeBusiness.id, activeBusinessPosts, activeSeededCalendarPosts, activeServices, todayKey]);
+  }, [activeBusiness.id, activeBusinessPosts, activeSeededCalendarPosts, activeServices, todayKey, contentTypes]);
 
   useEffect(() => {
     try {
@@ -673,8 +775,15 @@ function CalendarSurface() {
   }, [userPosts]);
 
   useEffect(() => {
-    window.localStorage.setItem(platformOptionsStorageKey, JSON.stringify(availablePlatforms));
-  }, [availablePlatforms]);
+    try {
+      window.localStorage.setItem(
+        businessContentSettingsStorageKey,
+        JSON.stringify(businessContentSettingsById),
+      );
+    } catch {
+      setStatusMessage('Content settings could not be saved on this device.');
+    }
+  }, [businessContentSettingsById]);
 
   const shiftMonth = (amount: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
@@ -689,9 +798,6 @@ function CalendarSurface() {
   const openPostForm = () => {
     setPostForm(createPostForm(defaultPostDate(visibleMonth), activeBusiness.platforms));
     setFormError('');
-    setIsAddingPlatform(false);
-    setNewPlatformName('');
-    setPlatformError('');
     setStatusMessage('');
     setIsPostFormOpen(true);
   };
@@ -699,9 +805,6 @@ function CalendarSurface() {
   const closePostForm = () => {
     setIsPostFormOpen(false);
     setFormError('');
-    setIsAddingPlatform(false);
-    setNewPlatformName('');
-    setPlatformError('');
   };
 
   const closeSelectedPost = () => setSelectedPostId(null);
@@ -732,32 +835,113 @@ function CalendarSurface() {
     setFormError('');
   };
 
-  const handleAddPlatform = () => {
-    const normalizedName = newPlatformName.trim();
+  const updateBusinessContentCatalog = (
+    kind: ContentCatalogKind,
+    operation: ContentCatalogOperation,
+    name: string,
+    replacement?: string,
+  ): string | undefined => {
+    const currentSettings = businessContentSettingsById[activeBusiness.id];
+    if (!currentSettings) return 'Content settings are not available for this business.';
+    const nextSettings: BusinessContentSettings = {
+      ...currentSettings,
+      contentTypes: [...currentSettings.contentTypes],
+      platformOptions: [...currentSettings.platformOptions],
+      selectedPlatforms: [...currentSettings.selectedPlatforms],
+      contentTypeAliases: { ...currentSettings.contentTypeAliases },
+    };
+    let nextPosts = userPosts;
+    let nextServices = services;
+    let nextUserBusinesses = userBusinesses;
+    let nextPostForm = postForm;
+    let shouldCloseSelectedPost = false;
 
-    if (!normalizedName) {
-      setPlatformError('Enter a platform name first.');
-      return;
+    if (kind === 'content type') {
+      if (operation === 'add' && replacement) {
+        nextSettings.contentTypes = [...nextSettings.contentTypes, name];
+        if (defaultContentTypes.includes(name)) nextSettings.contentTypeAliases[name] = name;
+      } else if (operation === 'rename' && replacement) {
+        nextSettings.contentTypes = nextSettings.contentTypes.map((item) => item === name ? replacement : item);
+        nextSettings.contentTypeAliases = renameContentTypeAliases(nextSettings.contentTypeAliases, name, replacement);
+        nextPosts = userPosts.map((post) => post.businessId === activeBusiness.id && post.contentType === name
+          ? { ...post, contentType: replacement }
+          : post);
+      } else if (operation === 'delete') {
+        nextSettings.contentTypes = nextSettings.contentTypes.filter((item) => item !== name);
+        nextSettings.contentTypeAliases = deleteContentTypeAliases(nextSettings.contentTypeAliases, name);
+        nextPosts = userPosts.map((post) => post.businessId === activeBusiness.id && post.contentType === name
+          ? { ...post, contentType: '' }
+          : post);
+        if (postForm.contentType === name) nextPostForm = { ...postForm, contentType: '' };
+        shouldCloseSelectedPost = selectedUserPost?.contentType === name;
+      } else {
+        return 'This content type could not be updated.';
+      }
+      if (operation === 'rename') {
+        if (postForm.contentType === name) nextPostForm = { ...postForm, contentType: replacement ?? '' };
+      }
+    } else {
+      if (operation === 'add' && replacement) {
+        nextSettings.platformOptions = [...nextSettings.platformOptions, name];
+      } else if (operation === 'rename' && replacement) {
+        nextSettings.platformOptions = nextSettings.platformOptions.map((item) => item === name ? replacement : item);
+        nextSettings.selectedPlatforms = nextSettings.selectedPlatforms.map((item) => item === name ? replacement : item);
+      } else if (operation === 'delete') {
+        nextSettings.platformOptions = nextSettings.platformOptions.filter((item) => item !== name);
+        nextSettings.selectedPlatforms = nextSettings.selectedPlatforms.filter((item) => item !== name);
+      } else {
+        return 'This platform could not be updated.';
+      }
+
+      if (operation === 'rename' || operation === 'delete') {
+        const updatePlatforms = (platforms: string[]) => operation === 'delete'
+          ? platforms.filter((platform) => platform !== name)
+          : platforms.map((platform) => platform === name ? replacement! : platform);
+        nextPosts = userPosts.map((post) => post.businessId === activeBusiness.id
+          ? { ...post, platforms: updatePlatforms(post.platforms) }
+          : post);
+        nextServices = services.map((service) => {
+          if (service.businessId !== activeBusiness.id || !service.platforms) return service;
+          const platforms = updatePlatforms(service.platforms);
+          if (platforms.length > 0) return { ...service, platforms };
+          const { platforms: _removedPlatforms, ...withoutPlatforms } = service;
+          return withoutPlatforms;
+        });
+        nextPostForm = {
+          ...postForm,
+          platforms: updatePlatforms(postForm.platforms),
+        };
+      }
+      nextUserBusinesses = userBusinesses.map((item) => item.id === activeBusiness.id
+        ? { ...item, platforms: [...nextSettings.selectedPlatforms] }
+        : item);
     }
 
-    if (normalizedName.length > 40) {
-      setPlatformError('Keep the platform name under 40 characters.');
-      return;
+    const nextSettingsById = { ...businessContentSettingsById, [activeBusiness.id]: nextSettings };
+    const entries: Array<[string, string]> = [
+      [businessContentSettingsStorageKey, JSON.stringify(nextSettingsById)],
+    ];
+    if (nextServices !== services) entries.push([servicesStorageKey, JSON.stringify(nextServices)]);
+    if (nextPosts !== userPosts) entries.push([userPostsStorageKey, JSON.stringify(nextPosts)]);
+    if (nextUserBusinesses !== userBusinesses) {
+      entries.push([userBusinessesStorageKey, JSON.stringify(nextUserBusinesses.map(({ id, name, accent, platforms }) => ({
+        id, name, accent, platforms,
+      })))]);
+    }
+    try {
+      writeLocalStorageBatch(entries);
+    } catch {
+      return 'This change could not be saved on this device. Free some storage and try again.';
     }
 
-    const existingPlatform = availablePlatforms.find(
-      (platform) => platform.toLowerCase() === normalizedName.toLowerCase(),
-    );
-    if (existingPlatform) {
-      setPlatformError('That platform is already available.');
-      return;
-    }
-
-    setAvailablePlatforms((current) => [...current, normalizedName]);
-    setPostForm((current) => ({ ...current, platforms: [...current.platforms, normalizedName] }));
-    setNewPlatformName('');
-    setIsAddingPlatform(false);
-    setPlatformError('');
+    setBusinessContentSettingsById(nextSettingsById);
+    if (nextServices !== services) setServices(nextServices);
+    if (nextPosts !== userPosts) setUserPosts(nextPosts);
+    if (nextUserBusinesses !== userBusinesses) setUserBusinesses(nextUserBusinesses);
+    if (nextPostForm !== postForm) setPostForm(nextPostForm);
+    if (shouldCloseSelectedPost) setSelectedPostId(null);
+    setActionInsight(null);
+    return undefined;
   };
 
   const handlePostSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -795,13 +979,14 @@ function CalendarSurface() {
 
     const postsAfterSave = [...userPosts, savedPost];
     setUserPosts(postsAfterSave);
-    setActionInsight(buildActionInsight(
+    setActionInsight(buildBusinessActionInsight(
       'logged',
       savedPost,
       [...postsAfterSave.filter((post) => post.businessId === activeBusiness.id), ...activeSeededCalendarPosts],
       todayKey,
       seededCalendarDates[activeBusiness.id] ?? [],
       activeServices,
+      contentTypes,
     ));
     setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
     closePostForm();
@@ -816,8 +1001,15 @@ function CalendarSurface() {
       setActionInsight(null);
       return;
     }
-    const refreshed = buildActionInsight(actionInsight.action, source, [...activeBusinessPosts, ...activeSeededCalendarPosts],
-      formatDateInput(new Date()), seededCalendarDates[activeBusiness.id] ?? [], activeServices);
+    const refreshed = buildBusinessActionInsight(
+      actionInsight.action,
+      source,
+      [...activeBusinessPosts, ...activeSeededCalendarPosts],
+      formatDateInput(new Date()),
+      seededCalendarDates[activeBusiness.id] ?? [],
+      activeServices,
+      contentTypes,
+    );
     if (JSON.stringify(refreshed.proposals) !== JSON.stringify(actionInsight.proposals)) {
       setActionInsight(refreshed);
       showActionMessage('The calendar or Campaign dates changed. Review the refreshed suggestions before adding.');
@@ -886,7 +1078,8 @@ function CalendarSurface() {
     const service = activeServices.find((item) => item.name === savedPost.project);
     const winner = getOverperformer(savedPost, businessPostsAfterSave.filter((post) => (post as InsightPost).status !== 'skipped' && post.date <= todayKey));
     setActionInsight((flatState.action !== 'none' && flatState.latestPostId === savedPost.id) || winner || service?.mode === 'campaign'
-      ? buildActionInsight('results', savedPost, [...businessPostsAfterSave, ...activeSeededCalendarPosts], todayKey, seededCalendarDates[activeBusiness.id] ?? [], activeServices)
+      ? buildBusinessActionInsight('results', savedPost, [...businessPostsAfterSave, ...activeSeededCalendarPosts],
+        todayKey, seededCalendarDates[activeBusiness.id] ?? [], activeServices, contentTypes)
       : null);
     // Keep results open so the conversion assessment (including unmet gates)
     // is visible immediately, independently of content-sequence suggestions.
@@ -897,6 +1090,10 @@ function CalendarSurface() {
     const refreshed = buildConversionReview(selectedUserPost, [...activeBusinessPosts, ...activeSeededCalendarPosts],
       formatDateInput(new Date()), seededCalendarDates[activeBusiness.id] ?? [], activeServices);
     const proposal = refreshed.proposal;
+    if (proposal && !contentTypes.includes(proposal.contentType)) {
+      showActionMessage('This follow-up was skipped because its content type is not enabled for this business.');
+      return;
+    }
     if (!proposal || proposal.blocked) {
       showActionMessage('There is no eligible follow-up date. A closed Campaign cannot add new suggestions.');
       return;
@@ -937,7 +1134,7 @@ function CalendarSurface() {
     }
     if (!isBusinessAccent(input.accent)) return { error: 'Choose a tab accent.' };
     const serviceName = input.serviceName.trim();
-    const selectedPlatforms = [...new Set(input.platforms.filter((platform) => availablePlatforms.includes(platform)))];
+    const selectedPlatforms = [...new Set(input.platforms.filter((platform) => defaultPlatformOptions.includes(platform)))];
     if (selectedPlatforms.length === 0) return { error: 'Choose at least one available platform.' };
 
     const businessId = `business-${createPostId()}`;
@@ -973,30 +1170,26 @@ function CalendarSurface() {
     );
     const nextBusinesses = [...userBusinesses, newBusiness];
     const nextServices = [...services, service];
+    const nextContentSettings = {
+      ...businessContentSettingsById,
+      [businessId]: createBusinessContentSettings(selectedPlatforms, defaultPlatformOptions),
+    };
     const serializedBusinesses = JSON.stringify(nextBusinesses.map(({ id, name: businessName, accent, platforms }) => ({
       id, name: businessName, accent, platforms,
     })));
-    let previousBusinesses: string | null = null;
-    let wroteBusinesses = false;
     try {
-      previousBusinesses = window.localStorage.getItem(userBusinessesStorageKey);
-      window.localStorage.setItem(userBusinessesStorageKey, serializedBusinesses);
-      wroteBusinesses = true;
-      window.localStorage.setItem(servicesStorageKey, JSON.stringify(nextServices));
+      writeLocalStorageBatch([
+        [userBusinessesStorageKey, serializedBusinesses],
+        [servicesStorageKey, JSON.stringify(nextServices)],
+        [businessContentSettingsStorageKey, JSON.stringify(nextContentSettings)],
+      ]);
     } catch {
-      if (wroteBusinesses) {
-        try {
-          if (previousBusinesses === null) window.localStorage.removeItem(userBusinessesStorageKey);
-          else window.localStorage.setItem(userBusinessesStorageKey, previousBusinesses);
-        } catch {
-          // Keep the original save error visible if the storage device is full.
-        }
-      }
       return { error: 'This business and its first Service or Campaign could not be saved on this device.' };
     }
 
     setUserBusinesses(nextBusinesses);
     setServices(nextServices);
+    setBusinessContentSettingsById(nextContentSettings);
     return {
       business: {
         id: newBusiness.id,
@@ -1037,6 +1230,7 @@ function CalendarSurface() {
                 closeSelectedPost();
                 closePostForm();
                 setIsServiceManagerOpen(false);
+                setIsContentManagerOpen(false);
               }}
               type="button"
             >
@@ -1051,6 +1245,7 @@ function CalendarSurface() {
               setActionInsight(null);
               closeSelectedPost();
               closePostForm();
+              setIsContentManagerOpen(false);
               setIsBusinessDialogOpen(true);
             }}
             type="button"
@@ -1071,6 +1266,10 @@ function CalendarSurface() {
             <button className="icon-button manage-services" onClick={() => setIsServiceManagerOpen(true)} type="button">
               <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
               Manage services
+            </button>
+            <button className="icon-button manage-content" onClick={() => setIsContentManagerOpen(true)} type="button">
+              <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
+              Manage content
             </button>
             <div className="month-nav" aria-label="Change month">
               <button aria-label="Previous month" className="icon-button" onClick={() => shiftMonth(-1)} type="button">
@@ -1126,6 +1325,8 @@ function CalendarSurface() {
                     </span>
                     <div className="day-events">
                       {dayEvents.map((event) => {
+                        const colorClass = event.contentTypeName ? 'event-content-type' : `event-${event.tone}`;
+                        const colorStyle = event.contentTypeName ? getContentTypeStyle(event.contentTypeName) : undefined;
                         const eventContent = (
                           <>
                             {event.title}
@@ -1152,9 +1353,10 @@ function CalendarSurface() {
                         return event.id ? (
                           <button
                             aria-label={`Open saved post: ${event.title}${event.conversionGap ? '. Conversion gap — open for summary' : ''}${event.bestTime ? `. ${event.bestTime.label}. ${event.bestTime.detail}` : ''}`}
-                            className={`event-chip event-chip-button event-${event.tone}`}
+                            className={`event-chip event-chip-button ${colorClass}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
+                            style={colorStyle}
                             title="Select to view or delete this saved post"
                             type="button"
                           >
@@ -1162,8 +1364,9 @@ function CalendarSurface() {
                           </button>
                         ) : (
                           <div
-                            className={`event-chip event-${event.tone}`}
+                            className={`event-chip ${colorClass}`}
                             key={`${event.day}-${event.title}`}
+                            style={colorStyle}
                             title={event.detail}
                           >
                             {eventContent}
@@ -1193,7 +1396,16 @@ function CalendarSurface() {
             </section>
 
             <section className="insight-card">
-              <p className="legend-title">Content threads</p>
+              <p className="legend-title">Content types</p>
+              <div className="legend">
+                {contentTypes.map((contentType) => (
+                  <div className="legend-item" key={contentType}>
+                    <span className="legend-swatch content-type-swatch" style={getContentTypeStyle(contentType)} />
+                    {contentType}
+                  </div>
+                ))}
+              </div>
+              <p className="legend-title service-legend-title">Services &amp; campaigns</p>
               <div className="legend">
                 {activeBusiness.palette.map((item) => (
                   <div className="legend-item" key={item.label}>
@@ -1218,9 +1430,20 @@ function CalendarSurface() {
             onClose={() => setIsServiceManagerOpen(false)}
           />
         )}
+        {isContentManagerOpen && (
+          <BusinessContentManager
+            businessName={activeBusiness.name}
+            contentTypes={contentTypes}
+            platforms={availablePlatforms}
+            onAdd={(kind, name) => updateBusinessContentCatalog(kind, 'add', name, name)}
+            onRename={(kind, oldName, newName) => updateBusinessContentCatalog(kind, 'rename', oldName, newName)}
+            onDelete={(kind, name) => updateBusinessContentCatalog(kind, 'delete', name)}
+            onClose={() => setIsContentManagerOpen(false)}
+          />
+        )}
         {isBusinessDialogOpen && (
           <BusinessDialog
-            platformOptions={availablePlatforms}
+            platformOptions={defaultPlatformOptions}
             onCreate={handleCreateBusiness}
             onOpenBusiness={handleOpenCreatedBusiness}
             onClose={() => setIsBusinessDialogOpen(false)}
@@ -1315,58 +1538,16 @@ function CalendarSurface() {
                         </label>
                       );
                     })}
-                    {isAddingPlatform ? (
-                      <div
-                        className="platform-add-form"
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            handleAddPlatform();
-                          }
-                        }}
-                      >
-                        <input
-                          aria-label="New platform name"
-                          autoFocus
-                          maxLength={40}
-                          onChange={(event) => {
-                            setNewPlatformName(event.target.value);
-                            setPlatformError('');
-                          }}
-                          placeholder="Platform name"
-                          type="text"
-                          value={newPlatformName}
-                        />
-                        <button className="platform-add-save" onClick={handleAddPlatform} type="button">Save</button>
-                        <button
-                          aria-label="Cancel adding platform"
-                          className="platform-add-cancel"
-                          onClick={() => {
-                            setIsAddingPlatform(false);
-                            setNewPlatformName('');
-                            setPlatformError('');
-                          }}
-                          type="button"
-                        >
-                          <X size={14} strokeWidth={1.8} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className="platform-add-option"
-                        onClick={() => {
-                          setIsAddingPlatform(true);
-                          setPlatformError('');
-                        }}
-                        type="button"
-                      >
-                        <Plus size={14} strokeWidth={2} />
-                        Add platform option
-                      </button>
-                    )}
+                    <button
+                      className="platform-add-option"
+                      onClick={() => setIsContentManagerOpen(true)}
+                      type="button"
+                    >
+                      <Settings2 size={14} strokeWidth={1.8} />
+                      Manage content types &amp; platforms
+                    </button>
                   </div>
-                    <p className="platform-note">Saved platform options stay available for future posts.</p>
-                    {platformError && <p className="form-error" role="alert">{platformError}</p>}
+                  <p className="platform-note">Options are saved separately for {activeBusiness.name}.</p>
                 </fieldset>
 
                 <fieldset className="form-fieldset">
@@ -1496,7 +1677,7 @@ function CalendarSurface() {
                   </div>
                   <div>
                     <span>Content type</span>
-                    <strong>{selectedUserPost.contentType}</strong>
+                    <strong>{selectedUserPost.contentType || '—'}</strong>
                   </div>
                   <div>
                     <span>Platforms</span>
@@ -1537,11 +1718,12 @@ function CalendarSurface() {
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
                   <button className="save-post-button" onClick={() => {
-                    setActionInsight(buildActionInsight('completed', selectedUserPost,
+                    setActionInsight(buildBusinessActionInsight('completed', selectedUserPost,
                       [...activeBusinessPosts, ...activeSeededCalendarPosts],
                       formatDateInput(new Date()),
                       seededCalendarDates[activeBusiness.id] ?? [],
-                      activeServices));
+                      activeServices,
+                      contentTypes));
                     closeSelectedPost();
                   }} type="button">Suggest next posts</button>
                   <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>

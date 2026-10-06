@@ -86,7 +86,8 @@ function buildBaseActionInsight(
   today = post.date,
   occupiedDates: string[] = [],
 ): ActionInsight {
-  const evidence = `“${post.title}” is a ${post.contentType} post for ${post.project}.${uploadedNumbers(post.performance)}`;
+  const sourceType = post.contentType ? `${post.contentType} post` : 'post';
+  const evidence = `“${post.title}” is a ${sourceType} for ${post.project}.${uploadedNumbers(post.performance)}`;
 
   // A skipped post has not advanced the sequence. Offer to revisit the same
   // step, not a follow-up that assumes the skipped post went live.
@@ -118,7 +119,7 @@ function buildBaseActionInsight(
       evidence: `${evidence} You marked it as skipped.`,
       recommendation: hasResults
         ? 'This post also has saved results. Check whether it actually ran before deciding what to schedule next.'
-        : `Since this ${post.contentType.toLowerCase()} was skipped, revisit it before moving to the next content step.`,
+        : `Since this ${sourceType} was skipped, revisit it before moving to the next content step.`,
       beats,
       proposals: proposal ? [proposal] : [],
     };
@@ -186,7 +187,7 @@ function buildBaseActionInsight(
         ? `Your next beat is already set: “${scheduledBeat.title}” is on the calendar, so it will not be added again.`
         : '',
       nextSuggestion
-        ? sequenceReasons[reasonKey] ?? `Follow this ${post.contentType.toLowerCase()} with a ${nextSuggestion.contentType.toLowerCase()} post.`
+        ? sequenceReasons[reasonKey] ?? `Follow this ${sourceType} with a ${nextSuggestion.contentType.toLowerCase()} post.`
         : '',
       beats.some((beat) => beat.state === 'blocked')
         ? 'A suggested move has no open date within the next week, so it was not added.'

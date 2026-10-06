@@ -204,7 +204,8 @@
 }
 
 .header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-bottom: 4px; }
-.icon-button.manage-services {
+.icon-button.manage-services,
+.icon-button.manage-content {
   width: auto;
   min-width: 36px;
   height: 36px;
@@ -355,6 +356,10 @@
 .event-blue { background: #e9eaf2; color: #565e7c; }
 .event-blush { background: #f9e6ee; color: #a6486e; }
 .event-muted { background: #f2e9ef; color: #6e5a6a; }
+.event-content-type { background: hsl(var(--content-type-hue, 310) 52% 93%); color: hsl(var(--content-type-hue, 310) 31% 31%); }
+.event-chip.event-content-type { border: 1px solid hsl(var(--content-type-hue, 310) 38% 85%); }
+.event-chip-suggestion.event-content-type { background: hsl(var(--content-type-hue, 310) 48% 97%); color: hsl(var(--content-type-hue, 310) 22% 48%); }
+.content-type-swatch { background: hsl(var(--content-type-hue, 310) 42% 63%); }
 .event-chip-suggestion.event-rose { background: #fbf2f6; color: #b57b91; }
 .event-chip-suggestion.event-lavender { background: #f6f1f7; color: #897794; }
 .event-chip-suggestion.event-sage { background: #f1f6f2; color: #718b76; }
@@ -443,6 +448,7 @@
 .season-month-dialog-grid .airtime-month-toggle { min-height: 42px; font-size: 11px; }
 .season-month-dialog-actions { padding: 12px 28px 24px; }
 .legend-title { margin: 0 0 12px; color: var(--ink); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.service-legend-title { margin-top: 20px; }
 .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 7px; }
 .legend-item { display: flex; align-items: center; gap: 7px; color: var(--plum-soft); font-size: 10.5px; }
 .legend-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }

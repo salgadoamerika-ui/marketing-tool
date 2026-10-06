@@ -201,6 +201,8 @@ test('business tabs isolate posts, insights, services and airtime; new workspace
     await click(evaluate, 'button[aria-label="Open saved post: Mosaic-only workspace post"]');
     await clickButtonText(evaluate, 'Suggest next posts');
     await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'Mosaic insight');
+    await evaluate("if (document.scrollingElement) document.scrollingElement.scrollTop = 0");
+    await waitFor(() => evaluate('window.scrollY === 0'), 'calendar tabs back in view');
     await browser.clickVisible('.business-tabs .business-tab:nth-child(2)');
     await waitFor(
       () => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Northline Financial'"),
@@ -770,7 +772,9 @@ async function startCdpPage(url) {
           const x = bounds.left + bounds.width / 2;
           const y = bounds.top + bounds.height / 2;
           if (!bounds.width || !bounds.height || x < 0 || x >= innerWidth || y < 0 || y >= innerHeight) {
-            throw new Error('Control is outside the viewport: ' + ${jsString(selector)});
+            throw new Error('Control is outside the viewport: ' + ${jsString(selector)}
+              + ' (center ' + x + ',' + y + '; size ' + bounds.width + 'x' + bounds.height
+              + '; viewport ' + innerWidth + 'x' + innerHeight + '; scroll ' + scrollX + ',' + scrollY + ')');
           }
           if (!element.contains(document.elementFromPoint(x, y))) {
             throw new Error('Another element blocks the control: ' + ${jsString(selector)});
@@ -1426,6 +1430,211 @@ test('service trend marks only newest measured post, offers trust then referral,
     await openPost(evaluate, nextPosts[2]);
     assert.match(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /Step 1 · Build trust/);
     assert.doesNotMatch(await evaluate("document.querySelector('.conversion-gap-panel').textContent"), /Step 2/);
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
+test('content types and platforms can be managed independently for every business', { timeout: 120000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const source = {
+    id: 'catalog-mosaic-post',
+    businessId: 'mosaic',
+    project: 'Insurance',
+    title: 'Mosaic legacy announcement',
+    date: '2026-10-06',
+    contentType: 'Announcement',
+    platforms: ['Facebook', 'Instagram', 'TikTok'],
+    distribution: 'organic',
+    schedulingStatus: 'published',
+  };
+  const otherBusinessPost = {
+    id: 'catalog-northline-post',
+    businessId: 'northline',
+    project: 'Insurance',
+    title: 'Northline proof post',
+    date: '2026-10-06',
+    contentType: 'Proof',
+    platforms: ['Facebook', 'Instagram'],
+    distribution: 'organic',
+    schedulingStatus: 'published',
+  };
+  const readPosts = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')");
+  const readServices = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.services') ?? '[]')");
+  const readSettings = (evaluate) => evaluate("JSON.parse(localStorage.getItem('marketing-tool.business-content-settings') ?? '{}')");
+
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'content catalog test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'content catalog calendar');
+    const today = await evaluate(`(() => {
+      const date = new Date();
+      return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+    })()`);
+    source.date = today;
+    otherBusinessPost.date = today;
+    const defaultCatalog = {
+      contentTypes: ['Announcement', 'Insight', 'Inside look', 'Proof', 'Testimonial', 'Pricing', 'Book now', 'Last chance', 'Recap', 'Promo', 'Fresh angle'],
+      platformOptions: ['Facebook', 'Instagram', 'TikTok'],
+      selectedPlatforms: ['Facebook', 'Instagram', 'TikTok'],
+      contentTypeAliases: {},
+    };
+    const savedService = {
+      id: 'mosaic:Catalog service',
+      businessId: 'mosaic',
+      name: 'Catalog service',
+      mode: 'evergreen',
+      tone: 'sage',
+      platforms: ['Facebook', 'Instagram', 'TikTok'],
+    };
+    await evaluate(`(() => {
+      localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify([source, otherBusinessPost]))});
+      localStorage.setItem('marketing-tool.services', ${jsString(JSON.stringify([savedService]))});
+      localStorage.setItem('marketing-tool.business-content-settings', ${jsString(JSON.stringify({
+        mosaic: defaultCatalog,
+        northline: { ...defaultCatalog, selectedPlatforms: ['Facebook', 'Instagram'] },
+      }))});
+    })()`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'catalog data after a new calendar document');
+
+    await browser.clickVisible('.manage-content');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.bcm-dialog'))"), 'content manager');
+    const contentRows = await evaluate(`(() => {
+      const rows = [...document.querySelectorAll('.bcm-section[aria-label="Content types"] .bcm-item')];
+      return {
+        count: rows.length,
+        everyRowHasEdit: rows.every((row) => row.querySelector('button[aria-label^="Edit content type "]')),
+        everyRowHasDelete: rows.every((row) => row.querySelector('button[aria-label^="Delete content type "]')),
+      };
+    })()`);
+    assert.deepEqual(contentRows, { count: 11, everyRowHasEdit: true, everyRowHasDelete: true });
+    assert.equal(await evaluate(`(() => [...document.querySelectorAll('.bcm-section[aria-label="Platforms"] .bcm-item')]
+      .every((row) => row.querySelector('button[aria-label^="Edit platform "]')
+        && row.querySelector('button[aria-label^="Delete platform "]')))()`), true,
+    'Every default platform has visible edit and delete controls.');
+
+    await browser.clickVisible('.bcm-section[aria-label="Content types"] .bcm-add');
+    await setField(evaluate, '.bcm-section[aria-label="Content types"] .bcm-add-form input', 'Case study');
+    await browser.clickVisible('.bcm-section[aria-label="Content types"] .bcm-add-form button[type="submit"]');
+    await waitFor(async () => (await readSettings(evaluate)).mosaic.contentTypes.includes('Case study'), 'new content type');
+    await evaluate("document.querySelector('.bcm-body').scrollTop = 190");
+    await browser.clickVisible('button[aria-label="Edit content type Proof"]');
+    await setField(evaluate, 'input[aria-label="Rename content type Proof"]', 'Evidence');
+    await browser.clickVisible('.bcm-section[aria-label="Content types"] .bcm-item button.bcm-save');
+    await waitFor(async () => (await readSettings(evaluate)).mosaic.contentTypes.includes('Evidence'), 'renamed content type');
+    assert.equal((await readSettings(evaluate)).mosaic.contentTypes.includes('Proof'), false);
+
+    await evaluate("document.querySelector('.bcm-body').scrollTop = 0");
+    await browser.clickVisible('button[aria-label="Delete content type Announcement"]');
+    await waitFor(async () => !(await readSettings(evaluate)).mosaic.contentTypes.includes('Announcement'), 'deleted content type');
+    let savedPosts = await readPosts(evaluate);
+    assert.equal(savedPosts.find((post) => post.id === source.id).contentType, '',
+      'Deleting a content type removes the stale label from saved posts in the active business.');
+    assert.deepEqual(savedPosts.find((post) => post.id === otherBusinessPost.id).contentType, 'Proof',
+      'Content types remain untouched in the other business.');
+
+    await evaluate("document.querySelector('.bcm-body').scrollTop = 0");
+    await browser.clickVisible('.bcm-section[aria-label="Platforms"] .bcm-add');
+    await setField(evaluate, '.bcm-section[aria-label="Platforms"] .bcm-add-form input', 'LinkedIn');
+    await browser.clickVisible('.bcm-section[aria-label="Platforms"] .bcm-add-form button[type="submit"]');
+    await waitFor(async () => (await readSettings(evaluate)).mosaic.platformOptions.includes('LinkedIn'), 'new platform');
+    await browser.clickVisible('button[aria-label="Edit platform TikTok"]');
+    await setField(evaluate, 'input[aria-label="Rename platform TikTok"]', 'Threads');
+    await browser.clickVisible('.bcm-section[aria-label="Platforms"] .bcm-item button.bcm-save');
+    await waitFor(async () => (await readSettings(evaluate)).mosaic.platformOptions.includes('Threads'), 'renamed platform');
+    await browser.clickVisible('button[aria-label="Delete platform Facebook"]');
+    await waitFor(async () => !(await readSettings(evaluate)).mosaic.platformOptions.includes('Facebook'), 'deleted platform');
+
+    savedPosts = await readPosts(evaluate);
+    const updatedMosaicPost = savedPosts.find((post) => post.id === source.id);
+    assert.deepEqual(updatedMosaicPost.platforms, ['Instagram', 'Threads']);
+    assert.deepEqual(savedPosts.find((post) => post.id === otherBusinessPost.id).platforms, ['Facebook', 'Instagram']);
+    const services = await readServices(evaluate);
+    assert.deepEqual(services.find((service) => service.id === savedService.id).platforms, ['Instagram', 'Threads']);
+    await browser.clickVisible('button[aria-label="Close content manager"]');
+
+    await browser.clickVisible('.business-tabs .business-tab:nth-child(2)');
+    await waitFor(() => evaluate("document.querySelector('.calendar-toolbar .toolbar-note')?.textContent.includes('Northline Financial')"),
+      'other business switch');
+    await browser.clickVisible('.manage-content');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.bcm-dialog'))"), 'other business content manager');
+    const northlineSettings = (await readSettings(evaluate)).northline;
+    assert.ok(northlineSettings.contentTypes.includes('Announcement'));
+    assert.ok(northlineSettings.contentTypes.includes('Proof'));
+    assert.ok(northlineSettings.platformOptions.includes('Facebook'));
+    assert.equal(northlineSettings.platformOptions.includes('LinkedIn'), false);
+    assert.equal(northlineSettings.platformOptions.includes('Threads'), false);
+    assert.equal(await evaluate("document.querySelector('.bcm-section[aria-label=\"Content types\"] .bcm-item-name')?.textContent"), 'Announcement');
+    await browser.clickVisible('button[aria-label="Close content manager"]');
+    await browser.clickVisible('.business-tabs .business-tab:nth-child(1)');
+    await waitFor(() => evaluate("document.querySelector('.calendar-toolbar .toolbar-note')?.textContent.includes('Mosaic Legal')"),
+      'return to edited business');
+
+    await browser.clickVisible('button.add-post');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.post-form'))"), 'post form with edited catalogs');
+    const dropdownState = await evaluate(`(() => ({
+      contentTypes: [...document.querySelectorAll('.post-form .form-grid label:nth-of-type(2) option')].map((option) => option.value),
+      platforms: [...document.querySelectorAll('.post-form .platform-option')].map((item) => item.textContent.trim()),
+      selectedPlatforms: [...document.querySelectorAll('.post-form .platform-option.selected')].map((item) => item.textContent.trim()),
+    }))()`);
+    assert.ok(dropdownState.contentTypes.includes('Case study'));
+    assert.ok(dropdownState.contentTypes.includes('Evidence'));
+    assert.equal(dropdownState.contentTypes.includes('Announcement'), false);
+    assert.equal(dropdownState.platforms.includes('Facebook'), false);
+    assert.ok(dropdownState.platforms.includes('LinkedIn'));
+    assert.ok(dropdownState.platforms.includes('Threads'));
+    assert.deepEqual(dropdownState.selectedPlatforms, ['Instagram', 'Threads']);
+
+    await setField(evaluate, '.post-form .form-grid label:nth-of-type(1) select', 'Insurance');
+    await setField(evaluate, '.post-form .form-grid label:nth-of-type(2) select', 'Case study');
+    await setField(evaluate, '.post-form input[type="text"]', 'Content type color check');
+    await setField(evaluate, '.post-form input[type="date"]', today);
+    await evaluate("document.querySelector('.post-modal').scrollTop = document.querySelector('.post-modal').scrollHeight");
+    await browser.clickVisible('.post-form-actions .save-post-button');
+    await waitFor(async () => (await readPosts(evaluate)).some((post) => post.title === 'Content type color check'), 'post using a custom content type');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'post suggestion after save');
+    await browser.clickVisible('.action-insight-skip');
+    const colorEvent = await evaluate(`(() => {
+      const event = [...document.querySelectorAll('.event-chip-button')]
+        .find((button) => button.textContent.includes('Content type color check'));
+      return {
+        className: event?.className ?? '',
+        hue: event?.style.getPropertyValue('--content-type-hue') ?? '',
+      };
+    })()`);
+    assert.match(colorEvent.className, /event-content-type/);
+    assert.match(colorEvent.hue, /^\d+$/);
+
+    await evaluate(`(() => {
+      document.querySelector('button.event-chip-button[aria-label^="Open saved post: Mosaic legacy announcement"]')
+        ?.scrollIntoView({ block: 'center', inline: 'nearest' });
+    })()`);
+    await browser.clickVisible('button.event-chip-button[aria-label^="Open saved post: Mosaic legacy announcement"]');
+    await waitFor(() => evaluate("Boolean(document.querySelector('[aria-labelledby=\"selected-post-title\"]'))"),
+      'legacy post details after content type deletion');
+    await evaluate("document.querySelector('.post-modal').scrollTop = document.querySelector('.post-modal').scrollHeight");
+    await browser.clickVisible('.post-form-actions .save-post-button');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'suggestions after deleting a required type');
+    assert.doesNotMatch(await evaluate("document.querySelector('.action-insight-popup').innerText"), /Announcement/,
+      'Suggestions skip content types that have been deleted.');
+    await browser.clickVisible('.action-insight-skip');
+
+    await browser.reload();
+    await waitFor(() => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Mosaic Legal'"),
+      'active business restored after catalog reload');
+    assert.deepEqual((await readSettings(evaluate)).mosaic.platformOptions, ['Instagram', 'Threads', 'LinkedIn']);
+    assert.ok((await readSettings(evaluate)).northline.platformOptions.includes('Facebook'));
   } finally {
     if (browser) await browser.close();
     await stopProcess(server.child);
