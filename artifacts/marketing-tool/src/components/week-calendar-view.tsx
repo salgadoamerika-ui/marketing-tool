@@ -81,8 +81,8 @@ function CalendarPost({
         <span className="week-post-kicker" data-testid={`text-content-type-${item.id ?? `${item.date}-${index}`}`}>
           {item.contentType || "Planned post"}
         </span>
-        <span className="week-post-title">{item.title}</span>
-        <span className="week-post-project">{item.project || "General campaign"}</span>
+        <span className="week-post-title">{item.project || item.title}</span>
+        <span className="week-post-project">{item.title}</span>
         <span className="week-post-meta">
           <span>{item.platformLabel}</span>
           <span aria-hidden="true" className="week-post-meta-dot" />
@@ -243,7 +243,6 @@ export function WeekCalendarView({
           })}
         </div>
       </div>
-      <p className="week-calendar-footnote">A little space for every idea. Nothing needs to be perfect yet.</p>
     </section>
   );
 }

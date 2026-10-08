@@ -695,6 +695,38 @@ function CalendarSurface() {
     ...events,
     ...monthPosts.map(postAsEvent),
   ];
+  const weekStartKey = formatDateInput(visibleWeekStart);
+  const weekEndKey = formatDateInput(shiftCalendarDays(visibleWeekStart, 6));
+  const isInWeek = (date: string) => date >= weekStartKey && date <= weekEndKey;
+  const weekCalendarItems: WeekCalendarItem[] = [
+    ...Object.entries(activeBusiness.events).flatMap(([month, entries]) =>
+      entries.flatMap((event) => {
+        const date = `${month}-${String(event.day).padStart(2, '0')}`;
+        if (!isInWeek(date)) return [];
+        const resolved = event.detail ? resolveSeededContentType(event.detail, activeContentSettings) : null;
+        const contentType = resolved && contentTypes.includes(resolved) ? resolved : undefined;
+        return [{
+          date, title: event.title, project: event.project ?? activeBusiness.name,
+          contentType, platformLabel: 'Platform not set', timeLabel: 'Time not set',
+          colorClass: contentType ? 'event-content-type' : `event-${event.tone}`,
+          colorStyle: contentType ? getContentTypeStyle(contentType) : undefined,
+        }];
+      })),
+    ...activeBusinessPosts.filter((post) => isInWeek(post.date)).map((post) => {
+      const contentType = contentTypes.includes(post.contentType) ? post.contentType : undefined;
+      const isSuggestion = post.schedulingStatus === 'approved-suggestion';
+      return {
+        id: post.id, date: post.date, title: post.title, project: post.project, contentType,
+        platformLabel: post.platforms.join(' · ') || 'Platform not set',
+        timeLabel: post.postedTime || (isSuggestion
+          ? getBestTimeRecommendation(activeBusiness.id, post.project, post.platforms, activeBusinessPosts).compactLabel
+          : 'Time not set'),
+        colorClass: contentType ? 'event-content-type' : `event-${getPostTone(post.project, activeBusiness)}`,
+        colorStyle: contentType ? getContentTypeStyle(contentType) : undefined,
+        isSuggestion,
+      };
+    }),
+  ].sort((a, b) => a.date.localeCompare(b.date));
   useEffect(() => {
     const refreshDay = () => setTodayKey(formatDateInput(new Date()));
     const timer = window.setInterval(refreshDay, 60_000);
@@ -813,8 +845,26 @@ function CalendarSurface() {
     window.setTimeout(() => setStatusMessage(''), 3000);
   };
 
-  const openPostForm = () => {
-    setPostForm(createPostForm(defaultPostDate(visibleMonth), activeBusiness.platforms));
+  const selectCalendarView = (view: 'month' | 'week') => {
+    if (view === calendarView) return;
+    if (view === 'week' && monthKey(shiftCalendarDays(visibleWeekStart, 3)) !== monthKey(visibleMonth)) {
+      setVisibleWeekStart(mondayStart(visibleMonth));
+    } else if (view === 'month') {
+      const focus = shiftCalendarDays(visibleWeekStart, 3);
+      setVisibleMonth(new Date(focus.getFullYear(), focus.getMonth(), 1));
+    }
+    setCalendarView(view);
+    setStatusMessage('');
+  };
+
+  const revealDateInCalendar = (date: string) => {
+    const day = new Date(`${date}T12:00:00`);
+    setVisibleMonth(day);
+    if (calendarView === 'week') setVisibleWeekStart(mondayStart(day));
+  };
+
+  const openPostForm = (date?: string) => {
+    setPostForm(createPostForm(date ?? defaultPostDate(calendarDisplayMonth), activeBusiness.platforms));
     setFormError('');
     setStatusMessage('');
     setIsPostFormOpen(true);
@@ -1006,7 +1056,7 @@ function CalendarSurface() {
       activeServices,
       contentTypes,
     ));
-    setVisibleMonth(new Date(`${savedPost.date}T12:00:00`));
+    revealDateInCalendar(savedPost.date);
     closePostForm();
     showActionMessage(`Added “${savedPost.title}” to the calendar.`);
   };
@@ -1066,7 +1116,7 @@ function CalendarSurface() {
             && existing.date === suggestion.date))];
       });
       setSelectedPostId(null);
-      setVisibleMonth(new Date(`${suggestions[0].date}T12:00:00`));
+      revealDateInCalendar(suggestions[0].date);
       showActionMessage(`${suggestions.length} suggested ${suggestions.length === 1 ? 'change was' : 'changes were'} applied to the calendar.`);
     }
     setActionInsight(null);
@@ -1140,7 +1190,7 @@ function CalendarSurface() {
       ? current : [...current, suggestion]);
     setActionInsight(null);
     setSelectedPostId(null);
-    setVisibleMonth(new Date(`${suggestion.date}T12:00:00`));
+    revealDateInCalendar(suggestion.date);
     showActionMessage(`Added “${suggestion.title}” to the calendar.`);
   };
 
@@ -1222,7 +1272,7 @@ function CalendarSurface() {
   const handleOpenCreatedBusiness = (businessId: string) => {
     if (!userBusinesses.some((business) => business.id === businessId)) return;
     setActiveBusinessId(businessId);
-    setVisibleMonth(new Date(`${todayKey}T12:00:00`));
+    revealDateInCalendar(todayKey);
     setStatusMessage('');
     setActionInsight(null);
     setSelectedPostId(null);
@@ -1274,9 +1324,9 @@ function CalendarSurface() {
 
         <header className="calendar-header">
           <div>
-            <p className="calendar-kicker">Monthly workspace</p>
+            <p className="calendar-kicker">{calendarView === 'week' ? 'Weekly' : 'Monthly'} workspace</p>
             <h1 className="calendar-title">
-              {monthFormatter.format(visibleMonth).split(' ')[0]} <em>{visibleMonth.getFullYear()}</em>
+              {monthFormatter.format(calendarDisplayMonth).split(' ')[0]} <em>{calendarDisplayMonth.getFullYear()}</em>
             </h1>
             <p className="calendar-subtitle">{activeBusiness.descriptor} {activeBusiness.focus}</p>
           </div>
@@ -1289,7 +1339,7 @@ function CalendarSurface() {
               <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
               Manage content
             </button>
-            <div className="month-nav" aria-label="Change month">
+            {calendarView === 'month' && <div className="month-nav" aria-label="Change month">
               <button aria-label="Previous month" className="icon-button" onClick={() => shiftMonth(-1)} type="button">
                 <ChevronLeft size={18} strokeWidth={1.7} />
               </button>
@@ -1297,8 +1347,8 @@ function CalendarSurface() {
               <button aria-label="Next month" className="icon-button" onClick={() => shiftMonth(1)} type="button">
                 <ChevronRight size={18} strokeWidth={1.7} />
               </button>
-            </div>
-            <button className="add-post" onClick={openPostForm} type="button">
+            </div>}
+            <button className="add-post" onClick={() => openPostForm()} type="button">
               <Plus size={15} strokeWidth={2.2} />
               Add post
             </button>
@@ -1307,14 +1357,21 @@ function CalendarSurface() {
 
         <div className="calendar-toolbar">
           <p className="toolbar-note">
-            <strong>{calendarEvents.length} planned moments</strong> · {activeBusiness.name}
+            <strong>{calendarView === 'week' ? weekCalendarItems.length : calendarEvents.length} planned moments</strong> · {activeBusiness.name}
           </p>
           <div className="view-toggle" aria-label="Calendar view">
-            <button className="view-option active" type="button">Month</button>
             <button
-              className="view-option"
-              disabled
-              onClick={() => showActionMessage('Week view is coming after the monthly workspace.')}
+              className={`view-option${calendarView === 'month' ? ' active' : ''}`}
+              aria-pressed={calendarView === 'month'}
+              data-testid="button-calendar-month"
+              onClick={() => selectCalendarView('month')}
+              type="button"
+            >Month</button>
+            <button
+              className={`view-option${calendarView === 'week' ? ' active' : ''}`}
+              aria-pressed={calendarView === 'week'}
+              data-testid="button-calendar-week"
+              onClick={() => selectCalendarView('week')}
               type="button"
             >
               Week
@@ -1322,8 +1379,19 @@ function CalendarSurface() {
           </div>
         </div>
 
-        <div className="content-layout">
-          <section aria-label={`${monthFormatter.format(visibleMonth)} content calendar`} className="calendar-card">
+        <div className={`content-layout${calendarView === 'week' ? ' week-layout' : ''}`}>
+          {calendarView === 'week' ? (
+            <WeekCalendarView
+              weekStart={visibleWeekStart}
+              items={weekCalendarItems}
+              todayKey={todayKey}
+              onPreviousWeek={() => setVisibleWeekStart((current) => shiftCalendarDays(current, -7))}
+              onNextWeek={() => setVisibleWeekStart((current) => shiftCalendarDays(current, 7))}
+              onAddPost={(date) => openPostForm(date)}
+              onOpenPost={setSelectedPostId}
+              onUploadInsights={() => showActionMessage('Insights upload and weekly check-in learning will be available in the next phase.')}
+            />
+          ) : <section aria-label={`${monthFormatter.format(visibleMonth)} content calendar`} className="calendar-card">
             <div className="days-header">
               {dayNames.map((dayName) => <span key={dayName}>{dayName.slice(0, 3)}</span>)}
             </div>
@@ -1396,7 +1464,7 @@ function CalendarSurface() {
                 );
               })}
             </div>
-          </section>
+          </section>}
 
           <aside className="sidebar">
             <section className="insight-card tint">
@@ -1407,7 +1475,7 @@ function CalendarSurface() {
                 rows={monthlyAirtime}
                 businessId={activeBusiness.id}
                 getTone={(service) => getPostTone(service, activeBusiness)}
-                month={visibleMonth.getMonth() + 1}
+                month={calendarDisplayMonth.getMonth() + 1}
                 seasonMonthsByService={seasonMonthsByService}
                 onSaveSeasonMonths={handleSaveSeasonMonths}
               />

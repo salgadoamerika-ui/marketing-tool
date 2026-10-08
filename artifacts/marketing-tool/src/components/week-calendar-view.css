@@ -135,8 +135,12 @@
 }
 
 .week-checkin-column .week-column-heading {
-  background: #f7eee3;
+  background: var(--week-plum);
 }
+
+.week-checkin-column .week-column-heading .week-day-name,
+.week-checkin-column .week-column-heading .week-checkin-icon { color: #fff8f0; }
+.week-checkin-column .week-column-heading .week-date-label { color: #ead9e3; }
 
 .week-day-column.is-today .week-column-heading {
   background: #f6ece9;
@@ -520,14 +524,6 @@
   text-align: center;
 }
 
-.week-calendar-footnote {
-  margin: 12px 4px 0;
-  color: #a39394;
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 12px;
-  font-style: italic;
-}
-
 @keyframes week-calendar-in {
   from { opacity: 0; transform: translateY(7px); }
   to { opacity: 1; transform: translateY(0); }
@@ -550,9 +546,6 @@
     min-width: 1152px;
   }
 
-  .week-calendar-footnote {
-    font-size: 11px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

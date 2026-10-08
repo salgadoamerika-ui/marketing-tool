@@ -596,6 +596,82 @@ test('season month settings stay in the Month at a glance bubble and persist ind
   }
 });
 
+test('Week view shares posts, stacks days, shifts seven days and keeps businesses isolated', { timeout: 90000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const base = {
+    businessId: 'mosaic', project: 'Insurance', contentType: 'Insight',
+    platforms: ['Instagram'], postedTime: '11:00', distribution: 'organic',
+    schedulingStatus: 'published',
+  };
+  const posts = [
+    { ...base, id: 'week-mon-1', title: 'Monday one', date: '2026-08-31' },
+    { ...base, id: 'week-mon-2', title: 'Monday two', date: '2026-08-31' },
+    { ...base, id: 'week-suggestion', title: 'Sunday suggestion', date: '2026-09-06', schedulingStatus: 'approved-suggestion' },
+    { ...base, id: 'week-next', title: 'Following week', date: '2026-09-07' },
+    { ...base, id: 'week-other', title: 'Other business only', date: '2026-08-31', businessId: 'northline' },
+  ];
+  const selector = (id) => `[data-testid="${id}"]`;
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'week test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await browser.resize(1440, 1000);
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify(posts))})`);
+    await browser.reload();
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate("Boolean(document.querySelector('.week-calendar'))"), 'Week layout');
+    assert.equal(await evaluate("Boolean(document.querySelector('.calendar-grid'))"), false);
+    assert.match(await evaluate(`document.querySelector(${jsString(selector('text-week-range'))}).textContent`), /Aug 31.*Sep 6, 2026/);
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('[data-testid^=\"column-week-day-\"]')].map(el => el.dataset.testid)"),
+      ['2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06'].map(date => `column-week-day-${date}`));
+    assert.equal(await evaluate(`document.querySelector(${jsString(selector('column-week-day-2026-08-31'))}).querySelectorAll('.week-post').length`), 2);
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector(${jsString(selector('card-week-post-week-suggestion'))})).borderStyle`), 'dotted');
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-other'))}))`), false);
+    await browser.clickVisible(selector('button-next-week'));
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-next'))}))`), 'following week post');
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-mon-1'))}))`), false);
+    await browser.clickVisible(selector('button-previous-week'));
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-mon-1'))}))`), 'previous week post');
+    await evaluate(`document.querySelector(${jsString(selector('button-add-post-2026-09-01'))}).scrollIntoView({block:'center', inline:'center'})`);
+    await browser.clickVisible(selector('button-add-post-2026-09-01'));
+    await waitFor(() => evaluate("Boolean(document.querySelector('input[aria-label=\"Post date\"]'))"), 'existing Add Post form');
+    assert.equal(await evaluate("document.querySelector('input[aria-label=\"Post date\"]').value"), '2026-09-01');
+    await clickButtonText(evaluate, 'Cancel');
+    await evaluate("window.scrollTo(0,0); document.querySelector('[data-testid=\"calendar-week-scroll\"]').scrollLeft = 0");
+    await browser.clickVisible(selector('button-upload-insights'));
+    assert.match(await evaluate("document.querySelector('.calendar-status').textContent"), /next phase/);
+    await selectBusiness(evaluate, 'Northline Financial');
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-mon-1'))}))`), false);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-other'))}))`), true);
+    await browser.resize(390, 844);
+    const sticky = await evaluate(`(() => {
+      const scroll = document.querySelector('[data-testid="calendar-week-scroll"]');
+      const card = document.querySelector('[data-testid="card-week-checkin"]');
+      const before = card.getBoundingClientRect().left;
+      scroll.scrollLeft = 300;
+      return { overflow: scroll.scrollWidth > scroll.clientWidth, before, after: card.getBoundingClientRect().left };
+    })()`);
+    assert.equal(sticky.overflow, true);
+    assert.ok(Math.abs(sticky.before - sticky.after) < 1, 'Check-in stays pinned while days scroll');
+    await browser.resize(1440, 1000);
+    await evaluate('window.scrollTo(0,0)');
+    await browser.clickVisible(selector('button-calendar-month'));
+    await waitFor(() => evaluate("Boolean(document.querySelector('.calendar-grid'))"), 'Month layout restored');
+    assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"), posts, 'Changing views never rewrites saved posts');
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
 async function getFreePort() {
   const server = createServer();
   await new Promise((resolve, reject) => {

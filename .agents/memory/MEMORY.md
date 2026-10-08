@@ -7,3 +7,4 @@
 - [Service mode intent](service-mode-intent.md) — distinct lifecycles, priority, and additive Campaign history through its deadline; cadence stays internal.
 - [Browser readiness](browser-readiness.md) — prove reloads use a new document; use hit-tested pointer clicks, not DOM clicks, to verify popup controls.
 - [Business workspace boundaries](business-workspaces.md) — each business owns isolated content, services, airtime, and learning.
+- [Calendar view scope](calendar-view-scope.md) — Month and Week are displays of the same posts; weekly check-in learning is a separate phase.
