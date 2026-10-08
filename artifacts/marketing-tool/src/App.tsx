@@ -13,6 +13,7 @@ import {
 import { BusinessContentManager } from '@/components/business-content-manager';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { ServiceManager } from '@/components/service-manager';
+import { WeekCalendarView, type WeekCalendarItem } from '@/components/week-calendar-view';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
@@ -343,6 +344,18 @@ function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function mondayStart(date: Date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  return start;
+}
+
+function shiftCalendarDays(date: Date, amount: number) {
+  const shifted = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12);
+  shifted.setDate(shifted.getDate() + amount);
+  return shifted;
+}
+
 function makeCalendarDays(date: Date) {
   const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
   const start = new Date(date.getFullYear(), date.getMonth(), 1 - firstDay.getDay());
@@ -554,6 +567,8 @@ function CalendarSurface() {
   });
   const [todayKey, setTodayKey] = useState(() => formatDateInput(new Date()));
   const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
+  const [visibleWeekStart, setVisibleWeekStart] = useState(() => mondayStart(new Date(2026, 8, 1)));
+  const [calendarView, setCalendarView] = useState<'month' | 'week'>('month');
   const [statusMessage, setStatusMessage] = useState('');
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
   const [services, setServices] = useState<ServiceDefinition[]>(() => {
@@ -596,8 +611,11 @@ function CalendarSurface() {
       tone: service.tone ?? business.palette.find((item) => item.label === service.name)?.tone ?? 'muted' as EventTone,
     })),
   }), [business, activeServices, activeContentSettings, availablePlatforms]);
+  const calendarDisplayMonth = calendarView === 'week'
+    ? shiftCalendarDays(visibleWeekStart, 3)
+    : visibleMonth;
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
-  const events = (activeBusiness.events[monthKey(visibleMonth)] ?? []).map((event) => {
+  const events = (activeBusiness.events[monthKey(calendarDisplayMonth)] ?? []).map((event) => {
     const resolved = event.detail
       ? resolveSeededContentType(event.detail, activeContentSettings)
       : null;
@@ -625,14 +643,14 @@ function CalendarSurface() {
     [
       ...activeBusinessPosts,
       ...events.filter((event) => event.project).map((event, index) => ({
-        id: `calendar-${monthKey(visibleMonth)}-${index}`,
+        id: `calendar-${monthKey(calendarDisplayMonth)}-${index}`,
         businessId: activeBusiness.id,
         project: event.project!,
-        date: `${monthKey(visibleMonth)}-${String(event.day).padStart(2, '0')}`,
+        date: `${monthKey(calendarDisplayMonth)}-${String(event.day).padStart(2, '0')}`,
       })),
     ],
-    visibleMonth.getFullYear(),
-    visibleMonth.getMonth() + 1,
+    calendarDisplayMonth.getFullYear(),
+    calendarDisplayMonth.getMonth() + 1,
   );
   const selectedUserPost = userPosts.find(
     (post) => post.id === selectedPostId && post.businessId === activeBusiness.id,
