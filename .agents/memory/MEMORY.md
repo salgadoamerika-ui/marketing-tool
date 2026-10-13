@@ -8,3 +8,4 @@
 - [Browser readiness](browser-readiness.md) — prove reloads use a new document; use hit-tested pointer clicks, not DOM clicks, to verify popup controls.
 - [Business workspace boundaries](business-workspaces.md) — each business owns isolated content, services, airtime, and learning.
 - [Calendar view scope](calendar-view-scope.md) — Month and Week are displays of the same posts; weekly check-in learning is a separate phase.
+- [Vercel build scope](vercel-build-scope.md) — deploy the marketing frontend alone; the workspace-wide build includes a preview sandbox requiring PORT.

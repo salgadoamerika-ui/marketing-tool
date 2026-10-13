@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npx --yes pnpm@10.26.1 install --frozen-lockfile",
+  "buildCommand": "npx --yes pnpm@10.26.1 --filter @workspace/marketing-tool run build",
+  "outputDirectory": "artifacts/marketing-tool/dist/public",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
