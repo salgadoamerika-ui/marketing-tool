@@ -20,12 +20,19 @@ import {
 } from '@/components/week-calendar-view';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
+import {
+  buildActionInsight,
+  buildSequenceActionInsight,
+  type ActionInsight,
+  type InsightAction,
+  type InsightPost,
+} from '@/lib/action-insight';
 import { getBestTimeRecommendation, type BestTimeRecommendation } from '@/lib/best-time';
 import { getMonthlyAirtime } from '@/lib/monthly-airtime';
 import { buildConversionReview } from '@/lib/conversion-review';
 import { getConversionGapMarkers } from '@/lib/conversion-gap';
 import { getFlatPostState } from '@/lib/flat-post-ladder';
+import { buildFlatPostInsight } from '@/lib/flat-post-suggestions';
 import { buildPostRationale } from '@/lib/post-rationale';
 import { getOverperformer } from '@/lib/overperformer';
 import { getBusinessAccent, isBusinessAccent, type BusinessAccent } from '@/lib/business-accents';
@@ -546,11 +553,61 @@ function buildBusinessActionInsight(
   occupiedDates: string[],
   services: ServiceDefinition[],
   availableTypes: string[],
+  sequenceOnly = false,
+  sequenceAnchorDate?: string,
 ): ActionInsight {
   return restrictInsightToAvailableTypes(
-    buildActionInsight(action, post, posts, today, occupiedDates, services),
+    sequenceOnly
+      ? buildSequenceActionInsight(action, post, posts, today, occupiedDates, services, sequenceAnchorDate)
+      : buildActionInsight(action, post, posts, today, occupiedDates, services),
     availableTypes,
   );
+}
+
+function getCompletionPerformanceInsight(
+  post: InsightPost,
+  posts: InsightPost[],
+  today: string,
+  occupiedDates: string[],
+  services: ServiceDefinition[],
+): ActionInsight['performanceInsight'] {
+  const servicePosts = posts.filter((item) =>
+    item.businessId === post.businessId && item.project === post.project && item.status !== 'skipped'
+  );
+  const measuredViews = servicePosts.filter((item) =>
+    Number.isSafeInteger(item.performance?.views) && (item.performance?.views ?? -1) >= 0
+  );
+  if (measuredViews.length < 3) return undefined;
+
+  const conversionReview = buildConversionReview(post, posts, today, occupiedDates, services);
+  if (conversionReview.assessment.status === 'detected') {
+    const { result } = conversionReview.assessment;
+    return {
+      title: 'Bookings aren’t following interest',
+      evidence: `The latest three measured posts had ${result.views.toLocaleString()} views, ${result.saves.toLocaleString()} saves, and ${result.bookings.toLocaleString()} bookings (${(result.bookingRate * 100).toFixed(1)}% booking rate).`,
+      recommendation: 'Review the booking path and build trust before making a stronger offer.',
+    };
+  }
+
+  const standout = measuredViews
+    .map((item) => ({ post: item, result: getOverperformer(item, servicePosts) }))
+    .filter((item): item is { post: InsightPost; result: NonNullable<ReturnType<typeof getOverperformer>> } => Boolean(item.result))
+    .sort((left, right) => right.result.multiple - left.result.multiple
+      || right.post.date.localeCompare(left.post.date))[0];
+  if (standout) {
+    return {
+      title: 'One post stood out for reach',
+      evidence: `“${standout.post.title}” reached ${standout.result.views.toLocaleString()} views versus a ${Math.round(standout.result.averageViews).toLocaleString()}-view service average across ${standout.result.postCount} measured posts.`,
+      recommendation: 'Keep its topic and approach in mind when planning the next move.',
+    };
+  }
+
+  const flatInsight = buildFlatPostInsight('completed', post, posts, today, occupiedDates);
+  return flatInsight ? {
+    title: flatInsight.title,
+    evidence: flatInsight.evidence,
+    recommendation: flatInsight.recommendation,
+  } : undefined;
 }
 
 function formatPostDate(date: string) {
@@ -900,6 +957,22 @@ function CalendarSurface() {
     window.setTimeout(() => setStatusMessage(''), 3000);
   };
 
+  const keepPerformanceInsight = (insight: ActionInsight) => {
+    if (!insight.performanceInsight) {
+      setActionInsight(null);
+      return;
+    }
+    setActionInsight({
+      action: insight.action,
+      sourcePostId: insight.sourcePostId,
+      title: insight.performanceInsight.title,
+      evidence: insight.performanceInsight.evidence,
+      recommendation: insight.performanceInsight.recommendation,
+      beats: [],
+      proposals: [],
+    });
+  };
+
   const selectCalendarView = (view: 'month' | 'week') => {
     if (view === calendarView) return;
     if (view === 'week' && monthKey(shiftCalendarDays(visibleWeekStart, 3)) !== monthKey(visibleMonth)) {
@@ -1124,6 +1197,7 @@ function CalendarSurface() {
       setActionInsight(null);
       return;
     }
+    const sequenceOnly = actionInsight.action === 'completed' && Boolean(actionInsight.sequenceAnchorDate);
     const refreshed = buildBusinessActionInsight(
       actionInsight.action,
       source,
@@ -1132,7 +1206,12 @@ function CalendarSurface() {
       seededCalendarDates[activeBusiness.id] ?? [],
       activeServices,
       contentTypes,
+      sequenceOnly,
+      actionInsight.sequenceAnchorDate,
     );
+    if (actionInsight.performanceInsight) {
+      refreshed.performanceInsight = actionInsight.performanceInsight;
+    }
     if (JSON.stringify(refreshed.proposals) !== JSON.stringify(actionInsight.proposals)) {
       setActionInsight(refreshed);
       showActionMessage('The calendar or Campaign dates changed. Review the refreshed suggestions before adding.');
@@ -1174,7 +1253,7 @@ function CalendarSurface() {
       revealDateInCalendar(suggestions[0].date);
       showActionMessage(`${suggestions.length} suggested ${suggestions.length === 1 ? 'change was' : 'changes were'} applied to the calendar.`);
     }
-    setActionInsight(null);
+    keepPerformanceInsight(actionInsight);
   };
 
   const handleDeletePost = () => {
@@ -1219,15 +1298,30 @@ function CalendarSurface() {
 
   const handlePostCompleted = (post: UserPost) => {
     if (post.businessId !== activeBusiness.id) return;
-    setActionInsight(buildBusinessActionInsight(
+    const completionPosts = activeBusinessPosts.map((item) => item.id === post.id ? post : item);
+    const sequenceAnchorDate = post.date > todayKey ? post.date : todayKey;
+    const sequence = buildBusinessActionInsight(
       'completed',
       post,
-      [...activeBusinessPosts, ...activeSeededCalendarPosts],
+      [...completionPosts, ...activeSeededCalendarPosts],
       todayKey,
       seededCalendarDates[activeBusiness.id] ?? [],
       activeServices,
       contentTypes,
-    ));
+      true,
+      sequenceAnchorDate,
+    );
+    const performanceInsight = getCompletionPerformanceInsight(
+      post,
+      completionPosts,
+      todayKey,
+      seededCalendarDates[activeBusiness.id] ?? [],
+      activeServices,
+    );
+    setActionInsight({
+      ...sequence,
+      ...(performanceInsight ? { performanceInsight } : {}),
+    });
   };
 
   const handleTogglePostCompletion = (postId: string, isCompleted: boolean) => {

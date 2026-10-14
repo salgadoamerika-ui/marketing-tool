@@ -40,8 +40,16 @@ export type InsightSequenceBeat = {
   proposal?: InsightProposal;
 };
 
+export type PerformanceInsight = {
+  title: string;
+  evidence: string;
+  recommendation: string;
+};
+
 export type ActionInsight = {
   sourcePostId?: string;
+  sequenceAnchorDate?: string;
+  performanceInsight?: PerformanceInsight;
   action: InsightAction;
   title: string;
   evidence: string;
@@ -85,6 +93,7 @@ function buildBaseActionInsight(
   posts: InsightPost[],
   today = post.date,
   occupiedDates: string[] = [],
+  includeFlatInsight = true,
 ): ActionInsight {
   const sourceType = post.contentType ? `${post.contentType} post` : 'post';
   const evidence = `“${post.title}” is a ${sourceType} for ${post.project}.${uploadedNumbers(post.performance)}`;
@@ -125,8 +134,10 @@ function buildBaseActionInsight(
     };
   }
 
-  const flatInsight = buildFlatPostInsight(action, post, posts, today, occupiedDates);
-  if (flatInsight) return flatInsight;
+  if (includeFlatInsight) {
+    const flatInsight = buildFlatPostInsight(action, post, posts, today, occupiedDates);
+    if (flatInsight) return flatInsight;
+  }
 
   const plans = getFollowUpPlans(post, posts, occupiedDates);
   const beats: InsightSequenceBeat[] = plans.map((plan) => {
@@ -207,4 +218,25 @@ export function buildActionInsight(
   const base = buildBaseActionInsight(action, post, posts, today, occupiedDates);
   const result = services ? applyModeSuggestions(base, post, posts, today, occupiedDates, services) : base;
   return { ...result, sourcePostId: post.id };
+}
+
+export function buildSequenceActionInsight(
+  action: InsightAction,
+  post: InsightPost,
+  posts: InsightPost[],
+  today = post.date,
+  occupiedDates: string[] = [],
+  services?: ServiceDefinition[],
+  sequenceAnchorDate?: string,
+): ActionInsight {
+  const sequencePost = sequenceAnchorDate ? { ...post, date: sequenceAnchorDate } : post;
+  const base = buildBaseActionInsight(action, sequencePost, posts, today, occupiedDates, false);
+  const result = services
+    ? applyModeSuggestions(base, sequencePost, posts, today, occupiedDates, services)
+    : base;
+  return {
+    ...result,
+    sourcePostId: post.id,
+    ...(sequenceAnchorDate ? { sequenceAnchorDate } : {}),
+  };
 }
