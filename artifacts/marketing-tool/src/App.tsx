@@ -602,7 +602,11 @@ function CalendarSurface() {
   const [isContentManagerOpen, setIsContentManagerOpen] = useState(false);
   const [isBusinessDialogOpen, setIsBusinessDialogOpen] = useState(false);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
-  const [isWeeklyInsightsPickerOpen, setIsWeeklyInsightsPickerOpen] = useState(false);
+  const [weeklyInsightsContext, setWeeklyInsightsContext] = useState<{
+    businessId: string;
+    startKey: string;
+    endKey: string;
+  } | null>(null);
   const [selectedWeeklyInsightsPostId, setSelectedWeeklyInsightsPostId] = useState('');
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
@@ -644,14 +648,12 @@ function CalendarSurface() {
     [userPosts, activeBusiness.id],
   );
   const weeklyInsightsPosts = useMemo(() => {
-    const previousWeekStart = shiftCalendarDays(visibleWeekStart, -7);
-    const previousWeekEnd = shiftCalendarDays(previousWeekStart, 6);
-    const startKey = formatDateInput(previousWeekStart);
-    const endKey = formatDateInput(previousWeekEnd);
+    if (!weeklyInsightsContext || weeklyInsightsContext.businessId !== activeBusiness.id) return [];
     return activeBusinessPosts
-      .filter((post) => post.date >= startKey && post.date <= endKey)
+      .filter((post) => post.date >= weeklyInsightsContext.startKey
+        && post.date <= weeklyInsightsContext.endKey)
       .sort((left, right) => right.date.localeCompare(left.date));
-  }, [activeBusinessPosts, visibleWeekStart]);
+  }, [activeBusinessPosts, activeBusiness.id, weeklyInsightsContext]);
   const selectedWeeklyInsightsPost = weeklyInsightsPosts.find(
     (post) => post.id === selectedWeeklyInsightsPostId,
   );
@@ -1241,13 +1243,18 @@ function CalendarSurface() {
   };
 
   const handleWeekUploadInsights = () => {
+    const previousWeekStart = shiftCalendarDays(visibleWeekStart, -7);
     setStatusMessage('');
     setSelectedWeeklyInsightsPostId('');
-    setIsWeeklyInsightsPickerOpen(true);
+    setWeeklyInsightsContext({
+      businessId: activeBusiness.id,
+      startKey: formatDateInput(previousWeekStart),
+      endKey: formatDateInput(shiftCalendarDays(previousWeekStart, 6)),
+    });
   };
 
   const closeWeeklyInsightsPicker = () => {
-    setIsWeeklyInsightsPickerOpen(false);
+    setWeeklyInsightsContext(null);
     setSelectedWeeklyInsightsPostId('');
   };
 
@@ -1934,7 +1941,7 @@ function CalendarSurface() {
             </section>
           </div>
         )}
-        {isWeeklyInsightsPickerOpen && (
+        {weeklyInsightsContext?.businessId === activeBusiness.id && (
           <div
             className="post-modal-backdrop"
             onMouseDown={(event) => {
@@ -1952,7 +1959,9 @@ function CalendarSurface() {
                 <div>
                   <p className="post-modal-kicker">Weekly check-in · {activeBusiness.name}</p>
                   <h2 id="weekly-insights-title">Upload last week’s insights</h2>
-                  <p className="post-modal-intro">Choose a post, then add its views, saves, and bookings.</p>
+                  <p className="post-modal-intro">
+                    Posts from {formatPostOptionDate(weeklyInsightsContext.startKey)} – {formatPostOptionDate(weeklyInsightsContext.endKey)}. Choose a post, then add its results.
+                  </p>
                 </div>
                 <button
                   aria-label="Close weekly insights"

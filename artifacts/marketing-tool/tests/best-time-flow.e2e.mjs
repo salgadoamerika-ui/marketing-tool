@@ -614,6 +614,8 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     { ...base, id: 'week-suggestion', title: 'Sunday suggestion', date: '2026-09-06', schedulingStatus: 'approved-suggestion' },
     { ...base, id: 'week-next', title: 'Following week', date: '2026-09-07' },
     { ...base, id: 'week-last-week', title: 'Post needing last week results', date: '2026-08-30' },
+    { ...base, id: 'week-last-week-second', title: 'Another previous-week post', date: '2026-08-29', project: 'Fall programs', contentType: 'Announcement', platforms: ['Facebook'] },
+    { ...base, id: 'week-prior-other', title: 'Other business previous-week post', date: '2026-08-29', businessId: 'northline' },
     { ...base, id: 'week-other', title: 'Other business only', date: '2026-08-31', businessId: 'northline' },
   ];
   const selector = (id) => `[data-testid="${id}"]`;
@@ -665,16 +667,56 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     await clickButtonText(evaluate, 'Cancel');
     await evaluate("window.scrollTo(0,0); document.querySelector('[data-testid=\"calendar-week-scroll\"]').scrollLeft = 0");
     await browser.clickVisible(selector('button-upload-insights'));
-    await waitFor(() => evaluate("document.querySelector('#selected-post-title')?.textContent === 'Post needing last week results'"), 'existing previous-week results flow');
-    assert.equal(await evaluate("Boolean(document.querySelector('.post-performance input[type=\"number\"]'))"), true);
-    await evaluate("document.querySelector('.post-form-actions .cancel-button').scrollIntoView({block:'center'})");
-    await browser.clickVisible('.post-form-actions .cancel-button');
+    const picker = selector('select-weekly-insights-post');
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(picker)}))`), 'previous-week post picker');
+    assert.equal(await evaluate("Boolean(document.querySelector('.weekly-insights-modal .post-performance'))"), false, 'Choose a post before the results form appears');
+    assert.deepEqual(await evaluate(`Array.from(document.querySelector(${jsString(picker)}).options).map(option => option.value)`),
+      ['', 'week-last-week', 'week-last-week-second'], 'Only the active business’s previous-week posts are offered');
+    assert.match(await evaluate(`document.querySelector(${jsString(picker)}).textContent`), /Insurance · Insight · Instagram · Aug 30/);
+    assert.match(await evaluate(`document.querySelector(${jsString(picker)}).textContent`), /Fall programs · Announcement · Facebook · Aug 29/);
+    await setField(evaluate, picker, 'week-last-week');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.weekly-insights-modal .post-performance input[type=\"number\"]'))"), 'existing results form for the chosen post');
+    const metricInput = (index) => `.weekly-insights-modal .post-performance-fields label:nth-of-type(${index}) input`;
+    await setField(evaluate, metricInput(1), '331');
+    await setField(evaluate, metricInput(2), '14');
+    await setField(evaluate, metricInput(3), '2');
+    await browser.clickVisible('.weekly-insights-modal .post-performance button[type="submit"]');
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post => post.id === 'week-last-week')?.performance?.views === 331"), 'results saved on the selected post');
+    await setField(evaluate, picker, 'week-last-week-second');
+    await waitFor(() => evaluate(`document.querySelector(${jsString(metricInput(1))})?.value === ''`), 'fresh form for the next chosen post');
+    await setField(evaluate, metricInput(1), '77');
+    await setField(evaluate, metricInput(2), '4');
+    await setField(evaluate, metricInput(3), '1');
+    await browser.clickVisible('.weekly-insights-modal .post-performance button[type="submit"]');
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post => post.id === 'week-last-week-second')?.performance?.views === 77"), 'second post results saved without closing the flow');
+    await browser.clickVisible('button[aria-label="Close weekly insights"]');
     await browser.reload();
     await browser.clickVisible(selector('button-calendar-week'));
     await waitFor(() => evaluate(`document.querySelector(${jsString(selector('checkbox-done-week-suggestion'))})?.checked === true`), 'completion after refresh');
     await browser.clickVisible(selector('button-calendar-month'));
     await waitFor(() => evaluate("Boolean(document.querySelector('.calendar-grid'))"), 'Month view after Week');
     assert.equal(await evaluate("Boolean(document.querySelector('.event-chip-completed'))"), true, 'Month view reflects the same completed post');
+    await browser.clickVisible('button[aria-label="Previous month"]');
+    const monthlyResultPost = '.event-chip-button[aria-label^="Open saved post: Post needing last week results"]';
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(monthlyResultPost)}))`), 'saved previous-week post in Month');
+    await evaluate(`document.querySelector(${jsString(monthlyResultPost)}).scrollIntoView({block:'center'})`);
+    await browser.clickVisible(monthlyResultPost);
+    await waitFor(() => evaluate("document.querySelector('#selected-post-title')?.textContent === 'Post needing last week results'"), 'Month results form');
+    assert.equal(await evaluate("document.querySelector('.post-performance-fields label:nth-of-type(1) input').value"), '331', 'Month reads the exact results saved from Week');
+    await setField(evaluate, '.post-performance-fields label:nth-of-type(1) input', '444');
+    await evaluate("document.querySelector('.post-performance button[type=\"submit\"]').scrollIntoView({block:'center'})");
+    await browser.clickVisible('.post-performance button[type="submit"]');
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post => post.id === 'week-last-week')?.performance?.views === 444"), 'Month updates the same post performance');
+    await evaluate("document.querySelector('button[aria-label=\"Close saved post details\"]').scrollIntoView({block:'center'})");
+    await browser.clickVisible('button[aria-label="Close saved post details"]');
+    await evaluate('window.scrollTo(0,0)');
+    await browser.clickVisible('button[aria-label="Next month"]');
+    await browser.clickVisible(selector('button-calendar-week'));
+    await browser.clickVisible(selector('button-upload-insights'));
+    await setField(evaluate, picker, 'week-last-week');
+    await waitFor(() => evaluate(`document.querySelector(${jsString(metricInput(1))})?.value === '444'`), 'Week reads the exact results updated in Month');
+    await browser.clickVisible('button[aria-label="Close weekly insights"]');
+    await browser.clickVisible(selector('button-calendar-month'));
     await selectBusiness(evaluate, 'Northline Financial');
     await browser.clickVisible(selector('button-calendar-week'));
     await waitFor(() => evaluate("Boolean(document.querySelector('.week-calendar'))"), 'Northline Week view');
@@ -698,8 +740,11 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     assert.match(await evaluate("document.querySelector('.sidebar').textContent"), /Content types/);
     assert.deepEqual(
       await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"),
-      posts.map((post) => post.id === 'week-suggestion' ? { ...post, isCompleted: true } : post),
-      'Completion persists only on the marked post; changing views leaves all other saved data unchanged',
+      posts.map((post) => post.id === 'week-suggestion' ? { ...post, isCompleted: true }
+        : post.id === 'week-last-week' ? { ...post, performance: { views: 444, saves: 14, bookings: 2 } }
+          : post.id === 'week-last-week-second' ? { ...post, performance: { views: 77, saves: 4, bookings: 1 } }
+            : post),
+      'Completion and results persist only on the intended posts, in the existing post storage',
     );
   } finally {
     if (browser) await browser.close();
