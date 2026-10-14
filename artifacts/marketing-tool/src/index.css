@@ -345,6 +345,8 @@
 .event-chip-suggestion { box-sizing: border-box; border: 1px dotted currentColor; }
 .event-chip-sequence-highlight { position: relative; z-index: 1; outline: 2px solid var(--rose-deep); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(168, 74, 110, .14); }
 .event-chip small { display: block; margin-top: 3px; color: currentColor; font-size: 9px; font-weight: 500; opacity: .72; }
+.event-chip-completed .event-title-completed { text-decoration: line-through; text-decoration-thickness: 1px; opacity: .68; }
+.event-chip-completed { filter: saturate(.78); }
 .event-best-time { display: inline-flex; max-width: 100%; align-items: center; margin-top: 5px; border-radius: 999px; background: #f8f0e5; color: #826648; padding: 3px 6px; font-size: 8px; font-weight: 700; line-height: 1.25; }
 .event-best-time-learned { background: #e8f0e8; color: #4f7058; }
 .event-post-status { display: inline-block; margin-top: 5px; border-radius: 999px; padding: 2px 6px; font-size: 9px; font-weight: 700; text-transform: capitalize; }

@@ -1158,6 +1158,48 @@ function CalendarSurface() {
     // is visible immediately, independently of content-sequence suggestions.
   };
 
+  const handlePostCompleted = (post: UserPost) => {
+    if (post.businessId !== activeBusiness.id) return;
+    setActionInsight(buildBusinessActionInsight(
+      'completed',
+      post,
+      [...activeBusinessPosts, ...activeSeededCalendarPosts],
+      todayKey,
+      seededCalendarDates[activeBusiness.id] ?? [],
+      activeServices,
+      contentTypes,
+    ));
+  };
+
+  const handleTogglePostCompletion = (postId: string, isCompleted: boolean) => {
+    const post = activeBusinessPosts.find((item) => item.id === postId);
+    if (!post || post.businessId !== activeBusiness.id) return;
+    setUserPosts((current) => current.map((item) =>
+      item.id === postId && item.businessId === activeBusiness.id
+        ? { ...item, isCompleted }
+        : item));
+    if (isCompleted && !post.isCompleted) {
+      handlePostCompleted({ ...post, isCompleted: true });
+    }
+  };
+
+  const handleWeekUploadInsights = () => {
+    const previousWeekStart = shiftCalendarDays(visibleWeekStart, -7);
+    const previousWeekEnd = shiftCalendarDays(previousWeekStart, 6);
+    const startKey = formatDateInput(previousWeekStart);
+    const endKey = formatDateInput(previousWeekEnd);
+    const previousWeekPosts = activeBusinessPosts
+      .filter((post) => post.date >= startKey && post.date <= endKey)
+      .sort((left, right) => right.date.localeCompare(left.date));
+    const postToUpdate = previousWeekPosts.find((post) => !post.performance) ?? previousWeekPosts[0];
+    if (!postToUpdate) {
+      showActionMessage('There are no saved posts from the previous week to add results to.');
+      return;
+    }
+    setStatusMessage('');
+    setSelectedPostId(postToUpdate.id);
+  };
+
   const handleAddConversionSuggestion = () => {
     if (!selectedUserPost) return;
     const refreshed = buildConversionReview(selectedUserPost, [...activeBusinessPosts, ...activeSeededCalendarPosts],
@@ -1394,7 +1436,10 @@ function CalendarSurface() {
               onNextWeek={() => setVisibleWeekStart((current) => shiftCalendarDays(current, 7))}
               onAddPost={(date) => openPostForm(date)}
               onOpenPost={setSelectedPostId}
-              onUploadInsights={() => showActionMessage('Insights upload and weekly check-in learning will be available in the next phase.')}
+              onToggleComplete={handleTogglePostCompletion}
+              completedCount={weekCalendarItems.filter((item) => item.id && item.isCompleted).length}
+              totalMoves={weekCalendarItems.filter((item) => item.id).length}
+              onUploadInsights={handleWeekUploadInsights}
             />
           ) : <section aria-label={`${monthFormatter.format(visibleMonth)} content calendar`} className="calendar-card">
             <div className="days-header">
@@ -1420,8 +1465,15 @@ function CalendarSurface() {
                         const colorStyle = event.contentTypeName ? getContentTypeStyle(event.contentTypeName) : undefined;
                         const eventContent = (
                           <>
-                            {event.title}
+                            <span className={event.isCompleted ? 'event-title-completed' : undefined}>
+                              {event.title}
+                            </span>
                             {event.detail && <small>{event.detail}</small>}
+                            {event.isCompleted && (
+                              <span className="event-post-status" aria-label="Done">
+                                <Check size={11} aria-hidden="true" /> Done
+                              </span>
+                            )}
                             {event.conversionGap && (
                               <span className="event-conversion-gap" role="img"
                                 aria-label={`Conversion gap for ${event.conversionGap}`}
@@ -1444,7 +1496,7 @@ function CalendarSurface() {
                         return event.id ? (
                           <button
                             aria-label={`Open saved post: ${event.title}${event.conversionGap ? '. Conversion gap — open for summary' : ''}${event.bestTime ? `. ${event.bestTime.label}. ${event.bestTime.detail}` : ''}`}
-                            className={`event-chip event-chip-button ${colorClass}`}
+                            className={`event-chip event-chip-button ${colorClass}${event.isCompleted ? ' event-chip-completed' : ''}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
                             style={colorStyle}

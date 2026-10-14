@@ -26,6 +26,7 @@ export type WeekCalendarViewProps = {
   onOpenPost(id: string): void;
   onToggleComplete(id: string, isCompleted: boolean): void;
   completedCount: number;
+  totalMoves: number;
   onUploadInsights(): void;
 };
 
@@ -117,7 +118,7 @@ function CalendarPost({
         >
           {content}
         </button>
-        <label className="week-post-completion">
+        <label className="week-post-completion" data-testid={`label-completion-${item.id}`}>
           <input
             aria-label={item.isCompleted ? `Mark ${item.title} not done` : `Mark ${item.title} done`}
             checked={Boolean(item.isCompleted)}
@@ -149,6 +150,7 @@ export function WeekCalendarView({
   onOpenPost,
   onToggleComplete,
   completedCount,
+  totalMoves,
   onUploadInsights,
 }: WeekCalendarViewProps) {
   const days = Array.from({ length: 7 }, (_, index) => {
@@ -201,7 +203,7 @@ export function WeekCalendarView({
               <span aria-hidden="true" className="week-checkin-rule" />
               <p>Upload last week’s insights — I’ll read what landed and tune this week around it</p>
               <p className="week-checkin-progress" aria-live="polite" data-testid="text-week-progress">
-                {completedCount} of {items.length} moves done this week.
+                {completedCount} of {totalMoves} moves done this week.
               </p>
               <button
                 className="week-upload-button"

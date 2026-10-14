@@ -613,6 +613,7 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     { ...base, id: 'week-mon-2', title: 'Monday two', date: '2026-08-31' },
     { ...base, id: 'week-suggestion', title: 'Sunday suggestion', date: '2026-09-06', schedulingStatus: 'approved-suggestion' },
     { ...base, id: 'week-next', title: 'Following week', date: '2026-09-07' },
+    { ...base, id: 'week-last-week', title: 'Post needing last week results', date: '2026-08-30' },
     { ...base, id: 'week-other', title: 'Other business only', date: '2026-08-31', businessId: 'northline' },
   ];
   const selector = (id) => `[data-testid="${id}"]`;
@@ -633,12 +634,28 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     assert.match(await evaluate(`document.querySelector(${jsString(selector('text-week-range'))}).textContent`), /Aug 31.*Sep 6, 2026/);
     assert.deepEqual(await evaluate("[...document.querySelectorAll('[data-testid^=\"column-week-day-\"]')].map(el => el.dataset.testid)"),
       ['2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06'].map(date => `column-week-day-${date}`));
+    assert.match(await evaluate(`document.querySelector(${jsString(selector('text-week-progress'))}).textContent`), /0 of 3 moves done this week/);
     assert.equal(await evaluate(`document.querySelector(${jsString(selector('column-week-day-2026-08-31'))}).querySelectorAll('.week-post').length`), 2);
     assert.equal(await evaluate(`getComputedStyle(document.querySelector(${jsString(selector('card-week-post-week-suggestion'))})).borderStyle`), 'dotted');
     assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-other'))}))`), false);
+    await evaluate(`document.querySelector(${jsString(selector('label-completion-week-suggestion'))}).scrollIntoView({block:'center', inline:'center'})`);
+    await browser.clickVisible(selector('label-completion-week-suggestion'));
+    await waitFor(() => evaluate(`JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post => post.id === 'week-suggestion')?.isCompleted === true`), 'saved completion state');
+    assert.match(await evaluate(`document.querySelector(${jsString(selector('text-week-progress'))}).textContent`), /1 of 3 moves done this week/);
+    assert.equal(await evaluate(`document.querySelector(${jsString(selector('card-week-post-week-suggestion'))}).classList.contains('week-post-completed')`), true);
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector(${jsString(selector('card-week-post-week-suggestion'))}).querySelector('.week-post-title')).textDecorationLine`), 'line-through');
+    await resolveInsight(evaluate, 'skip');
     await browser.clickVisible(selector('button-next-week'));
     await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-next'))}))`), 'following week post');
     assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-mon-1'))}))`), false);
+    assert.match(
+      await evaluate(`(() => {
+        const total = document.querySelectorAll('.week-calendar .week-post-completion').length;
+        return document.querySelector(${jsString(selector('text-week-progress'))}).textContent + '|' + total;
+      })()`),
+      /0 of \d+ moves done this week\.\|\d+/,
+      'Progress recalculates for the newly displayed week',
+    );
     await browser.clickVisible(selector('button-previous-week'));
     await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-mon-1'))}))`), 'previous week post');
     await evaluate(`document.querySelector(${jsString(selector('button-add-post-2026-09-01'))}).scrollIntoView({block:'center', inline:'center'})`);
@@ -648,8 +665,19 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     await clickButtonText(evaluate, 'Cancel');
     await evaluate("window.scrollTo(0,0); document.querySelector('[data-testid=\"calendar-week-scroll\"]').scrollLeft = 0");
     await browser.clickVisible(selector('button-upload-insights'));
-    assert.match(await evaluate("document.querySelector('.calendar-status').textContent"), /next phase/);
+    await waitFor(() => evaluate("document.querySelector('#selected-post-title')?.textContent === 'Post needing last week results'"), 'existing previous-week results flow');
+    assert.equal(await evaluate("Boolean(document.querySelector('.post-performance input[type=\"number\"]'))"), true);
+    await evaluate("document.querySelector('.post-form-actions .cancel-button').scrollIntoView({block:'center'})");
+    await browser.clickVisible('.post-form-actions .cancel-button');
+    await browser.reload();
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate(`document.querySelector(${jsString(selector('checkbox-done-week-suggestion'))})?.checked === true`), 'completion after refresh');
+    await browser.clickVisible(selector('button-calendar-month'));
+    await waitFor(() => evaluate("Boolean(document.querySelector('.calendar-grid'))"), 'Month view after Week');
+    assert.equal(await evaluate("Boolean(document.querySelector('.event-chip-completed'))"), true, 'Month view reflects the same completed post');
     await selectBusiness(evaluate, 'Northline Financial');
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate("Boolean(document.querySelector('.week-calendar'))"), 'Northline Week view');
     assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-mon-1'))}))`), false);
     assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-week-post-week-other'))}))`), true);
     await browser.resize(390, 844);
@@ -668,7 +696,11 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     await waitFor(() => evaluate("Boolean(document.querySelector('.calendar-grid'))"), 'Month layout restored');
     assert.match(await evaluate("document.querySelector('.sidebar').textContent"), /This month at a glance/);
     assert.match(await evaluate("document.querySelector('.sidebar').textContent"), /Content types/);
-    assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"), posts, 'Changing views never rewrites saved posts');
+    assert.deepEqual(
+      await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"),
+      posts.map((post) => post.id === 'week-suggestion' ? { ...post, isCompleted: true } : post),
+      'Completion persists only on the marked post; changing views leaves all other saved data unchanged',
+    );
   } finally {
     if (browser) await browser.close();
     await stopProcess(server.child);
