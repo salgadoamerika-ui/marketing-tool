@@ -561,6 +561,13 @@ function formatPostDate(date: string) {
   }).format(new Date(`${date}T12:00:00`));
 }
 
+function formatPostOptionDate(date: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(`${date}T12:00:00`));
+}
+
 function CalendarSurface() {
   const [userBusinesses, setUserBusinesses] = useState<Business[]>(readUserBusinesses);
   const businesses = useMemo(() => [...sampleBusinesses, ...userBusinesses], [userBusinesses]);
@@ -595,6 +602,8 @@ function CalendarSurface() {
   const [isContentManagerOpen, setIsContentManagerOpen] = useState(false);
   const [isBusinessDialogOpen, setIsBusinessDialogOpen] = useState(false);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
+  const [isWeeklyInsightsPickerOpen, setIsWeeklyInsightsPickerOpen] = useState(false);
+  const [selectedWeeklyInsightsPostId, setSelectedWeeklyInsightsPostId] = useState('');
   const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
   const [formError, setFormError] = useState('');
   const [actionInsight, setActionInsight] = useState<ActionInsight | null>(null);
@@ -633,6 +642,18 @@ function CalendarSurface() {
   const activeBusinessPosts = useMemo(
     () => userPosts.filter((post) => post.businessId === activeBusiness.id),
     [userPosts, activeBusiness.id],
+  );
+  const weeklyInsightsPosts = useMemo(() => {
+    const previousWeekStart = shiftCalendarDays(visibleWeekStart, -7);
+    const previousWeekEnd = shiftCalendarDays(previousWeekStart, 6);
+    const startKey = formatDateInput(previousWeekStart);
+    const endKey = formatDateInput(previousWeekEnd);
+    return activeBusinessPosts
+      .filter((post) => post.date >= startKey && post.date <= endKey)
+      .sort((left, right) => right.date.localeCompare(left.date));
+  }, [activeBusinessPosts, visibleWeekStart]);
+  const selectedWeeklyInsightsPost = weeklyInsightsPosts.find(
+    (post) => post.id === selectedWeeklyInsightsPostId,
   );
   const activeSeededCalendarPosts = useMemo(
     () => seededCalendarPosts
@@ -1163,17 +1184,23 @@ function CalendarSurface() {
     showActionMessage(`Deleted “${selectedUserPost.title}” from the calendar.`);
   };
 
-  const handleSaveResults = (performance: PostPerformance, postedTime?: string) => {
-    if (!selectedUserPost) return;
+  const handleSaveResultsForPost = (
+    postToUpdate: UserPost,
+    performance: PostPerformance,
+    postedTime?: string,
+  ) => {
+    if (postToUpdate.businessId !== activeBusiness.id) return;
 
     const postsAfterSave = userPosts.map((post) =>
-      post.id === selectedUserPost.id
+      post.id === postToUpdate.id && post.businessId === postToUpdate.businessId
         ? { ...post, performance, postedTime: postedTime || undefined }
         : post
     );
     setUserPosts(postsAfterSave);
-    const savedPost = postsAfterSave.find((post) => post.id === selectedUserPost.id)!;
-    const businessPostsAfterSave = postsAfterSave.filter((post) => post.businessId === activeBusiness.id);
+    const savedPost = postsAfterSave.find((post) => post.id === postToUpdate.id
+      && post.businessId === postToUpdate.businessId);
+    if (!savedPost) return;
+    const businessPostsAfterSave = postsAfterSave.filter((post) => post.businessId === postToUpdate.businessId);
     const flatState = getFlatPostState(savedPost, businessPostsAfterSave, todayKey);
     const service = activeServices.find((item) => item.name === savedPost.project);
     const winner = getOverperformer(savedPost, businessPostsAfterSave.filter((post) => (post as InsightPost).status !== 'skipped' && post.date <= todayKey));
@@ -1181,8 +1208,11 @@ function CalendarSurface() {
       ? buildBusinessActionInsight('results', savedPost, [...businessPostsAfterSave, ...activeSeededCalendarPosts],
         todayKey, seededCalendarDates[activeBusiness.id] ?? [], activeServices, contentTypes)
       : null);
-    // Keep results open so the conversion assessment (including unmet gates)
-    // is visible immediately, independently of content-sequence suggestions.
+  };
+
+  const handleSaveResults = (performance: PostPerformance, postedTime?: string) => {
+    if (!selectedUserPost) return;
+    handleSaveResultsForPost(selectedUserPost, performance, postedTime);
   };
 
   const handlePostCompleted = (post: UserPost) => {
@@ -1211,20 +1241,14 @@ function CalendarSurface() {
   };
 
   const handleWeekUploadInsights = () => {
-    const previousWeekStart = shiftCalendarDays(visibleWeekStart, -7);
-    const previousWeekEnd = shiftCalendarDays(previousWeekStart, 6);
-    const startKey = formatDateInput(previousWeekStart);
-    const endKey = formatDateInput(previousWeekEnd);
-    const previousWeekPosts = activeBusinessPosts
-      .filter((post) => post.date >= startKey && post.date <= endKey)
-      .sort((left, right) => right.date.localeCompare(left.date));
-    const postToUpdate = previousWeekPosts.find((post) => !post.performance) ?? previousWeekPosts[0];
-    if (!postToUpdate) {
-      showActionMessage('There are no saved posts from the previous week to add results to.');
-      return;
-    }
     setStatusMessage('');
-    setSelectedPostId(postToUpdate.id);
+    setSelectedWeeklyInsightsPostId('');
+    setIsWeeklyInsightsPickerOpen(true);
+  };
+
+  const closeWeeklyInsightsPicker = () => {
+    setIsWeeklyInsightsPickerOpen(false);
+    setSelectedWeeklyInsightsPostId('');
   };
 
   const handleAddConversionSuggestion = () => {
@@ -1905,6 +1929,75 @@ function CalendarSurface() {
                     closeSelectedPost();
                   }} type="button">Suggest next posts</button>
                   <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+        {isWeeklyInsightsPickerOpen && (
+          <div
+            className="post-modal-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeWeeklyInsightsPicker();
+            }}
+            role="presentation"
+          >
+            <section
+              aria-labelledby="weekly-insights-title"
+              aria-modal="true"
+              className="post-modal weekly-insights-modal"
+              role="dialog"
+            >
+              <div className="post-modal-header">
+                <div>
+                  <p className="post-modal-kicker">Weekly check-in · {activeBusiness.name}</p>
+                  <h2 id="weekly-insights-title">Upload last week’s insights</h2>
+                  <p className="post-modal-intro">Choose a post, then add its views, saves, and bookings.</p>
+                </div>
+                <button
+                  aria-label="Close weekly insights"
+                  className="modal-close"
+                  onClick={closeWeeklyInsightsPicker}
+                  type="button"
+                >
+                  <X size={18} strokeWidth={1.8} />
+                </button>
+              </div>
+              <div className="post-detail-body">
+                <label className="form-field weekly-insights-post-picker">
+                  <span>Post from the previous week</span>
+                  <select
+                    aria-label="Choose a previous-week post"
+                    data-testid="select-weekly-insights-post"
+                    onChange={(event) => setSelectedWeeklyInsightsPostId(event.target.value)}
+                    value={selectedWeeklyInsightsPostId}
+                  >
+                    <option value="">Choose a post…</option>
+                    {weeklyInsightsPosts.map((post) => (
+                      <option key={post.id} value={post.id}>
+                        {post.project} · {post.contentType || 'Content type not set'} · {post.platforms.join(', ') || 'No platform'} · {formatPostOptionDate(post.date)} — {post.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {selectedWeeklyInsightsPost ? (
+                  <PostPerformanceForm
+                    key={selectedWeeklyInsightsPost.id}
+                    performance={selectedWeeklyInsightsPost.performance}
+                    postedTime={selectedWeeklyInsightsPost.postedTime}
+                    onSave={(performance, postedTime) => handleSaveResultsForPost(
+                      selectedWeeklyInsightsPost,
+                      performance,
+                      postedTime,
+                    )}
+                  />
+                ) : weeklyInsightsPosts.length > 0 ? (
+                  <p className="weekly-insights-hint">Select a post above to enter its results. You can choose another post here after saving.</p>
+                ) : (
+                  <p className="weekly-insights-hint">No saved posts were found in the week before this one.</p>
+                )}
+                <div className="post-form-actions">
+                  <button className="cancel-button" onClick={closeWeeklyInsightsPicker} type="button">Close</button>
                 </div>
               </div>
             </section>

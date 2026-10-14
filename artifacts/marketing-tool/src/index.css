@@ -613,6 +613,18 @@
 }
 
 .post-detail-body { display: flex; flex-direction: column; gap: 19px; padding: 24px 28px 27px; }
+.weekly-insights-post-picker { width: 100%; }
+.weekly-insights-post-picker select { box-sizing: border-box; width: 100%; }
+.weekly-insights-hint {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fffaf8;
+  color: var(--muted-foreground);
+  padding: 13px 15px;
+  font-size: 12px;
+  line-height: 1.5;
+}
 .post-detail-project { align-self: flex-start; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 7px 11px; }
 .post-detail-status { align-self: flex-start; margin: -10px 0 0; border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 700; }
 .post-detail-status-completed { background: #e1eee3; color: #426a50; }
