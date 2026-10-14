@@ -440,6 +440,13 @@
 
 .week-post-completed .week-post-art { filter: grayscale(.72); opacity: .64; }
 .week-post-completed .week-post-title { text-decoration: line-through; text-decoration-thickness: 1px; }
+.week-post-actions { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid rgba(104, 75, 91, .1); }
+.week-post-actions .week-post-completion { border-top: 0; flex: 1; }
+.week-post-skip { margin: 3px 7px 3px 0; border: 1px solid #d6c5bb; border-radius: 999px; background: #fcf8f2; color: #866c60; padding: 4px 7px; font-size: 9px; cursor: pointer; }
+.week-post-skip:focus-visible { outline: 2px solid #9e637d; outline-offset: 2px; }
+.week-post-skipped .week-post-art { filter: grayscale(.8); opacity: .5; }
+.week-post-skipped { border-style: dashed; }
+.week-post-skipped-note { display: block; padding: 3px 9px 6px; color: #866c60; font-size: 9px; font-weight: 600; }
 
 .week-checkin-card .week-checkin-progress {
   margin-top: 11px;

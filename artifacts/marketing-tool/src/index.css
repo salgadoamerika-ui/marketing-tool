@@ -728,7 +728,10 @@
 .post-status-actions button { min-height: 38px; border-radius: 999px; cursor: pointer; font-size: 11px; font-weight: 700; padding: 8px 13px; }
 .post-status-actions button:disabled { cursor: default; opacity: .55; }
 .post-status-complete { border: 1px solid #afcbb5; background: #e9f3eb; color: #426a50; }
+.post-form-actions .post-status-complete { min-height: 40px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 17px; }
 .post-status-skipped { border: 1px solid #d7c0b7; background: #faf3ef; color: #936a61; }
+.event-chip-skipped { opacity: .7; border-style: dashed; }
+.event-post-skipped { color: #866c60; background: #fbf5ee; }
 .delete-post-button { min-height: 40px; border: 1px solid #d7a6b6; border-radius: 999px; background: #fff2f5; color: #963a5b; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 17px; }
 .delete-post-button:hover { border-color: #b95b78; background: #f9e1e8; }
 
@@ -758,6 +761,10 @@
 .action-insight-kicker { margin: 0; color: var(--rose-deep); font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .action-insight-popup h2 { margin: 13px 0 8px; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 500; line-height: 1.18; }
 .action-insight-evidence { margin: 0; color: var(--ink); font-size: 11.5px; line-height: 1.5; }
+.action-insight-performance { margin-top: 12px; border: 1px solid #d9e3d8; border-radius: 11px; background: #f6faf4; padding: 11px 12px; }
+.action-insight-performance > span { color: #527154; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.action-insight-performance h3 { margin: 5px 0; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 16px; font-weight: 500; line-height: 1.3; }
+.action-insight-performance p { margin: 4px 0 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .action-insight-next { margin-top: 12px; border: 1px solid #ead4db; border-radius: 11px; background: #fffdfb; padding: 11px 12px; }
 .action-insight-next strong { color: var(--rose-deep); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
 .action-insight-next p { margin: 4px 0 0; color: var(--ink); font-size: 11px; line-height: 1.5; }

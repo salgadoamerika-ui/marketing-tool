@@ -9,6 +9,10 @@ Month and Week must display the same business-scoped posts, not maintain separat
 
 Post completion is stored on the shared business post, not in view-only state. Week progress counts actionable saved posts (not seeded display-only sample events), and completion invokes the same sequence-recommendation handler used by the saved-post detail action.
 
+Completing a post must allow both the next content move and one qualifying performance insight to appear independently. Fewer than three measured posts means no trend claim, not no sequence suggestion. Approving or declining the next move must not discard the accompanying performance insight.
+
+**Why:** The user explicitly says sequence recommendations and performance insights are not either/or. Suggestions remain opt-in.
+
 The weekly Upload insights entry must first offer a picker of the active business’s posts from the week before the viewed week. Keep the picker available after saving so several posts can be entered in one sitting, including posts that already have results. Reuse the existing results form and save performance on the post itself: Month, Week, and the learning engine must read the same numbers.
 
 Keep the picker’s business/week context fixed for the open session, even if accepting a recommendation navigates the background calendar.

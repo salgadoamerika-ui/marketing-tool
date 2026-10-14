@@ -20,6 +20,14 @@ export function ActionInsightPopup({ insight, onAdd, onSkip }: Props) {
       <div aria-label="Suggested posts and explanation" className="action-insight-content" role="region" tabIndex={0}>
         <h2 id="action-insight-title">{insight.title}</h2>
         <p className="action-insight-evidence">{insight.evidence}</p>
+        {insight.performanceInsight && (
+          <section aria-label="Performance insight" className="action-insight-performance">
+            <span>Performance insight</span>
+            <h3>{insight.performanceInsight.title}</h3>
+            <p>{insight.performanceInsight.evidence}</p>
+            <p>{insight.performanceInsight.recommendation}</p>
+          </section>
+        )}
         <div className="action-insight-next">
           <strong>Why this next step?</strong>
           <p>{insight.recommendation}</p>

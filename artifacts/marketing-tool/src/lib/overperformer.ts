@@ -4,6 +4,7 @@ type TrackedPost = {
   id: string;
   businessId: string;
   project: string;
+  status?: 'completed' | 'skipped';
   performance?: PostPerformance;
 };
 
@@ -16,10 +17,10 @@ export type OverperformerResult = {
 
 export function getOverperformer(post: TrackedPost, posts: TrackedPost[]): OverperformerResult | null {
   const views = post.performance?.views;
-  if (views === undefined || !Number.isSafeInteger(views) || views < 0) return null;
+  if (post.status === 'skipped' || views === undefined || !Number.isSafeInteger(views) || views < 0) return null;
 
   const comparableViews = posts
-    .filter((item) => item.businessId === post.businessId && item.project === post.project)
+    .filter((item) => item.businessId === post.businessId && item.project === post.project && item.status !== 'skipped')
     .map((item) => item.performance?.views)
     .filter((value): value is number => value !== undefined && Number.isSafeInteger(value) && value >= 0);
 

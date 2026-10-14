@@ -14,6 +14,7 @@ export type WeekCalendarItem = {
   colorStyle?: CSSProperties;
   isSuggestion?: boolean;
   isCompleted?: boolean;
+  isSkipped?: boolean;
 };
 
 export type MidCampaignCheckIn = {
@@ -33,6 +34,7 @@ export type WeekCalendarViewProps = {
   onAddPost(date: string): void;
   onOpenPost(id: string): void;
   onToggleComplete(id: string, isCompleted: boolean): void;
+  onSkipPost(id: string): void;
   completedCount: number;
   totalMoves: number;
   onUploadInsights(): void;
@@ -69,11 +71,13 @@ function CalendarPost({
   index,
   onOpenPost,
   onToggleComplete,
+  onSkipPost,
 }: {
   item: WeekCalendarItem;
   index: number;
   onOpenPost(id: string): void;
   onToggleComplete(id: string, isCompleted: boolean): void;
+  onSkipPost(id: string): void;
 }) {
   const classes = [
     "week-post",
@@ -81,6 +85,7 @@ function CalendarPost({
     item.isSuggestion ? "week-post-suggestion event-chip-suggestion" : "",
     item.id ? "week-post-openable" : "",
     item.isCompleted ? "week-post-completed" : "",
+    item.isSkipped ? "week-post-skipped" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -127,6 +132,8 @@ function CalendarPost({
         >
           {content}
         </button>
+        {item.isSkipped && <span className="week-post-skipped-note">Skipped · kept in your record</span>}
+        <div className="week-post-actions">
         <label className="week-post-completion" data-testid={`label-completion-${item.id}`}>
           <input
             aria-label={item.isCompleted ? `Mark ${item.title} not done` : `Mark ${item.title} done`}
@@ -138,6 +145,16 @@ function CalendarPost({
           <span>{item.isCompleted ? <Check aria-hidden="true" size={13} /> : null}</span>
           {item.isCompleted ? "Done" : "Mark done"}
         </label>
+        <button
+          aria-label={item.isSkipped ? `Undo skip ${item.title}` : `Skip ${item.title}`}
+          className="week-post-skip"
+          data-testid={`button-skip-${item.id}`}
+          onClick={() => onSkipPost(item.id!)}
+          type="button"
+        >
+          {item.isSkipped ? "Undo skip" : "Skip"}
+        </button>
+        </div>
       </article>
     );
   }
@@ -159,6 +176,7 @@ export function WeekCalendarView({
   onAddPost,
   onOpenPost,
   onToggleComplete,
+  onSkipPost,
   completedCount,
   totalMoves,
   onUploadInsights,
@@ -284,6 +302,7 @@ export function WeekCalendarView({
                       key={`${item.id ?? item.title}-${itemIndex}`}
                       onOpenPost={onOpenPost}
                       onToggleComplete={onToggleComplete}
+                      onSkipPost={onSkipPost}
                     />
                   ))}
                   {dayItems.length === 0 && isSunday ? (

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildActionInsight } from '../src/lib/action-insight.ts';
+import { buildActionInsight, buildSequenceActionInsight } from '../src/lib/action-insight.ts';
 
 const post = (id, contentType, extra = {}) => ({
   id,
@@ -22,6 +22,44 @@ test('a logged announcement offers both strategic next beats without needing per
   ]);
   assert.match(insight.recommendation, /inside the experience/);
   assert.match(insight.recommendation, /not claims about performance/);
+});
+
+test('completion sequence suggestions stay separate from flat-post performance suggestions and dedupe against the upcoming week', () => {
+  const source = post('complete', 'Announcement', {
+    date: '2026-08-01',
+    performance: { views: 100 },
+  });
+  const history = [
+    post('history-1', 'Insight', { date: '2026-07-20', performance: { views: 300 } }),
+    post('history-2', 'Insight', { date: '2026-07-25', performance: { views: 100 } }),
+    post('history-3', 'Insight', { date: '2026-07-29', performance: { views: 100 } }),
+    post('history-4', 'Insight', { date: '2026-07-30', performance: { views: 100 } }),
+  ];
+  const existing = post('scheduled-inside', 'Inside look', {
+    date: '2026-09-24',
+    title: 'Already planned inside look',
+  });
+  const completed = { ...source, date: '2026-09-22' };
+  const result = buildSequenceActionInsight(
+    'completed',
+    source,
+    [...history, source, existing],
+    '2026-09-22',
+    [],
+    undefined,
+    '2026-09-22',
+  );
+  assert.equal(result.title, 'Your next beat is already set');
+  assert.equal(result.sequenceAnchorDate, '2026-09-22');
+  assert.equal(result.beats.find((beat) => beat.contentType === 'Inside look')?.state, 'scheduled');
+  assert.equal(result.beats.find((beat) => beat.contentType === 'Inside look')?.existingPostId, existing.id);
+  assert.ok(result.proposals.some((proposal) => proposal.contentType === 'Book now'));
+  assert.equal(result.performanceInsight, undefined, 'Sequence generation does not absorb trend output.');
+  assert.notEqual(
+    buildActionInsight('completed', completed, [...history, completed], '2026-09-22').title,
+    result.title,
+    'The normal flat-post insight remains a separate engine path.',
+  );
 });
 
 test('each action recommends content sequence beats and cites available uploaded numbers', () => {

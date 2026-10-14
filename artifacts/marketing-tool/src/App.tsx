@@ -33,6 +33,7 @@ import { buildConversionReview } from '@/lib/conversion-review';
 import { getConversionGapMarkers } from '@/lib/conversion-gap';
 import { getFlatPostState } from '@/lib/flat-post-ladder';
 import { buildFlatPostInsight } from '@/lib/flat-post-suggestions';
+import { buildSkipAlternativeInsight } from '@/lib/skip-alternative';
 import { buildPostRationale } from '@/lib/post-rationale';
 import { getOverperformer } from '@/lib/overperformer';
 import { getBusinessAccent, isBusinessAccent, type BusinessAccent } from '@/lib/business-accents';
@@ -91,6 +92,7 @@ type CalendarEvent = {
   bestTime?: BestTimeRecommendation;
   conversionGap?: string;
   isCompleted?: boolean;
+  isSkipped?: boolean;
 };
 
 type Distribution = 'organic' | 'paid';
@@ -110,9 +112,10 @@ type UserPost = {
   distribution: Distribution;
   schedulingStatus?: 'published' | 'approved-suggestion';
   sourcePostId?: string;
-  suggestionKind?: 'automatic' | 'reschedule' | 'trust' | 'offer' | 'repost' | 'fresh-angle' | 'maintenance';
+  suggestionKind?: 'automatic' | 'reschedule' | 'trust' | 'offer' | 'repost' | 'fresh-angle' | 'maintenance' | 'skip-alternative';
   performance?: PostPerformance;
   isCompleted?: boolean;
+  status?: 'completed' | 'skipped';
   budget?: number;
   runLength?: number;
 };
@@ -467,6 +470,7 @@ function isUserPost(value: unknown): value is UserPost {
         || post.schedulingStatus === 'approved-suggestion')
       && (post.sourcePostId === undefined || typeof post.sourcePostId === 'string')
       && (post.isCompleted === undefined || typeof post.isCompleted === 'boolean')
+      && (post.status === undefined || post.status === 'completed' || post.status === 'skipped')
       && (post.performance === undefined || isPostPerformance(post.performance))
       && Array.isArray(post.platforms)
       && post.platforms.every((platform) => typeof platform === 'string' && platform.trim().length > 0)
@@ -556,6 +560,9 @@ function buildBusinessActionInsight(
   sequenceOnly = false,
   sequenceAnchorDate?: string,
 ): ActionInsight {
+  if (action === 'skipped' || post.status === 'skipped') {
+    return buildSkipAlternativeInsight(post, posts, today, occupiedDates, services, availableTypes);
+  }
   return restrictInsightToAvailableTypes(
     sequenceOnly
       ? buildSequenceActionInsight(action, post, posts, today, occupiedDates, services, sequenceAnchorDate)
@@ -707,7 +714,7 @@ function CalendarSurface() {
   const weeklyInsightsPosts = useMemo(() => {
     if (!weeklyInsightsContext || weeklyInsightsContext.businessId !== activeBusiness.id) return [];
     return activeBusinessPosts
-      .filter((post) => post.date >= weeklyInsightsContext.startKey
+      .filter((post) => post.status !== 'skipped' && post.date >= weeklyInsightsContext.startKey
         && post.date <= weeklyInsightsContext.endKey)
       .sort((left, right) => right.date.localeCompare(left.date));
   }, [activeBusinessPosts, activeBusiness.id, weeklyInsightsContext]);
@@ -775,6 +782,7 @@ function CalendarSurface() {
     ...(contentTypes.includes(post.contentType) ? { contentTypeName: post.contentType } : {}),
     ...(conversionMarkers.has(post.id) ? { conversionGap: post.project } : {}),
     ...(post.isCompleted ? { isCompleted: true } : {}),
+    ...(post.status === 'skipped' ? { isSkipped: true } : {}),
     ...(post.schedulingStatus === 'approved-suggestion'
       ? { bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, activeBusinessPosts) }
       : {}),
@@ -813,11 +821,12 @@ function CalendarSurface() {
         colorStyle: contentType ? getContentTypeStyle(contentType) : undefined,
         isSuggestion,
         isCompleted: post.isCompleted,
+        isSkipped: post.status === 'skipped',
       };
     }),
   ].sort((a, b) => a.date.localeCompare(b.date));
   const midCampaignCheckIns: MidCampaignCheckIn[] = activeBusinessPosts.flatMap((post) => {
-    if (post.distribution !== 'paid'
+    if (post.status === 'skipped' || post.distribution !== 'paid'
       || typeof post.budget !== 'number'
       || !Number.isFinite(post.budget)
       || post.budget <= 0
@@ -862,7 +871,9 @@ function CalendarSurface() {
       if (!current?.sourcePostId) return current;
       const source = activeBusinessPosts.find((post) => post.id === current.sourcePostId);
       if (!source || source.businessId !== activeBusiness.id) return null;
-      const refreshed = buildBusinessActionInsight(
+      if (current.performanceOnly) return current;
+      const sequenceOnly = current.action === 'completed' && Boolean(current.sequenceAnchorDate);
+      const refreshedSequence = buildBusinessActionInsight(
         current.action,
         source,
         [...activeBusinessPosts, ...activeSeededCalendarPosts],
@@ -870,7 +881,12 @@ function CalendarSurface() {
         seededCalendarDates[activeBusiness.id] ?? [],
         activeServices,
         contentTypes,
+        sequenceOnly,
+        current.sequenceAnchorDate,
       );
+      const refreshed = current.performanceInsight
+        ? { ...refreshedSequence, performanceInsight: current.performanceInsight }
+        : refreshedSequence;
       return JSON.stringify(current) === JSON.stringify(refreshed) ? current : refreshed;
     });
   }, [activeBusiness.id, activeBusinessPosts, activeSeededCalendarPosts, activeServices, todayKey, contentTypes]);
@@ -965,6 +981,7 @@ function CalendarSurface() {
     setActionInsight({
       action: insight.action,
       sourcePostId: insight.sourcePostId,
+      performanceOnly: true,
       title: insight.performanceInsight.title,
       evidence: insight.performanceInsight.evidence,
       recommendation: insight.performanceInsight.recommendation,
@@ -1198,7 +1215,7 @@ function CalendarSurface() {
       return;
     }
     const sequenceOnly = actionInsight.action === 'completed' && Boolean(actionInsight.sequenceAnchorDate);
-    const refreshed = buildBusinessActionInsight(
+    const refreshedSequence = buildBusinessActionInsight(
       actionInsight.action,
       source,
       [...activeBusinessPosts, ...activeSeededCalendarPosts],
@@ -1209,9 +1226,9 @@ function CalendarSurface() {
       sequenceOnly,
       actionInsight.sequenceAnchorDate,
     );
-    if (actionInsight.performanceInsight) {
-      refreshed.performanceInsight = actionInsight.performanceInsight;
-    }
+    const refreshed = actionInsight.performanceInsight
+      ? { ...refreshedSequence, performanceInsight: actionInsight.performanceInsight }
+      : refreshedSequence;
     if (JSON.stringify(refreshed.proposals) !== JSON.stringify(actionInsight.proposals)) {
       setActionInsight(refreshed);
       showActionMessage('The calendar or Campaign dates changed. Review the refreshed suggestions before adding.');
@@ -1232,7 +1249,7 @@ function CalendarSurface() {
         title: proposal.title,
         date: proposal.date,
         platforms: original?.platforms ?? sourcePost.platforms,
-        distribution: original?.distribution ?? 'organic',
+        distribution: proposal.distribution ?? original?.distribution ?? 'organic',
         schedulingStatus: 'approved-suggestion',
         sourcePostId: proposal.sourcePostId,
         suggestionKind: proposal.kind,
@@ -1329,11 +1346,32 @@ function CalendarSurface() {
     if (!post || post.businessId !== activeBusiness.id) return;
     setUserPosts((current) => current.map((item) =>
       item.id === postId && item.businessId === activeBusiness.id
-        ? { ...item, isCompleted }
+        ? { ...item, isCompleted, status: undefined }
         : item));
     if (isCompleted && !post.isCompleted) {
-      handlePostCompleted({ ...post, isCompleted: true });
+      handlePostCompleted({ ...post, isCompleted: true, status: undefined });
     }
+  };
+
+  const handleSkipPost = (postId: string) => {
+    const post = activeBusinessPosts.find((item) => item.id === postId);
+    if (!post) return;
+    const undo = post.status === 'skipped';
+    const updated: UserPost = { ...post, isCompleted: false, status: undo ? undefined : 'skipped' };
+    setUserPosts((current) => current.map((item) =>
+      item.id === postId && item.businessId === activeBusiness.id ? updated : item));
+    closeSelectedPost();
+    if (undo) {
+      setActionInsight(null);
+      showActionMessage(`“${post.title}” is planned again.`);
+      return;
+    }
+    const updatedPosts = activeBusinessPosts.map((item) => item.id === postId ? updated : item);
+    setActionInsight(buildBusinessActionInsight(
+      'skipped', updated, [...updatedPosts, ...activeSeededCalendarPosts],
+      todayKey, seededCalendarDates[activeBusiness.id] ?? [], activeServices, contentTypes,
+    ));
+    showActionMessage(`Skipped “${post.title}”. Kept in your record.`);
   };
 
   const handleWeekUploadInsights = () => {
@@ -1590,6 +1628,7 @@ function CalendarSurface() {
               onAddPost={(date) => openPostForm(date)}
               onOpenPost={setSelectedPostId}
               onToggleComplete={handleTogglePostCompletion}
+              onSkipPost={handleSkipPost}
               completedCount={weekCalendarItems.filter((item) => item.id && item.isCompleted).length}
               totalMoves={weekCalendarItems.filter((item) => item.id).length}
               onUploadInsights={handleWeekUploadInsights}
@@ -1631,6 +1670,7 @@ function CalendarSurface() {
                                 <Check size={11} aria-hidden="true" /> Done
                               </span>
                             )}
+                            {event.isSkipped && <span className="event-post-status event-post-skipped" aria-label="Skipped">Skipped</span>}
                             {event.conversionGap && (
                               <span className="event-conversion-gap" role="img"
                                 aria-label={`Conversion gap for ${event.conversionGap}`}
@@ -1653,7 +1693,7 @@ function CalendarSurface() {
                         return event.id ? (
                           <button
                             aria-label={`Open saved post: ${event.title}${event.conversionGap ? '. Conversion gap — open for summary' : ''}${event.bestTime ? `. ${event.bestTime.label}. ${event.bestTime.detail}` : ''}`}
-                            className={`event-chip event-chip-button ${colorClass}${event.isCompleted ? ' event-chip-completed' : ''}`}
+                            className={`event-chip event-chip-button ${colorClass}${event.isCompleted ? ' event-chip-completed' : ''}${event.isSkipped ? ' event-chip-skipped' : ''}`}
                             key={`${event.id}-${event.day}-${event.title}`}
                             onClick={() => setSelectedPostId(event.id ?? null)}
                             style={colorStyle}
@@ -1964,6 +2004,7 @@ function CalendarSurface() {
                   </section>
                 )}
                 <div className="post-detail-list">
+                  <div><span>Status</span><strong>{selectedUserPost.status === 'skipped' ? 'Skipped' : selectedUserPost.isCompleted ? 'Done' : 'Planned'}</strong></div>
                   {selectedService && <div>
                     <span>Mode</span>
                     <strong>{modeLabel(selectedService.mode)}</strong>
@@ -2018,17 +2059,34 @@ function CalendarSurface() {
                   )}</p>
                 </section>
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
+                <div className="post-status-actions">
+                  <button
+                    aria-label={selectedUserPost.isCompleted ? 'Mark post not done' : 'Mark post done'}
+                    className={selectedUserPost.isCompleted ? 'cancel-button' : 'post-status-complete'}
+                    onClick={() => handleTogglePostCompletion(selectedUserPost.id, !selectedUserPost.isCompleted)}
+                    type="button"
+                  >
+                    {selectedUserPost.isCompleted ? 'Mark not done' : 'Mark done'}
+                  </button>
+                  <button
+                    aria-label={selectedUserPost.status === 'skipped' ? 'Undo skip post' : 'Skip post'}
+                    className="post-status-skipped"
+                    onClick={() => handleSkipPost(selectedUserPost.id)}
+                    type="button"
+                  >
+                    {selectedUserPost.status === 'skipped' ? 'Undo skip' : 'Skip'}
+                  </button>
+                </div>
                 <div className="post-form-actions">
                   <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
                   <button className="save-post-button" onClick={() => {
                     setActionInsight(buildBusinessActionInsight('completed', selectedUserPost,
-                      [...activeBusinessPosts, ...activeSeededCalendarPosts],
-                      formatDateInput(new Date()),
-                      seededCalendarDates[activeBusiness.id] ?? [],
-                      activeServices,
-                      contentTypes));
+                      [...activeBusinessPosts, ...activeSeededCalendarPosts], todayKey,
+                      seededCalendarDates[activeBusiness.id] ?? [], activeServices, contentTypes));
                     closeSelectedPost();
-                  }} type="button">Suggest next posts</button>
+                  }} type="button">
+                    Suggest next posts
+                  </button>
                   <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>
                 </div>
               </div>
@@ -2110,7 +2168,9 @@ function CalendarSurface() {
           <ActionInsightPopup
             insight={actionInsight}
             onAdd={handleAddInsightSuggestions}
-            onSkip={() => setActionInsight(null)}
+            onSkip={() => actionInsight.proposals.length > 0
+              ? keepPerformanceInsight(actionInsight)
+              : setActionInsight(null)}
           />
         )}
       </div>

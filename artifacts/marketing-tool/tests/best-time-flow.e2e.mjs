@@ -846,6 +846,159 @@ test('mid-campaign check-ins appear only for active paid runs at their viewed mi
   }
 });
 
+test('Skip retains shared records, offers one organic alternative, and leaves Mark done working', { timeout: 90000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const selector = (id) => `[data-testid="${id}"]`;
+  const base = { businessId: 'mosaic', platforms: ['Instagram'], schedulingStatus: 'approved-suggestion' };
+  const posts = [
+    { ...base, id: 'skip-story', project: 'Insurance', contentType: 'Testimonial',
+      title: 'A client story to skip', date: '2026-09-02', distribution: 'organic' },
+    { ...base, id: 'skip-paid', project: 'Tax planning', contentType: 'Announcement',
+      title: 'A paid post to skip', date: '2026-09-04', distribution: 'paid', budget: 100, runLength: 7 },
+  ];
+  const monthSelector = '.event-chip-button[aria-label^="Open saved post: A client story to skip"]';
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'Skip verification server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await browser.resize(1440, 1000);
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify(posts))})`);
+    await browser.reload();
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(selector('button-skip-skip-story'))}))`), 'Week skip control');
+    const progressBefore = await evaluate(`document.querySelector(${jsString(selector('text-week-progress'))}).textContent`);
+    await evaluate(`document.querySelector(${jsString(selector('button-skip-skip-story'))}).scrollIntoView({block:'center',inline:'center'})`);
+    await browser.clickVisible(selector('button-skip-skip-story'));
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post=>post.id==='skip-story')?.status==='skipped'"), 'Skip saved');
+    assert.equal(await evaluate(`document.querySelector(${jsString(selector('text-week-progress'))}).textContent`), progressBefore, 'Skipping is not completion and does not remove a move');
+    assert.equal(await evaluate("document.querySelectorAll('.action-insight-proposal').length"), 1);
+    assert.match(await evaluate("document.querySelector('.action-insight-popup').innerText"), /quick proof post is lighter/);
+    await browser.clickVisible('.action-insight-skip');
+    await browser.reload();
+    await waitFor(() => evaluate(`document.querySelector(${jsString(monthSelector)})?.classList.contains('event-chip-skipped')`), 'Skip persists in Month after refresh');
+    await evaluate(`document.querySelector(${jsString(monthSelector)}).scrollIntoView({block:'center'})`);
+    await browser.clickVisible(monthSelector);
+    await evaluate(`document.querySelector('button[aria-label="Undo skip post"]').scrollIntoView({block:'center'})`);
+    await browser.clickVisible('button[aria-label="Undo skip post"]');
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post=>post.id==='skip-story')?.status===undefined"), 'Undo restores planned status');
+    await evaluate(`document.querySelector(${jsString(monthSelector)}).scrollIntoView({block:'center'})`);
+    await browser.clickVisible(monthSelector);
+    await evaluate(`document.querySelector('button[aria-label="Mark post done"]').scrollIntoView({block:'center'})`);
+    await browser.clickVisible('button[aria-label="Mark post done"]');
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post=>post.id==='skip-story')?.isCompleted===true"), 'Mark done still works after Skip');
+    await browser.clickVisible('.action-insight-skip');
+    await evaluate(`document.querySelector('button[aria-label="Close saved post details"]').scrollIntoView({block:'center'})`);
+    await browser.clickVisible('button[aria-label="Close saved post details"]');
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate(`document.querySelector(${jsString(selector('checkbox-done-skip-story'))})?.checked`), 'Month done state shared in Week');
+    assert.match(await evaluate(`document.querySelector(${jsString(selector('text-week-progress'))}).textContent`), /^1 of/);
+    await evaluate(`document.querySelector(${jsString(selector('button-skip-skip-paid'))}).scrollIntoView({block:'center',inline:'center'})`);
+    await browser.clickVisible(selector('button-skip-skip-paid'));
+    await waitFor(() => evaluate("document.querySelectorAll('.action-insight-proposal').length===1"), 'one paid alternative');
+    assert.match(await evaluate("document.querySelector('.action-insight-popup').innerText"), /No boost\? Try an organic repost/);
+    await browser.clickVisible('.action-insight-add');
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).some(post=>post.sourcePostId==='skip-paid')"), 'alternative approved');
+    const records = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))");
+    assert.equal(records.find((post) => post.id === 'skip-paid').status, 'skipped');
+    const alternative = records.find((post) => post.sourcePostId === 'skip-paid');
+    assert.equal(alternative.distribution, 'organic');
+    assert.equal(alternative.budget, undefined);
+    assert.equal(alternative.runLength, undefined);
+    assert.equal(alternative.suggestionKind, 'skip-alternative');
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('.business-tabs'))"), 'calendar refreshed');
+    await evaluate("window.scrollTo(0,0)");
+    await browser.clickVisible('.business-tabs .business-tab:nth-child(2)');
+    assert.doesNotMatch(await evaluate('document.body.innerText'), /A client story to skip|A paid post to skip/);
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
+test('completion keeps the sequence suggestion and measured insight independent in both calendar views', { timeout: 90000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const selector = (id) => `[data-testid="${id}"]`;
+  const base = {
+    businessId: 'mosaic', project: 'Insurance', contentType: 'Announcement',
+    platforms: ['Instagram'], distribution: 'organic', schedulingStatus: 'published',
+  };
+  const posts = [
+    { ...base, id: 'reach-history-one', title: 'Historic one', date: '2026-08-05', performance: { views: 100 } },
+    { ...base, id: 'reach-history-two', title: 'Historic two', date: '2026-08-12', performance: { views: 100 } },
+    { ...base, id: 'reach-history-three', title: 'Historic three', date: '2026-08-19', performance: { views: 100 } },
+    { ...base, id: 'done-month-target', title: 'Month completion target', date: '2026-09-02', performance: { views: 1000 } },
+    {
+      ...base, id: 'done-week-target', project: 'Fall programs', title: 'Week completion target',
+      date: '2026-09-04', contentType: 'Insight',
+    },
+  ];
+  const monthPostSelector = '.event-chip-button[aria-label^="Open saved post: Month completion target"]';
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'completion verification server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await browser.resize(1440, 1000);
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify(posts))})`);
+    await browser.reload();
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(selector('column-week-day-2026-09-04'))}))`), 'Week view with unmeasured and measured posts');
+    await evaluate(`document.querySelector(${jsString(selector('label-completion-done-week-target'))}).scrollIntoView({block:'center',inline:'center'})`);
+    await browser.clickVisible(selector('label-completion-done-week-target'));
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post => post.id === 'done-week-target')?.isCompleted === true"), 'Week completion persisted');
+    assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-add'))"), true, 'The content sequence recommendation appears without requiring performance history');
+    assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-performance'))"), false, 'No trend claim appears below the three-post gate');
+    await browser.clickVisible('.action-insight-skip');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup')) === false"), 'unmeasured sequence suggestion dismissed');
+
+    await browser.clickVisible(selector('button-calendar-month'));
+    await waitFor(() => evaluate("Boolean(document.querySelector('.calendar-grid'))"), 'Month view');
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(monthPostSelector)}))`), 'Month completion target');
+    await evaluate(`document.querySelector(${jsString(monthPostSelector)}).scrollIntoView({block:'center'})`);
+    await browser.clickVisible(monthPostSelector);
+    await waitFor(() => evaluate("document.querySelector('#selected-post-title')?.textContent === 'Month completion target'"), 'Month post details');
+    await evaluate(`document.querySelector('button[aria-label="Mark post done"]').scrollIntoView({block:'center'})`);
+    await browser.clickVisible('button[aria-label="Mark post done"]');
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post => post.id === 'done-month-target')?.isCompleted === true"), 'Month completion persisted');
+    assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-add'))"), true, 'The Month completion launches content-sequence suggestions');
+    assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-performance'))"), true,
+      `The measured performance insight appears at the three-post view gate: ${await evaluate("JSON.stringify({posts:JSON.parse(localStorage.getItem('marketing-tool.user-posts')).map(({id,project,performance,isCompleted})=>({id,project,performance,isCompleted})),popup:document.querySelector('.action-insight-popup')?.innerText})")}`);
+    assert.match(await evaluate("document.querySelector('.action-insight-performance').textContent"), /One post stood out for reach/);
+
+    await evaluate(`document.querySelector('button[aria-label="Close saved post details"]').scrollIntoView({block:'center'})`);
+    await browser.clickVisible('button[aria-label="Close saved post details"]');
+    await browser.clickVisible('.action-insight-add');
+    await waitFor(() => evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).some(post => post.sourcePostId === 'done-month-target')"), 'approved next move added to the calendar');
+    const addedPost = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts')).find(post => post.sourcePostId === 'done-month-target')");
+    await waitFor(() => evaluate(`Array.from(document.querySelectorAll('.event-chip-button')).some(button => button.textContent.includes(${jsString(addedPost.title)}))`), 'approved suggestion visible in Month');
+    assert.equal(await evaluate("document.querySelector('.action-insight-popup h2')?.textContent"), 'One post stood out for reach', 'Adding the next move leaves the independent performance insight visible');
+    await browser.clickVisible('button[aria-label="Dismiss insight"]');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup')) === false"), 'performance insight dismissed');
+    await browser.clickVisible('button[aria-label="Previous month"]');
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate(`document.querySelector(${jsString(selector('checkbox-done-done-month-target'))})?.checked === true`), 'Month completion shared into Week');
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
 async function getFreePort() {
   const server = createServer();
   await new Promise((resolve, reject) => {
@@ -1271,10 +1424,9 @@ async function findApprovedSuggestion(evaluate, sourcePost) {
     return posts.find((item) =>
       item.sourcePostId === source?.id
       && item.schedulingStatus === 'approved-suggestion'
-      && item.contentType === 'Book now'
     ) ?? null;
   })()`);
-  assert.ok(suggestion, `An approved booking suggestion should be saved for ${sourcePost.title}.`);
+  assert.ok(suggestion, `An approved suggestion should be saved for ${sourcePost.title}.`);
   return { title: suggestion.title, date: suggestion.date };
 }
 
@@ -1417,6 +1569,7 @@ test('learned timing stays business- and service-specific through saved results 
     assert.equal(await readRecommendation(evaluate), 'Best time · from your results: Thursday evenings');
     await assertCalendarMode(evaluate, insuranceSuggestion, 'learned');
 
+    const approvedBeforeRefresh = await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]').filter(post => post.schedulingStatus === 'approved-suggestion').map(post => post.id).sort()");
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after reload');
     const allMeasuredPosts = [...learnedPosts, ...secondBusinessPosts, ...isolatedServicePosts];
@@ -1435,9 +1588,10 @@ test('learned timing stays business- and service-specific through saved results 
     assert.equal(savedCount, allMeasuredPosts.length);
     const approvedSuggestionsPersisted = await evaluate(`(() => {
       const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
-      return posts.filter((post) => post.schedulingStatus === 'approved-suggestion').length;
+      return posts.filter((post) => post.schedulingStatus === 'approved-suggestion').map(post => post.id).sort();
     })()`);
-    assert.ok(approvedSuggestionsPersisted >= 6, 'Approved suggestions should retain their status after refresh.');
+    assert.ok(approvedBeforeRefresh.length > 0);
+    assert.deepEqual(approvedSuggestionsPersisted, approvedBeforeRefresh, 'Approved suggestions should retain their identities and status after refresh.');
     const persistedCorrections = await evaluate(`(() => {
       const titles = ${jsString([learnedPosts[1].title, learnedPosts[3].title])};
       const posts = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');

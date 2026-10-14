@@ -3,9 +3,10 @@ import { addDaysToDate, getFollowUpPlans } from './follow-ups.ts';
 import { buildFlatPostInsight } from './flat-post-suggestions.ts';
 import { applyModeSuggestions } from './mode-suggestions.ts';
 import type { ServiceDefinition } from './services.ts';
+import { applySkipPreferences } from './skip-preferences.ts';
 
 export type InsightAction = 'logged' | 'results' | 'completed' | 'skipped';
-export type SuggestionKind = 'automatic' | 'reschedule' | 'repost' | 'fresh-angle' | 'maintenance';
+export type SuggestionKind = 'automatic' | 'reschedule' | 'repost' | 'fresh-angle' | 'maintenance' | 'skip-alternative';
 
 export type InsightPost = {
   id: string;
@@ -18,6 +19,7 @@ export type InsightPost = {
   schedulingStatus?: 'published' | 'approved-suggestion';
   suggestionKind?: string;
   sourcePostId?: string;
+  distribution?: 'organic' | 'paid';
   performance?: PostPerformance;
 };
 
@@ -28,6 +30,7 @@ export type InsightProposal = {
   contentType: string;
   title: string;
   date: string;
+  distribution?: 'organic' | 'paid';
   replaces?: { postId: string; title: string; contentType: string; date: string };
 };
 
@@ -49,6 +52,7 @@ export type PerformanceInsight = {
 export type ActionInsight = {
   sourcePostId?: string;
   sequenceAnchorDate?: string;
+  performanceOnly?: boolean;
   performanceInsight?: PerformanceInsight;
   action: InsightAction;
   title: string;
@@ -217,7 +221,7 @@ export function buildActionInsight(
 ): ActionInsight {
   const base = buildBaseActionInsight(action, post, posts, today, occupiedDates);
   const result = services ? applyModeSuggestions(base, post, posts, today, occupiedDates, services) : base;
-  return { ...result, sourcePostId: post.id };
+  return { ...applySkipPreferences(result, post, posts), sourcePostId: post.id };
 }
 
 export function buildSequenceActionInsight(
@@ -235,7 +239,7 @@ export function buildSequenceActionInsight(
     ? applyModeSuggestions(base, sequencePost, posts, today, occupiedDates, services)
     : base;
   return {
-    ...result,
+    ...applySkipPreferences(result, post, posts),
     sourcePostId: post.id,
     ...(sequenceAnchorDate ? { sequenceAnchorDate } : {}),
   };

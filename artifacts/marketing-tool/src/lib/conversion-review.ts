@@ -5,6 +5,7 @@ import { getFlatPostState, getMaintenanceSuggestionDate } from './flat-post-ladd
 import type { InsightPost } from './action-insight';
 import type { ServiceDefinition } from './services.ts';
 import { describeContentPacing, getPacedSuggestionDate } from './content-pacing.ts';
+import { shouldSuggestContentType } from './skip-preferences.ts';
 
 export function buildConversionReview(
   selected: InsightPost,
@@ -27,6 +28,9 @@ export function buildConversionReview(
   const sequence = getConversionSequence(selected, comparable, today);
   const plan = sequence?.plan;
   if (!plan || assessment.status !== 'detected') {
+    return { subject, assessment, stage: sequence?.stage, proposal: undefined, pacingNote };
+  }
+  if (!shouldSuggestContentType(subject, posts, plan.kind === 'trust' ? 'Testimonial' : 'Book now')) {
     return { subject, assessment, stage: sequence?.stage, proposal: undefined, pacingNote };
   }
 
