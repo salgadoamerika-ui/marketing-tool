@@ -1466,7 +1466,7 @@ function CalendarSurface() {
             </div>
           </section>}
 
-          <aside className="sidebar">
+          {calendarView === 'month' && <aside className="sidebar">
             <section className="insight-card tint">
               <p className="insight-eyebrow">This month at a glance</p>
               <h2>Keep the signal warm.</h2>
@@ -1502,7 +1502,10 @@ function CalendarSurface() {
               </div>
               {statusMessage && <p className="calendar-status" role="status">{statusMessage}</p>}
             </section>
-          </aside>
+          </aside>}
+          {calendarView === 'week' && statusMessage && (
+            <p className="calendar-status" role="status">{statusMessage}</p>
+          )}
         </div>
 
         {isServiceManagerOpen && (

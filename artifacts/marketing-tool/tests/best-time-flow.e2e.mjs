@@ -629,6 +629,7 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     await browser.clickVisible(selector('button-calendar-week'));
     await waitFor(() => evaluate("Boolean(document.querySelector('.week-calendar'))"), 'Week layout');
     assert.equal(await evaluate("Boolean(document.querySelector('.calendar-grid'))"), false);
+    assert.equal(await evaluate("Boolean(document.querySelector('.sidebar'))"), false, 'Monthly balance and legends stay out of Week view');
     assert.match(await evaluate(`document.querySelector(${jsString(selector('text-week-range'))}).textContent`), /Aug 31.*Sep 6, 2026/);
     assert.deepEqual(await evaluate("[...document.querySelectorAll('[data-testid^=\"column-week-day-\"]')].map(el => el.dataset.testid)"),
       ['2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06'].map(date => `column-week-day-${date}`));
@@ -665,6 +666,8 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
     await evaluate('window.scrollTo(0,0)');
     await browser.clickVisible(selector('button-calendar-month'));
     await waitFor(() => evaluate("Boolean(document.querySelector('.calendar-grid'))"), 'Month layout restored');
+    assert.match(await evaluate("document.querySelector('.sidebar').textContent"), /This month at a glance/);
+    assert.match(await evaluate("document.querySelector('.sidebar').textContent"), /Content types/);
     assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"), posts, 'Changing views never rewrites saved posts');
   } finally {
     if (browser) await browser.close();
