@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, CalendarDays, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, CalendarDays, Check, Sparkles } from "lucide-react";
 import "./week-calendar-view.css";
 
 export type WeekCalendarItem = {
@@ -13,6 +13,7 @@ export type WeekCalendarItem = {
   colorClass: string;
   colorStyle?: CSSProperties;
   isSuggestion?: boolean;
+  isCompleted?: boolean;
 };
 
 export type WeekCalendarViewProps = {
@@ -23,6 +24,8 @@ export type WeekCalendarViewProps = {
   onNextWeek(): void;
   onAddPost(date: string): void;
   onOpenPost(id: string): void;
+  onToggleComplete(id: string, isCompleted: boolean): void;
+  completedCount: number;
   onUploadInsights(): void;
 };
 
@@ -55,16 +58,19 @@ function CalendarPost({
   item,
   index,
   onOpenPost,
+  onToggleComplete,
 }: {
   item: WeekCalendarItem;
   index: number;
   onOpenPost(id: string): void;
+  onToggleComplete(id: string, isCompleted: boolean): void;
 }) {
   const classes = [
     "week-post",
     item.colorClass,
     item.isSuggestion ? "week-post-suggestion event-chip-suggestion" : "",
     item.id ? "week-post-openable" : "",
+    item.isCompleted ? "week-post-completed" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -101,16 +107,28 @@ function CalendarPost({
 
   if (item.id) {
     return (
-      <button
-        aria-label={`Open post: ${item.title}, ${item.project || "General campaign"}, ${item.platformLabel} at ${item.timeLabel}`}
-        className={classes}
-        data-testid={testId}
-        onClick={() => onOpenPost(item.id!)}
-        style={item.colorStyle}
-        type="button"
-      >
-        {content}
-      </button>
+      <article className={classes} data-testid={testId} style={item.colorStyle}>
+        <button
+          aria-label={`Open post: ${item.title}, ${item.project || "General campaign"}, ${item.platformLabel} at ${item.timeLabel}`}
+          className="week-post-open-button"
+          data-testid={`button-open-${testId}`}
+          onClick={() => onOpenPost(item.id!)}
+          type="button"
+        >
+          {content}
+        </button>
+        <label className="week-post-completion">
+          <input
+            aria-label={item.isCompleted ? `Mark ${item.title} not done` : `Mark ${item.title} done`}
+            checked={Boolean(item.isCompleted)}
+            data-testid={`checkbox-done-${item.id}`}
+            onChange={(event) => onToggleComplete(item.id!, event.target.checked)}
+            type="checkbox"
+          />
+          <span>{item.isCompleted ? <Check aria-hidden="true" size={13} /> : null}</span>
+          {item.isCompleted ? "Done" : "Mark done"}
+        </label>
+      </article>
     );
   }
 
@@ -129,6 +147,8 @@ export function WeekCalendarView({
   onNextWeek,
   onAddPost,
   onOpenPost,
+  onToggleComplete,
+  completedCount,
   onUploadInsights,
 }: WeekCalendarViewProps) {
   const days = Array.from({ length: 7 }, (_, index) => {
@@ -180,6 +200,9 @@ export function WeekCalendarView({
               <span className="week-checkin-overline">A moment to reflect</span>
               <span aria-hidden="true" className="week-checkin-rule" />
               <p>Upload last week’s insights — I’ll read what landed and tune this week around it</p>
+              <p className="week-checkin-progress" aria-live="polite" data-testid="text-week-progress">
+                {completedCount} of {items.length} moves done this week.
+              </p>
               <button
                 className="week-upload-button"
                 data-testid="button-upload-insights"
@@ -221,6 +244,7 @@ export function WeekCalendarView({
                       item={item}
                       key={`${item.id ?? item.title}-${itemIndex}`}
                       onOpenPost={onOpenPost}
+                      onToggleComplete={onToggleComplete}
                     />
                   ))}
                   {dayItems.length === 0 && isSunday ? (

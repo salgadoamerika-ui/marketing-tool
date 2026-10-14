@@ -79,6 +79,7 @@ type CalendarEvent = {
   id?: string;
   bestTime?: BestTimeRecommendation;
   conversionGap?: string;
+  isCompleted?: boolean;
 };
 
 type Distribution = 'organic' | 'paid';
@@ -100,6 +101,7 @@ type UserPost = {
   sourcePostId?: string;
   suggestionKind?: 'automatic' | 'reschedule' | 'trust' | 'offer' | 'repost' | 'fresh-angle' | 'maintenance';
   performance?: PostPerformance;
+  isCompleted?: boolean;
   budget?: number;
   runLength?: number;
 };
@@ -453,6 +455,7 @@ function isUserPost(value: unknown): value is UserPost {
         || post.schedulingStatus === 'published'
         || post.schedulingStatus === 'approved-suggestion')
       && (post.sourcePostId === undefined || typeof post.sourcePostId === 'string')
+      && (post.isCompleted === undefined || typeof post.isCompleted === 'boolean')
       && (post.performance === undefined || isPostPerformance(post.performance))
       && Array.isArray(post.platforms)
       && post.platforms.every((platform) => typeof platform === 'string' && platform.trim().length > 0)
@@ -687,6 +690,7 @@ function CalendarSurface() {
     tone: getPostTone(post.project, activeBusiness),
     ...(contentTypes.includes(post.contentType) ? { contentTypeName: post.contentType } : {}),
     ...(conversionMarkers.has(post.id) ? { conversionGap: post.project } : {}),
+    ...(post.isCompleted ? { isCompleted: true } : {}),
     ...(post.schedulingStatus === 'approved-suggestion'
       ? { bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, activeBusinessPosts) }
       : {}),
@@ -724,6 +728,7 @@ function CalendarSurface() {
         colorClass: contentType ? 'event-content-type' : `event-${getPostTone(post.project, activeBusiness)}`,
         colorStyle: contentType ? getContentTypeStyle(contentType) : undefined,
         isSuggestion,
+        isCompleted: post.isCompleted,
       };
     }),
   ].sort((a, b) => a.date.localeCompare(b.date));

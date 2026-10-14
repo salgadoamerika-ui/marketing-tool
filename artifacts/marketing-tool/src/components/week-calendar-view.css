@@ -300,7 +300,6 @@
 
 .week-post-openable {
   cursor: pointer;
-  font: inherit;
   transition: transform 170ms ease, box-shadow 170ms ease;
 }
 
@@ -308,6 +307,80 @@
   transform: translateY(-2px);
   box-shadow: 0 7px 14px rgba(83, 54, 68, .12);
 }
+
+.week-post-open-button {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.week-post-open-button:focus-visible {
+  outline: 2px solid #9e637d;
+  outline-offset: -2px;
+}
+
+.week-post-completion {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  border-top: 1px solid rgba(104, 75, 91, .1);
+  padding: 5px 9px;
+  color: #765f69;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.week-post-completion input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.week-post-completion > span {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  place-items: center;
+  border: 1px solid #b8a5aa;
+  border-radius: 4px;
+  color: white;
+}
+
+.week-post-completion input:checked + span {
+  border-color: #79576a;
+  background: #79576a;
+}
+
+.week-post-completion input:focus-visible + span {
+  outline: 2px solid #9e637d;
+  outline-offset: 2px;
+}
+
+.week-post-completed .week-post-art { filter: grayscale(.72); opacity: .64; }
+.week-post-completed .week-post-title { text-decoration: line-through; text-decoration-thickness: 1px; }
+
+.week-checkin-card .week-checkin-progress {
+  margin-top: 11px;
+  color: #806c72;
+  font-family: "DM Sans", "Avenir Next", sans-serif;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.week-checkin-card .week-upload-button { margin-top: 12px; }
 
 .week-post-suggestion {
   border: 1px dotted currentColor;
