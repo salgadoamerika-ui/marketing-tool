@@ -16,9 +16,17 @@ export type WeekCalendarItem = {
   isCompleted?: boolean;
 };
 
+export type MidCampaignCheckIn = {
+  postId: string;
+  campaignName: string;
+  postTitle: string;
+  midpointDate: string;
+};
+
 export type WeekCalendarViewProps = {
   weekStart: Date;
   items: WeekCalendarItem[];
+  midCampaignCheckIns: MidCampaignCheckIn[];
   todayKey: string;
   onPreviousWeek(): void;
   onNextWeek(): void;
@@ -28,6 +36,7 @@ export type WeekCalendarViewProps = {
   completedCount: number;
   totalMoves: number;
   onUploadInsights(): void;
+  onUploadMidCampaignInsights(postId: string): void;
 };
 
 const weekdayFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long" });
@@ -143,6 +152,7 @@ function CalendarPost({
 export function WeekCalendarView({
   weekStart,
   items,
+  midCampaignCheckIns,
   todayKey,
   onPreviousWeek,
   onNextWeek,
@@ -152,6 +162,7 @@ export function WeekCalendarView({
   completedCount,
   totalMoves,
   onUploadInsights,
+  onUploadMidCampaignInsights,
 }: WeekCalendarViewProps) {
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + index);
@@ -216,6 +227,32 @@ export function WeekCalendarView({
               </button>
               <span aria-hidden="true" className="week-checkin-stamp">01 / REFLECT</span>
             </div>
+            {midCampaignCheckIns.map((checkIn) => (
+              <section
+                aria-label={`Mid-campaign check-in for ${checkIn.campaignName}`}
+                className="week-mid-campaign-card"
+                data-testid={`card-mid-campaign-${checkIn.postId}`}
+                key={checkIn.postId}
+              >
+                <header className="week-mid-campaign-header">
+                  <span>Mid-campaign</span>
+                  <strong>{checkIn.campaignName}</strong>
+                </header>
+                <div className="week-mid-campaign-body">
+                  <p className="week-mid-campaign-title">{checkIn.postTitle}</p>
+                  <p>Halfway through the ad run — check your numbers now, while there’s still budget to steer.</p>
+                  <button
+                    className="week-mid-campaign-upload"
+                    data-testid={`button-upload-campaign-${checkIn.postId}`}
+                    onClick={() => onUploadMidCampaignInsights(checkIn.postId)}
+                    type="button"
+                  >
+                    Upload insights
+                    <ArrowUpRight aria-hidden="true" size={14} />
+                  </button>
+                </div>
+              </section>
+            ))}
           </aside>
 
           {days.map(({ date, key, weekday }, dayIndex) => {

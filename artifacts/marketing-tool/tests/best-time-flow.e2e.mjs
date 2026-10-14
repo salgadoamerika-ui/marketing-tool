@@ -707,6 +707,100 @@ test('Week view shares posts, stacks days, shifts seven days and keeps businesse
   }
 });
 
+test('mid-campaign check-ins appear only for active paid runs at their viewed midpoint and open results', { timeout: 90000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const selector = (id) => `[data-testid="${id}"]`;
+  const shiftDate = (value, amount) => {
+    const date = new Date(`${value}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + amount);
+    return date.toISOString().slice(0, 10);
+  };
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'mid-campaign test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await browser.resize(1440, 1000);
+    await evaluate('localStorage.clear()');
+    await browser.reload();
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate("Boolean(document.querySelector('.week-calendar'))"), 'empty Week view');
+    assert.equal(await evaluate("document.querySelectorAll('.week-mid-campaign-card').length"), 0);
+    assert.equal(await evaluate("Boolean(document.querySelector('[data-testid=\"card-week-checkin\"]'))"), true, 'The weekly check-in remains visible by itself');
+
+    const dates = await evaluate(`(() => {
+      const key = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+      const shift = (value, amount) => {
+        const date = new Date(value + 'T12:00:00');
+        date.setDate(date.getDate() + amount);
+        return key(date);
+      };
+      const today = key(new Date());
+      const monday = new Date();
+      monday.setHours(12, 0, 0, 0);
+      monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+      const firstWeek = new Date(2026, 8, 1, 12);
+      firstWeek.setDate(firstWeek.getDate() - ((firstWeek.getDay() + 6) % 7));
+      const utcDay = (date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
+      const dayDifference = utcDay(monday) - utcDay(firstWeek);
+      return { today, weekStart: key(monday), weeksFromStart: Math.trunc(dayDifference / 7), expiredEnd: shift(key(monday), 2) };
+    })()`);
+    const postBase = {
+      businessId: 'mosaic', project: 'Insurance', contentType: 'Insight',
+      platforms: ['Instagram'], distribution: 'paid', schedulingStatus: 'published',
+    };
+    const makePaid = (id, title, offset, runLength, budget = 120) => ({
+      ...postBase, id, title, date: shiftDate(dates.today, offset), runLength, budget,
+    });
+    const noBudgetPost = makePaid('mid-no-budget', 'Paid post without a budget', -7, 14);
+    delete noBudgetPost.budget;
+    const campaigns = [
+      makePaid('mid-active-one', 'Paid midpoint one', -7, 14),
+      makePaid('mid-active-two', 'Paid midpoint two', -4, 9),
+      makePaid('mid-future', 'Paid run whose midpoint is next week', -1, 20),
+      noBudgetPost,
+      { ...makePaid('mid-organic', 'Organic post is not an ad', -7, 14), distribution: 'organic' },
+      { ...makePaid('mid-other-business', 'Another business campaign', -7, 14), businessId: 'northline' },
+      {
+        ...postBase, id: 'mid-ended', title: 'Campaign already ended',
+        date: shiftDate(dates.weekStart, -2), runLength: 4, budget: 80,
+      },
+    ];
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify(campaigns))})`);
+    await browser.reload();
+    await browser.clickVisible(selector('button-calendar-week'));
+    await waitFor(() => evaluate("Boolean(document.querySelector('.week-calendar'))"), 'Week view with paid campaigns');
+    for (let step = 0; step < Math.abs(dates.weeksFromStart); step += 1) {
+      await browser.clickVisible(dates.weeksFromStart > 0 ? selector('button-next-week') : selector('button-previous-week'));
+    }
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${jsString(selector(`column-week-day-${dates.weekStart}`))}))`), 'current week navigation');
+    assert.equal(await evaluate("document.querySelectorAll('.week-mid-campaign-card').length"), 2);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-mid-campaign-mid-active-one'))}))`), true);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-mid-campaign-mid-active-two'))}))`), true);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-mid-campaign-mid-future'))}))`), false);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-mid-campaign-mid-no-budget'))}))`), false);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-mid-campaign-mid-organic'))}))`), false);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-mid-campaign-mid-other-business'))}))`), false);
+    if (dates.today >= dates.expiredEnd) {
+      assert.equal(await evaluate(`Boolean(document.querySelector(${jsString(selector('card-mid-campaign-mid-ended'))}))`), false);
+    }
+    assert.equal(await evaluate("Boolean(document.querySelector('[data-testid=\"card-week-checkin\"]'))"), true, 'Mid-campaign cards never replace the weekly check-in');
+    await browser.clickVisible(selector('button-upload-campaign-mid-active-one'));
+    await waitFor(() => evaluate("document.querySelector('#selected-post-title')?.textContent === 'Paid midpoint one'"), 'existing results flow for the campaign');
+    assert.equal(await evaluate("Boolean(document.querySelector('.post-performance input[type=\"number\"]'))"), true);
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
 async function getFreePort() {
   const server = createServer();
   await new Promise((resolve, reject) => {

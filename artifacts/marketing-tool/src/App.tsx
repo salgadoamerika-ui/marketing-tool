@@ -13,7 +13,11 @@ import {
 import { BusinessContentManager } from '@/components/business-content-manager';
 import { PostPerformanceForm, type PostPerformance } from '@/components/post-performance-form';
 import { ServiceManager } from '@/components/service-manager';
-import { WeekCalendarView, type WeekCalendarItem } from '@/components/week-calendar-view';
+import {
+  WeekCalendarView,
+  type MidCampaignCheckIn,
+  type WeekCalendarItem,
+} from '@/components/week-calendar-view';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildActionInsight, type ActionInsight, type InsightAction, type InsightPost } from '@/lib/action-insight';
@@ -732,6 +736,29 @@ function CalendarSurface() {
       };
     }),
   ].sort((a, b) => a.date.localeCompare(b.date));
+  const midCampaignCheckIns: MidCampaignCheckIn[] = activeBusinessPosts.flatMap((post) => {
+    if (post.distribution !== 'paid'
+      || typeof post.budget !== 'number'
+      || !Number.isFinite(post.budget)
+      || post.budget <= 0
+      || !Number.isSafeInteger(post.runLength)
+      || !post.runLength
+      || post.runLength <= 0) return [];
+    const startDate = new Date(`${post.date}T12:00:00`);
+    if (!Number.isFinite(startDate.getTime()) || formatDateInput(startDate) !== post.date) return [];
+    const midpointDate = shiftCalendarDays(startDate, Math.floor(post.runLength / 2));
+    const runEndDate = shiftCalendarDays(startDate, post.runLength);
+    const midpointKey = formatDateInput(midpointDate);
+    const runEndKey = formatDateInput(runEndDate);
+    const isRunning = todayKey >= post.date && todayKey < runEndKey;
+    if (!isRunning || !isInWeek(midpointKey)) return [];
+    return [{
+      postId: post.id,
+      campaignName: post.project,
+      postTitle: post.title,
+      midpointDate: midpointKey,
+    }];
+  });
   useEffect(() => {
     const refreshDay = () => setTodayKey(formatDateInput(new Date()));
     const timer = window.setInterval(refreshDay, 60_000);
@@ -1431,6 +1458,7 @@ function CalendarSurface() {
             <WeekCalendarView
               weekStart={visibleWeekStart}
               items={weekCalendarItems}
+              midCampaignCheckIns={midCampaignCheckIns}
               todayKey={todayKey}
               onPreviousWeek={() => setVisibleWeekStart((current) => shiftCalendarDays(current, -7))}
               onNextWeek={() => setVisibleWeekStart((current) => shiftCalendarDays(current, 7))}
@@ -1440,6 +1468,10 @@ function CalendarSurface() {
               completedCount={weekCalendarItems.filter((item) => item.id && item.isCompleted).length}
               totalMoves={weekCalendarItems.filter((item) => item.id).length}
               onUploadInsights={handleWeekUploadInsights}
+              onUploadMidCampaignInsights={(postId) => {
+                setStatusMessage('');
+                setSelectedPostId(postId);
+              }}
             />
           ) : <section aria-label={`${monthFormatter.format(visibleMonth)} content calendar`} className="calendar-card">
             <div className="days-header">
