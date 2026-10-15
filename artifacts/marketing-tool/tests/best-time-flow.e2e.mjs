@@ -218,6 +218,7 @@ test('business tabs isolate posts, insights, services and airtime; new workspace
     await click(evaluate, 'button[aria-label="Open saved post: Mosaic-only workspace post"]');
     await clickButtonText(evaluate, 'Mark done');
     await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'Mosaic insight');
+    await click(evaluate, '.post-modal-header .modal-close');
     await evaluate("if (document.scrollingElement) document.scrollingElement.scrollTop = 0");
     await waitFor(() => evaluate('window.scrollY === 0'), 'calendar tabs back in view');
     await browser.clickVisible('.business-tabs .business-tab:nth-child(2)');
@@ -316,7 +317,11 @@ test('business tabs isolate posts, insights, services and airtime; new workspace
       'saved workspace after reload',
     );
     assert.equal(await evaluate("localStorage.getItem('marketing-tool.active-business-id')"), atlasId);
-    assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"), [mosaicPost, northlinePost]);
+    assert.deepEqual(
+      await evaluate("JSON.parse(localStorage.getItem('marketing-tool.user-posts'))"),
+      [{ ...mosaicPost, isCompleted: true }, northlinePost],
+      'Completion remains saved while the new business starts without posts.',
+    );
     assert.deepEqual(await airtimeNames(), ['Atlas onboarding', 'Atlas follow-up']);
     assert.equal(await evaluate("document.querySelectorAll('.event-chip-button').length"), 0);
 
@@ -2055,7 +2060,7 @@ test('content types and platforms can be managed independently for every busines
     await waitFor(() => evaluate("Boolean(document.querySelector('[aria-labelledby=\"selected-post-title\"]'))"),
       'legacy post details after content type deletion');
     await evaluate("document.querySelector('.post-modal').scrollTop = document.querySelector('.post-modal').scrollHeight");
-    await browser.clickVisible('.post-form-actions .save-post-button');
+    await browser.clickVisible('button[aria-label="Mark post done"]');
     await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'suggestions after deleting a required type');
     assert.doesNotMatch(await evaluate("document.querySelector('.action-insight-popup').innerText"), /Announcement/,
       'Suggestions skip content types that have been deleted.');
@@ -2066,6 +2071,122 @@ test('content types and platforms can be managed independently for every busines
       'active business restored after catalog reload');
     assert.deepEqual((await readSettings(evaluate)).mosaic.platformOptions, ['Instagram', 'Threads', 'LinkedIn']);
     assert.ok((await readSettings(evaluate)).northline.platformOptions.includes('Facebook'));
+  } finally {
+    if (browser) await browser.close();
+    await stopProcess(server.child);
+  }
+});
+
+test('notification center records insights and approved plan changes per business', { timeout: 120000 }, async () => {
+  const port = await getFreePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = startProcess('pnpm', ['--filter', '@workspace/marketing-tool', 'run', 'dev'], {
+    cwd: workspaceDirectory, env: { ...process.env, PORT: String(port) },
+  });
+  let browser;
+  const source = {
+    id: 'notification-source',
+    businessId: 'mosaic',
+    project: 'Insurance',
+    title: 'Notification source post',
+    date: '2026-09-24',
+    contentType: 'Announcement',
+    platforms: ['Instagram'],
+    distribution: 'organic',
+    schedulingStatus: 'published',
+  };
+  const readNotifications = (evaluate) => evaluate(
+    "JSON.parse(localStorage.getItem('marketing-tool.notifications') ?? '[]')",
+  );
+  try {
+    await waitFor(async () => {
+      if (server.child.exitCode !== null) throw new Error(server.getOutput());
+      try { return (await fetch(origin)).ok; } catch { return false; }
+    }, 'notification center test server');
+    browser = await startCdpPage(origin);
+    const { evaluate } = browser;
+    await browser.resize(1280, 900);
+    await evaluate(`localStorage.setItem('marketing-tool.user-posts', ${jsString(JSON.stringify([source]))})`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('.business-tabs'))"), 'calendar with notification source');
+
+    await openPost(evaluate, source);
+    await clickButtonText(evaluate, 'Mark done');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'insight popup to archive');
+    await waitFor(async () => (await readNotifications(evaluate)).some((item) => item.kind === 'insight'),
+      'surfaced insight notification');
+    await browser.clickVisible('button[aria-label="Dismiss insight"]');
+    await waitFor(async () => (await readNotifications(evaluate)).some((item) =>
+      item.kind === 'dismissed-banner' && item.action?.kind === 'reopen-insight'),
+    'dismissed insight saved for reopening');
+
+    await browser.clickVisible('.notification-bell');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.notification-panel'))"), 'notification panel');
+    assert.equal(await evaluate("Boolean(document.querySelector('.notification-count'))"), false,
+      'Opening the panel marks active-business notifications as read.');
+    assert.match(await evaluate("document.querySelector('.notification-panel').innerText"), /Insight saved for later/);
+    await browser.clickVisible('.notification-action');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'insight reopened from notification');
+    assert.match(await evaluate("document.querySelector('.action-insight-popup').innerText"), /Why this next step/i);
+    assert.equal(await evaluate("Boolean(document.querySelector('.notification-panel'))"), false,
+      'Selecting an action closes the panel.');
+
+    await browser.clickVisible('.action-insight-add');
+    await waitFor(async () => (await readNotifications(evaluate)).some((item) =>
+      item.kind === 'plan-change' && item.action?.kind === 'calendar-post'),
+    'approved suggestion notification');
+    const planNotice = (await readNotifications(evaluate)).find((item) => item.kind === 'plan-change');
+    assert.match(planNotice.title, /suggestion added|plan updated/i);
+    assert.match(planNotice.subtitle, /Airtime balance updated/);
+
+    await browser.clickVisible('.notification-bell');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.notification-panel'))"), 'plan notification panel');
+    const viewAction = await evaluate(`(() => {
+      const planItem = [...document.querySelectorAll('.notification-item')]
+        .find((item) => item.innerText.includes(${jsString(planNotice.title)}));
+      return planItem?.querySelector('.notification-action')?.textContent.trim();
+    })()`);
+    assert.equal(viewAction, 'View on calendar');
+    const suggestedPostTitle = await evaluate(`JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]')
+      .find((post) => post.id === ${jsString(planNotice.action.postId)})?.title`);
+    await browser.clickVisible('.calendar-title');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.notification-panel')) === false"), 'outside click closes the notification panel');
+    await browser.clickVisible('.notification-bell');
+    await browser.clickVisible(`[data-testid="notification-action-${planNotice.id}"]`);
+    await waitFor(() => evaluate("Boolean(document.querySelector('.post-detail-modal'))"), 'post opened from calendar notification');
+    assert.match(await evaluate("document.querySelector('.post-detail-modal').innerText"), new RegExp(suggestedPostTitle));
+    await browser.clickVisible('.post-modal-header .modal-close');
+
+    await browser.clickVisible('.notification-bell');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.notification-panel'))"), 'notifications before workspace switch');
+    await browser.clickVisible('.business-tabs .business-tab:nth-child(2)');
+    await waitFor(
+      () => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Northline Financial'"),
+      'switch to separate business notifications',
+    );
+    await browser.clickVisible('.notification-bell');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.notification-panel'))"), 'Northline notification panel');
+    assert.match(await evaluate("document.querySelector('.notification-panel').innerText"), /Nothing here yet/);
+    assert.equal(await evaluate("Boolean(document.querySelector('.notification-count'))"), false);
+    await browser.clickVisible('.business-tabs .business-tab:nth-child(1)');
+    await waitFor(
+      () => evaluate("document.querySelector('.business-tab[aria-pressed=\"true\"]')?.textContent.trim() === 'Mosaic Legal'"),
+      'return to business with stored notifications',
+    );
+    await browser.clickVisible('.notification-bell');
+    await waitFor(() => evaluate("Boolean(document.querySelector('.notification-panel'))"), 'Mosaic notifications after returning');
+    assert.match(await evaluate("document.querySelector('.notification-panel').innerText"), /Insight saved for later/);
+    assert.match(await evaluate("document.querySelector('.notification-panel').innerText"), /New suggestion added|Plan updated/);
+    await browser.clickVisible(`[data-testid="dismiss-notification-${planNotice.id}"]`);
+    await waitFor(async () => !(await readNotifications(evaluate)).some((item) => item.id === planNotice.id),
+      'individual plan notification dismissed');
+    assert.ok((await readNotifications(evaluate)).some((item) => item.id !== planNotice.id),
+      'Dismissing one item leaves other notifications intact.');
+
+    await browser.clickVisible('.notification-clear-all');
+    await waitFor(async () => (await readNotifications(evaluate)).every((item) => item.businessId !== 'mosaic'),
+      'clear all removes only active-business notifications');
+    assert.match(await evaluate("document.querySelector('.notification-panel').innerText"), /Nothing here yet/);
   } finally {
     if (browser) await browser.close();
     await stopProcess(server.child);

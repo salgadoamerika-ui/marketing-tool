@@ -1,7 +1,16 @@
-import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import {
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, Settings2, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
+import { NotificationCenter } from '@/components/notification-center';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
 import { MonthlyAirtimeBars } from '@/components/monthly-airtime-bars';
@@ -36,6 +45,12 @@ import { buildFlatPostInsight } from '@/lib/flat-post-suggestions';
 import { buildSkipAlternativeInsight } from '@/lib/skip-alternative';
 import { buildPostRationale } from '@/lib/post-rationale';
 import { getOverperformer } from '@/lib/overperformer';
+import {
+  insightNotificationKey,
+  notificationsStorageKey,
+  parseNotifications,
+  type AppNotification,
+} from '@/lib/notifications';
 import { getBusinessAccent, isBusinessAccent, type BusinessAccent } from '@/lib/business-accents';
 import {
   createBusinessContentSettings,
@@ -649,6 +664,29 @@ function CalendarSurface() {
   const [calendarView, setCalendarView] = useState<'month' | 'week'>('month');
   const [statusMessage, setStatusMessage] = useState('');
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
+  const [notifications, setNotifications] = useState<AppNotification[]>(() =>
+    parseNotifications(window.localStorage.getItem(notificationsStorageKey)));
+  const recordNotification = useCallback((
+    notification: Omit<AppNotification, 'id' | 'createdAt' | 'isRead'>,
+    refreshExisting = false,
+  ) => {
+    const entry: AppNotification = {
+      ...notification,
+      id: createPostId(),
+      createdAt: Date.now(),
+      isRead: false,
+    };
+    setNotifications((current) => {
+      const existingIndex = notification.dedupeKey
+        ? current.findIndex((item) => item.dedupeKey === notification.dedupeKey)
+        : -1;
+      if (existingIndex >= 0) {
+        if (!refreshExisting) return current;
+        return current.map((item, index) => index === existingIndex ? entry : item);
+      }
+      return [entry, ...current];
+    });
+  }, []);
   const [services, setServices] = useState<ServiceDefinition[]>(() => {
     const defaults: ServiceDefinition[] = [
       ...sampleBusinesses.flatMap((business) => business.projects.map((name) => ({
@@ -711,6 +749,12 @@ function CalendarSurface() {
     () => userPosts.filter((post) => post.businessId === activeBusiness.id),
     [userPosts, activeBusiness.id],
   );
+  const activeNotifications = useMemo(
+    () => notifications.filter((item) => item.businessId === activeBusiness.id)
+      .sort((left, right) => right.createdAt - left.createdAt),
+    [notifications, activeBusiness.id],
+  );
+  const unreadNotificationCount = activeNotifications.filter((item) => !item.isRead).length;
   const weeklyInsightsPosts = useMemo(() => {
     if (!weeklyInsightsContext || weeklyInsightsContext.businessId !== activeBusiness.id) return [];
     return activeBusinessPosts
@@ -867,6 +911,13 @@ function CalendarSurface() {
     window.localStorage.setItem(activeBusinessStorageKey, activeBusinessId);
   }, [activeBusinessId]);
   useEffect(() => {
+    try {
+      window.localStorage.setItem(notificationsStorageKey, JSON.stringify(notifications));
+    } catch {
+      setStatusMessage('Notifications could not be saved on this device.');
+    }
+  }, [notifications]);
+  useEffect(() => {
     setActionInsight((current) => {
       if (!current?.sourcePostId) return current;
       const source = activeBusinessPosts.find((post) => post.id === current.sourcePostId);
@@ -890,6 +941,31 @@ function CalendarSurface() {
       return JSON.stringify(current) === JSON.stringify(refreshed) ? current : refreshed;
     });
   }, [activeBusiness.id, activeBusinessPosts, activeSeededCalendarPosts, activeServices, todayKey, contentTypes]);
+
+  useEffect(() => {
+    if (!actionInsight?.sourcePostId) return;
+    const source = activeBusinessPosts.find((post) => post.id === actionInsight.sourcePostId);
+    if (!source) return;
+    const proposal = actionInsight.proposals[0];
+    const description = proposal
+      ? `${proposal.contentType} for ${source.project}, ${formatPostOptionDate(proposal.date)}`
+      : `${source.project} · ${actionInsight.performanceInsight?.title ?? actionInsight.title}`;
+    const dedupeKey = insightNotificationKey(activeBusiness.id, actionInsight);
+    recordNotification({
+      businessId: activeBusiness.id,
+      dedupeKey,
+      icon: 'sparkle',
+      title: 'New insight surfaced',
+      subtitle: description,
+      kind: 'insight',
+      action: {
+        kind: 'reopen-insight',
+        label: 'Reopen insight',
+        sourcePostId: source.id,
+        insight: actionInsight,
+      },
+    });
+  }, [actionInsight, activeBusiness.id, activeBusinessPosts, recordNotification]);
 
   useEffect(() => {
     try {
@@ -990,6 +1066,32 @@ function CalendarSurface() {
     });
   };
 
+  const handleDismissActionInsight = () => {
+    if (!actionInsight) return;
+    const sourcePostId = actionInsight.sourcePostId ?? actionInsight.proposals[0]?.triggerPostId;
+    if (sourcePostId) {
+      const source = activeBusinessPosts.find((post) => post.id === sourcePostId);
+      recordNotification({
+        businessId: activeBusiness.id,
+        dedupeKey: insightNotificationKey(activeBusiness.id, actionInsight),
+        icon: 'sparkle',
+        title: 'Insight saved for later',
+        subtitle: source
+          ? `${source.project} · ${actionInsight.performanceInsight?.title ?? actionInsight.title}`
+          : actionInsight.title,
+        kind: 'dismissed-banner',
+        action: {
+          kind: 'reopen-insight',
+          label: 'Reopen insight',
+          sourcePostId,
+          insight: actionInsight,
+        },
+      }, true);
+    }
+    if (actionInsight.proposals.length > 0) keepPerformanceInsight(actionInsight);
+    else setActionInsight(null);
+  };
+
   const selectCalendarView = (view: 'month' | 'week') => {
     if (view === calendarView) return;
     if (view === 'week' && monthKey(shiftCalendarDays(visibleWeekStart, 3)) !== monthKey(visibleMonth)) {
@@ -1006,6 +1108,50 @@ function CalendarSurface() {
     const day = new Date(`${date}T12:00:00`);
     setVisibleMonth(day);
     if (calendarView === 'week') setVisibleWeekStart(mondayStart(day));
+  };
+
+  const handleOpenNotification = (notification: AppNotification) => {
+    const action = notification.action;
+    if (notification.businessId !== activeBusiness.id || !action) return;
+    if (action.kind === 'calendar-post') {
+      const post = activeBusinessPosts.find((item) => item.id === action.postId);
+      if (!post) {
+        showActionMessage('That post is no longer on this business calendar.');
+        return;
+      }
+      setCalendarView('month');
+      revealDateInCalendar(post.date);
+      setSelectedPostId(post.id);
+      setActionInsight(null);
+      return;
+    }
+
+    const source = activeBusinessPosts.find((post) => post.id === action.sourcePostId);
+    if (!source) {
+      showActionMessage('That insight is no longer available because its post was removed.');
+      return;
+    }
+    setCalendarView('month');
+    revealDateInCalendar(source.date);
+    setSelectedPostId(null);
+    setActionInsight(action.insight);
+  };
+
+  const markActiveNotificationsRead = () => {
+    setNotifications((current) => current.map((notification) =>
+      notification.businessId === activeBusiness.id && !notification.isRead
+        ? { ...notification, isRead: true }
+        : notification));
+  };
+
+  const dismissActiveNotification = (notificationId: string) => {
+    setNotifications((current) => current.filter((notification) =>
+      notification.id !== notificationId || notification.businessId !== activeBusiness.id));
+  };
+
+  const clearActiveNotifications = () => {
+    setNotifications((current) => current.filter((notification) =>
+      notification.businessId !== activeBusiness.id));
   };
 
   const openPostForm = (date?: string) => {
@@ -1258,6 +1404,18 @@ function CalendarSurface() {
 
     if (suggestions.length > 0) {
       const replacementIds = new Set(refreshed.proposals.flatMap((proposal) => proposal.replaces ? [proposal.replaces.postId] : []));
+      const appliedSuggestions = suggestions.filter((suggestion) => {
+        const proposal = refreshed.proposals.find((candidate) =>
+          candidate.sourcePostId === suggestion.sourcePostId
+          && candidate.contentType === suggestion.contentType
+          && candidate.date === suggestion.date);
+        if (proposal?.replaces) return true;
+        return !activeBusinessPosts.some((existing) =>
+          existing.schedulingStatus === 'approved-suggestion'
+          && existing.sourcePostId === suggestion.sourcePostId
+          && existing.contentType === suggestion.contentType
+          && existing.date === suggestion.date);
+      });
       setUserPosts((current) => {
         const revised = current.map((existing) => replacementIds.has(existing.id)
           ? suggestions.find((suggestion) => suggestion.id === existing.id) ?? existing : existing);
@@ -1265,6 +1423,27 @@ function CalendarSurface() {
           && !revised.some((existing) => existing.schedulingStatus === 'approved-suggestion'
             && existing.sourcePostId === suggestion.sourcePostId && existing.contentType === suggestion.contentType
             && existing.date === suggestion.date))];
+      });
+      appliedSuggestions.forEach((suggestion) => {
+        const moved = refreshed.proposals.some((proposal) =>
+          proposal.sourcePostId === suggestion.sourcePostId
+          && proposal.contentType === suggestion.contentType
+          && proposal.date === suggestion.date
+          && Boolean(proposal.replaces));
+        recordNotification({
+          businessId: activeBusiness.id,
+          dedupeKey: `plan-change:${activeBusiness.id}:${suggestion.id}:${suggestion.date}:${suggestion.contentType}`,
+          icon: 'calendar',
+          title: moved ? 'Plan updated' : 'New suggestion added',
+          subtitle: `${suggestion.contentType} for ${suggestion.project}, ${formatPostOptionDate(suggestion.date)} · Airtime balance updated`,
+          kind: 'plan-change',
+          action: {
+            kind: 'calendar-post',
+            label: 'View on calendar',
+            postId: suggestion.id,
+            date: suggestion.date,
+          },
+        });
       });
       setSelectedPostId(null);
       revealDateInCalendar(suggestions[0].date);
@@ -1422,9 +1601,29 @@ function CalendarSurface() {
       suggestionKind: proposal.kind,
       sourcePostId: proposal.sourcePostId,
     };
-    setUserPosts((current) => current.some((existing) =>
-      existing.sourcePostId === suggestion.sourcePostId && existing.suggestionKind === suggestion.suggestionKind)
-      ? current : [...current, suggestion]);
+    const alreadyAdded = activeBusinessPosts.some((existing) =>
+      existing.sourcePostId === suggestion.sourcePostId && existing.suggestionKind === suggestion.suggestionKind);
+    if (!alreadyAdded) {
+      setUserPosts((current) => current.some((existing) =>
+        existing.businessId === activeBusiness.id
+        && existing.sourcePostId === suggestion.sourcePostId
+        && existing.suggestionKind === suggestion.suggestionKind)
+        ? current : [...current, suggestion]);
+      recordNotification({
+        businessId: activeBusiness.id,
+        dedupeKey: `plan-change:${activeBusiness.id}:${suggestion.id}:${suggestion.date}:${suggestion.contentType}`,
+        icon: 'calendar',
+        title: 'New suggestion added',
+        subtitle: `${suggestion.contentType} for ${suggestion.project}, ${formatPostOptionDate(suggestion.date)} · Airtime balance updated`,
+        kind: 'plan-change',
+        action: {
+          kind: 'calendar-post',
+          label: 'View on calendar',
+          postId: suggestion.id,
+          date: suggestion.date,
+        },
+      });
+    }
     setActionInsight(null);
     setSelectedPostId(null);
     revealDateInCalendar(suggestion.date);
@@ -1568,6 +1767,16 @@ function CalendarSurface() {
             <p className="calendar-subtitle">{activeBusiness.descriptor} {activeBusiness.focus}</p>
           </div>
           <div className="header-actions">
+            <NotificationCenter
+              key={activeBusiness.id}
+              businessName={activeBusiness.name}
+              notifications={activeNotifications}
+              unreadCount={unreadNotificationCount}
+              onOpened={markActiveNotificationsRead}
+              onDismiss={dismissActiveNotification}
+              onClearAll={clearActiveNotifications}
+              onActivate={handleOpenNotification}
+            />
             <button className="icon-button manage-services" onClick={() => setIsServiceManagerOpen(true)} type="button">
               <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
               Manage services
@@ -2157,6 +2366,7 @@ function CalendarSurface() {
           <ActionInsightPopup
             insight={actionInsight}
             onAdd={handleAddInsightSuggestions}
+            onDismiss={handleDismissActionInsight}
             onSkip={() => actionInsight.proposals.length > 0
               ? keepPerformanceInsight(actionInsight)
               : setActionInsight(null)}

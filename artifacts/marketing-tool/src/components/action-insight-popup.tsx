@@ -5,12 +5,13 @@ type Props = {
   insight: ActionInsight;
   onAdd: () => void;
   onSkip: () => void;
+  onDismiss: () => void;
 };
 
-export function ActionInsightPopup({ insight, onAdd, onSkip }: Props) {
+export function ActionInsightPopup({ insight, onAdd, onSkip, onDismiss }: Props) {
   return (
     <aside aria-labelledby="action-insight-title" aria-live="polite" className="action-insight-popup action-insight-popup-sequence">
-      <button aria-label="Dismiss insight" className="modal-close action-insight-close" onClick={onSkip} type="button">
+      <button aria-label="Dismiss insight" className="modal-close action-insight-close" onClick={onDismiss} type="button">
         <X size={16} strokeWidth={1.8} />
       </button>
       <div className="action-insight-topline">
