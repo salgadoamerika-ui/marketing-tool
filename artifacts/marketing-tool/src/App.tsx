@@ -2059,7 +2059,7 @@ function CalendarSurface() {
                   )}</p>
                 </section>
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
-                <div className="post-status-actions">
+                <div className="post-detail-actions">
                   <button
                     aria-label={selectedUserPost.isCompleted ? 'Mark post not done' : 'Mark post done'}
                     className={selectedUserPost.isCompleted ? 'cancel-button' : 'post-status-complete'}
@@ -2075,17 +2075,6 @@ function CalendarSurface() {
                     type="button"
                   >
                     {selectedUserPost.status === 'skipped' ? 'Undo skip' : 'Skip'}
-                  </button>
-                </div>
-                <div className="post-form-actions">
-                  <button className="cancel-button" onClick={closeSelectedPost} type="button">Keep post</button>
-                  <button className="save-post-button" onClick={() => {
-                    setActionInsight(buildBusinessActionInsight('completed', selectedUserPost,
-                      [...activeBusinessPosts, ...activeSeededCalendarPosts], todayKey,
-                      seededCalendarDates[activeBusiness.id] ?? [], activeServices, contentTypes));
-                    closeSelectedPost();
-                  }} type="button">
-                    Suggest next posts
                   </button>
                   <button className="delete-post-button" onClick={handleDeletePost} type="button">Delete post</button>
                 </div>

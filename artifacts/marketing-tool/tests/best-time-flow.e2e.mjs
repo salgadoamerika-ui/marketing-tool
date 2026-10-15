@@ -92,7 +92,24 @@ test('service mode create/edit stores dates, survives reload, isolates businesse
     await openPost(evaluate, source);
     assert.match(await evaluate("document.querySelector('.post-detail-list').innerText"), /Mode\nCampaign/i);
     assert.match(await evaluate("document.querySelector('.post-detail-list').innerText"), /Deadline/i);
-    await clickButtonText(evaluate, 'Keep post');
+    assert.deepEqual(
+      await evaluate("[...document.querySelectorAll('.post-detail-actions button')].map((button) => button.textContent.trim())"),
+      ['Mark done', 'Skip', 'Delete post'],
+    );
+    assert.doesNotMatch(await evaluate("document.querySelector('.post-detail-modal').innerText"), /Keep post|Suggest next posts/);
+    await browser.resize(360, 760);
+    const actionLayout = await evaluate(`(() => {
+      const actions = document.querySelector('.post-detail-actions');
+      const buttons = [...actions.querySelectorAll('button')].map((button) => button.getBoundingClientRect());
+      return {
+        rowTops: buttons.map((rect) => Math.round(rect.top)),
+        rightWithinModal: Math.max(...buttons.map((rect) => rect.right))
+          <= document.querySelector('.post-detail-modal').getBoundingClientRect().right,
+      };
+    })()`);
+    assert.equal(new Set(actionLayout.rowTops).size, 1, 'All three actions stay on a single row on narrow screens.');
+    assert.equal(actionLayout.rightWithinModal, true, 'The actions stay within the popup.');
+    await click(evaluate, '.post-modal-header .modal-close');
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'reload after campaign edit');
     await clickButtonText(evaluate, 'Manage services');
@@ -199,7 +216,7 @@ test('business tabs isolate posts, insights, services and airtime; new workspace
     await click(evaluate, '.sm-header button');
 
     await click(evaluate, 'button[aria-label="Open saved post: Mosaic-only workspace post"]');
-    await clickButtonText(evaluate, 'Suggest next posts');
+    await clickButtonText(evaluate, 'Mark done');
     await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-popup'))"), 'Mosaic insight');
     await evaluate("if (document.scrollingElement) document.scrollingElement.scrollTop = 0");
     await waitFor(() => evaluate('window.scrollY === 0'), 'calendar tabs back in view');
@@ -358,7 +375,7 @@ test('an approved planned post moves to the newly suggested date only after Add'
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'seeded date-move calendar');
     await openPost(evaluate, source);
-    await clickButtonText(evaluate, 'Suggest next posts');
+    await clickButtonText(evaluate, 'Mark done');
     await waitFor(
       () => evaluate("document.querySelector('.action-insight-popup')?.textContent.includes('Suggested update to a planned post')"),
       'proposed move in the suggestion popup',
@@ -377,8 +394,16 @@ test('an approved planned post moves to the newly suggested date only after Add'
     await browser.clickVisible('.action-insight-close');
     assert.equal((await readPosts(evaluate)).find((post) => post.id === prior.id).date, priorDate,
       'Closing a scrolled popup must not apply a move.');
+    await evaluate(`(() => {
+      const saved = JSON.parse(localStorage.getItem('marketing-tool.user-posts') ?? '[]');
+      const sourcePost = saved.find((post) => post.id === ${jsString(source.id)});
+      delete sourcePost.isCompleted;
+      localStorage.setItem('marketing-tool.user-posts', JSON.stringify(saved));
+    })()`);
+    await browser.reload();
+    await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'calendar after resetting completion');
     await openPost(evaluate, source);
-    await clickButtonText(evaluate, 'Suggest next posts');
+    await clickButtonText(evaluate, 'Mark done');
     await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-add'))"), 'reopened move popup');
     await browser.clickVisible('.action-insight-add');
     await waitFor(async () => (await readPosts(evaluate)).find((post) => post.id === prior.id)?.date === suggestedDate,
@@ -478,10 +503,12 @@ test('Campaign Add keeps completed posts and builds approved closing posts up to
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'seeded Campaign calendar');
 
     await openPost(evaluate, source);
-    await clickButtonText(evaluate, 'Suggest next posts');
+    await clickButtonText(evaluate, 'Mark done');
     await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-add'))"), 'closing suggestions');
     const initial = await readPosts(evaluate);
-    assert.deepEqual(initial, startingPosts, 'Reviewing the suggestions must leave every saved post unchanged.');
+    assert.deepEqual(initial, startingPosts.map((post) =>
+      post.id === source.id ? { ...post, isCompleted: true } : post),
+    'Completing the source post must mark it done without adding a suggestion.');
     await browser.clickVisible('.action-insight-add');
     await waitFor(async () => {
       const saved = await readPosts(evaluate);
@@ -515,7 +542,7 @@ test('Campaign Add keeps completed posts and builds approved closing posts up to
     const lastChance = saved.find((post) => post.sourcePostId === source.id && post.contentType === 'Last chance');
     assert.ok(lastChance);
     await openPost(evaluate, lastChance);
-    await clickButtonText(evaluate, 'Suggest next posts');
+    await clickButtonText(evaluate, 'Mark done');
     await waitFor(() => evaluate("Boolean(document.querySelector('.action-insight-add'))"), 'remaining deadline dates');
     await browser.clickVisible('.action-insight-add');
     await waitFor(async () => (await readPosts(evaluate)).filter((post) => post.businessId === source.businessId
@@ -1379,7 +1406,7 @@ async function saveResults(evaluate, post, { keepOpen = false } = {}) {
     `confirmation and conversion assessment after saving ${post.title}`,
   );
   if (!keepOpen) {
-    await clickButtonText(evaluate, 'Keep post');
+    await click(evaluate, '.post-modal-header .modal-close');
     await dismissInsight(evaluate);
   }
   const persistedPost = await waitFor(async () => {
@@ -1395,7 +1422,7 @@ async function saveResults(evaluate, post, { keepOpen = false } = {}) {
 }
 
 async function assertCalendarMode(evaluate, post, mode) {
-  await clickButtonText(evaluate, 'Keep post');
+  await click(evaluate, '.post-modal-header .modal-close');
   await dismissInsight(evaluate);
   await ensureMonth(evaluate, post.date);
   const hasModeBadge = await evaluate(`(() => {
@@ -1407,7 +1434,7 @@ async function assertCalendarMode(evaluate, post, mode) {
 }
 
 async function assertNoCalendarMode(evaluate, post) {
-  await clickButtonText(evaluate, 'Keep post');
+  await click(evaluate, '.post-modal-header .modal-close');
   await ensureMonth(evaluate, post.date);
   const hasModeBadge = await evaluate(`(() => {
     const event = [...document.querySelectorAll('button.event-chip-button')]
@@ -1676,7 +1703,7 @@ test('flat-post policy stays invisible while normal approvals retry, refresh and
     await saveResults(evaluate, { ...posts[2], views: 50, saves: 10, bookings: 5 }, { keepOpen: true });
     assert.equal(await evaluate("Boolean(document.querySelector('.action-insight-popup'))"), false, 'First weak result has no new intervention.');
     await assertInvisible(evaluate);
-    await clickButtonText(evaluate, 'Keep post');
+    await click(evaluate, '.post-modal-header .modal-close');
 
     await openPost(evaluate, posts[3]);
     await saveResults(evaluate, { ...posts[3], views: 40, saves: 10, bookings: 5 }, { keepOpen: true });
@@ -1704,7 +1731,7 @@ test('flat-post policy stays invisible while normal approvals retry, refresh and
     await assertInvisible(evaluate);
     await click(evaluate, '.action-insight-skip');
     assert.equal((await readPosts(evaluate)).length, 5);
-    await clickButtonText(evaluate, 'Keep post');
+    await click(evaluate, '.post-modal-header .modal-close');
 
     const nextPost = { service: 'Insurance', title: 'Coverage detail next', date: '2026-09-06' };
     await createPost(evaluate, nextPost, 'skip');
@@ -1766,7 +1793,7 @@ test('service trend marks only newest measured post, offers trust then referral,
     await openPost(evaluate, posts[0]);
     assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-panel'))"), false, 'Nothing appears before the three-post gate.');
     assert.equal(await evaluate("document.querySelectorAll('.event-conversion-gap').length"), 0);
-    await clickButtonText(evaluate, 'Keep post');
+    await click(evaluate, '.post-modal-header .modal-close');
 
     await openPost(evaluate, posts[2]);
     await saveResults(evaluate, { ...posts[2], views: 300, saves: 10, bookings: 1 }, { keepOpen: true });
@@ -1778,7 +1805,7 @@ test('service trend marks only newest measured post, offers trust then referral,
     assert.equal((await readPosts(evaluate)).length, 3, 'Detection must not silently add a calendar post.');
     await clickButtonText(evaluate, 'Skip suggestion');
     assert.equal((await readPosts(evaluate)).length, 3, 'Skip must not create a follow-up.');
-    await clickButtonText(evaluate, 'Keep post');
+    await click(evaluate, '.post-modal-header .modal-close');
 
     await openPost(evaluate, posts[2]);
     await click(evaluate, '.conversion-gap-actions .save-post-button');
@@ -1790,7 +1817,7 @@ test('service trend marks only newest measured post, offers trust then referral,
     assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-actions'))"), false, 'Offer waits for testimonial results.');
     await saveResults(evaluate, { ...trust, views: 300, saves: 10, bookings: 1 }, { keepOpen: true });
     assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-actions'))"), false, 'Future trust post cannot unlock an offer even with results.');
-    await clickButtonText(evaluate, 'Keep post');
+    await click(evaluate, '.post-modal-header .modal-close');
     // Simulate the approved trust post having run by rescheduling it to today.
     const today = new Date().toISOString().slice(0, 10);
     await evaluate(`(() => {
@@ -1817,12 +1844,12 @@ test('service trend marks only newest measured post, offers trust then referral,
     await saveResults(evaluate, { ...offer, views: 300, saves: 10, bookings: 30 }, { keepOpen: true });
     assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-panel'))"), false, 'Recovery removes the summary.');
     assert.equal(await evaluate("document.querySelectorAll('.event-conversion-gap').length"), 0, 'Recovery clears every marker.');
-    await clickButtonText(evaluate, 'Keep post');
+    await click(evaluate, '.post-modal-header .modal-close');
     await browser.reload();
     await waitFor(() => evaluate("Boolean(document.querySelector('button.add-post'))"), 'recovered calendar after reload');
     await openPost(evaluate, offer);
     assert.equal(await evaluate("Boolean(document.querySelector('.conversion-gap-panel'))"), false, 'Recovery persists across reload.');
-    await clickButtonText(evaluate, 'Keep post');
+    await click(evaluate, '.post-modal-header .modal-close');
     const nextPosts = [1, 2, 3].map((offset) => ({
       ...measured(`next${offset}`, '09', { views: 300, saves: 10, bookings: 1 }),
       date: new Date(new Date(`${offer.date}T12:00:00Z`).getTime() + offset * 86400000).toISOString().slice(0, 10),
