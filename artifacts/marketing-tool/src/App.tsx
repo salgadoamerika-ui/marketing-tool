@@ -1757,6 +1757,16 @@ function CalendarSurface() {
             <Plus size={17} strokeWidth={1.7} />
           </button>
         </nav>
+        <NotificationCenter
+          key={activeBusiness.id}
+          businessName={activeBusiness.name}
+          notifications={activeNotifications}
+          unreadCount={unreadNotificationCount}
+          onOpened={markActiveNotificationsRead}
+          onDismiss={dismissActiveNotification}
+          onClearAll={clearActiveNotifications}
+          onActivate={handleOpenNotification}
+        />
 
         <header className="calendar-header">
           <div>
@@ -1767,16 +1777,6 @@ function CalendarSurface() {
             <p className="calendar-subtitle">{activeBusiness.descriptor} {activeBusiness.focus}</p>
           </div>
           <div className="header-actions">
-            <NotificationCenter
-              key={activeBusiness.id}
-              businessName={activeBusiness.name}
-              notifications={activeNotifications}
-              unreadCount={unreadNotificationCount}
-              onOpened={markActiveNotificationsRead}
-              onDismiss={dismissActiveNotification}
-              onClearAll={clearActiveNotifications}
-              onActivate={handleOpenNotification}
-            />
             <button className="icon-button manage-services" onClick={() => setIsServiceManagerOpen(true)} type="button">
               <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
               Manage services
