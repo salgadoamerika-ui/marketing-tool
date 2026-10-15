@@ -1720,53 +1720,55 @@ function CalendarSurface() {
   return (
     <main className="calendar-page">
       <div className="calendar-shell">
-        <nav className="business-tabs" aria-label="Businesses">
-          {businesses.map((business) => (
+        <div className="business-switcher">
+          <nav className="business-tabs" aria-label="Businesses">
+            {businesses.map((business) => (
+              <button
+                aria-pressed={business.id === activeBusiness.id}
+                className={`business-tab ${business.id === activeBusiness.id ? 'active' : ''}`}
+                key={business.id}
+                style={{ '--business-accent-color': getBusinessAccent(business.accent).color } as CSSProperties}
+                onClick={() => {
+                  setActiveBusinessId(business.id);
+                  setStatusMessage('');
+                  setActionInsight(null);
+                  closeSelectedPost();
+                  closePostForm();
+                  setIsServiceManagerOpen(false);
+                  setIsContentManagerOpen(false);
+                }}
+                type="button"
+              >
+                <span className="business-dot" aria-hidden="true" />
+                {business.name}
+              </button>
+            ))}
             <button
-              aria-pressed={business.id === activeBusiness.id}
-              className={`business-tab ${business.id === activeBusiness.id ? 'active' : ''}`}
-              key={business.id}
-              style={{ '--business-accent-color': getBusinessAccent(business.accent).color } as CSSProperties}
+              aria-label="Add a business"
+              className="business-tab business-tab-add"
               onClick={() => {
-                setActiveBusinessId(business.id);
-                setStatusMessage('');
                 setActionInsight(null);
                 closeSelectedPost();
                 closePostForm();
-                setIsServiceManagerOpen(false);
                 setIsContentManagerOpen(false);
+                setIsBusinessDialogOpen(true);
               }}
               type="button"
             >
-              <span className="business-dot" aria-hidden="true" />
-              {business.name}
+              <Plus size={17} strokeWidth={1.7} />
             </button>
-          ))}
-          <button
-            aria-label="Add a business"
-            className="business-tab business-tab-add"
-            onClick={() => {
-              setActionInsight(null);
-              closeSelectedPost();
-              closePostForm();
-              setIsContentManagerOpen(false);
-              setIsBusinessDialogOpen(true);
-            }}
-            type="button"
-          >
-            <Plus size={17} strokeWidth={1.7} />
-          </button>
-        </nav>
-        <NotificationCenter
-          key={activeBusiness.id}
-          businessName={activeBusiness.name}
-          notifications={activeNotifications}
-          unreadCount={unreadNotificationCount}
-          onOpened={markActiveNotificationsRead}
-          onDismiss={dismissActiveNotification}
-          onClearAll={clearActiveNotifications}
-          onActivate={handleOpenNotification}
-        />
+          </nav>
+          <NotificationCenter
+            key={activeBusiness.id}
+            businessName={activeBusiness.name}
+            notifications={activeNotifications}
+            unreadCount={unreadNotificationCount}
+            onOpened={markActiveNotificationsRead}
+            onDismiss={dismissActiveNotification}
+            onClearAll={clearActiveNotifications}
+            onActivate={handleOpenNotification}
+          />
+        </div>
 
         <header className="calendar-header">
           <div>

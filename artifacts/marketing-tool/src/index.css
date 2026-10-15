@@ -117,13 +117,22 @@
   padding: 28px clamp(18px, 4vw, 58px) 58px;
 }
 
+.business-switcher {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--ink);
+}
+
 .business-tabs {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: flex-end;
   gap: 5px;
   min-height: 43px;
-  padding: 0 58px 0 4px;
-  border-bottom: 1px solid var(--ink);
+  padding: 0 4px;
 }
 
 .business-tab {
@@ -237,34 +246,30 @@
 .icon-button:hover { border-color: var(--rose-soft); background: #f9e9ee; transform: translateY(-1px); }
 
 .notification-center {
-  position: absolute;
-  top: 27px;
-  right: clamp(24px, 4vw, 58px);
+  position: relative;
   z-index: 40;
   display: inline-flex;
   flex: none;
+  margin-bottom: 2px;
 }
 .notification-bell {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  border: 1px solid #d5b864;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #d9c68e;
   border-radius: 50%;
-  background: linear-gradient(145deg, #fffdf4 5%, #f6e9bd 100%);
-  box-shadow: 0 5px 14px rgba(153, 119, 42, .2), inset 0 1px rgba(255, 255, 255, .95);
-  color: #8d6b20;
+  background: #fffdf8;
+  color: #9a7b31;
   cursor: pointer;
-  transition: background .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease, transform .18s ease;
+  transition: background .18s ease, border-color .18s ease, color .18s ease;
 }
 .notification-bell:hover, .notification-bell[aria-expanded="true"] {
-  transform: translateY(-1px);
-  border-color: #b99643;
-  background: linear-gradient(145deg, #fffbea, #efd995);
-  box-shadow: 0 7px 18px rgba(153, 119, 42, .28), inset 0 1px rgba(255, 255, 255, .95);
-  color: #755614;
+  border-color: #c7ae68;
+  background: #f8f1df;
+  color: #755a1e;
 }
 .notification-count {
   position: absolute;
@@ -1091,16 +1096,15 @@
 }
 
 @media (max-width: 700px) {
-  .calendar-shell { padding: 60px 12px 40px; }
+  .calendar-shell { padding: 16px 12px 40px; }
+  .business-switcher { gap: 8px; }
   .business-tabs {
     overflow-x: auto;
     scrollbar-width: none;
-    margin-inline: -12px;
-    padding: 0 58px 0 12px;
+    padding: 0 4px;
   }
   .business-tabs::-webkit-scrollbar { display: none; }
   .business-tab { flex: 0 0 auto; }
-  .notification-center { top: 14px; right: 12px; }
   .calendar-header { align-items: flex-start; flex-direction: column; padding: 32px 2px 20px; }
   .calendar-title { font-size: clamp(3rem, 15vw, 4.2rem); }
   .header-actions { justify-content: space-between; width: 100%; }
