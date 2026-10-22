@@ -46,7 +46,7 @@ export function buildSkipAlternativeInsight(
   if (!contentType) return base;
   const service = services.find((item) => item.businessId === post.businessId && item.name === post.project);
   if (!service) throw new Error('Choose a saved Service or Campaign before planning content.');
-  if (service.mode === 'campaign' && today > service.endDate) return {
+  if (service.mode === 'campaign' && (service.status === 'dormant' || today > service.endDate)) return {
     ...base, recommendation: 'Skipped and kept in your record. This Campaign has ended, so no new post will be suggested.',
   };
   const anchor = post.date > today ? post.date : today;

@@ -49,6 +49,14 @@
 .sm-btn-primary:hover { background: var(--rose-deep); }
 .sm-btn-small { min-height: 36px; padding: 6px 14px; }
 .sm-btn:focus-visible { outline: 2px solid var(--rose-deep); outline-offset: 2px; }
+.sm-wakeup-offer { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid #ddcdd5; border-radius: 12px; background: #fcf3f5; }
+.sm-wakeup-offer strong { color: var(--ink); font-size: 13px; }
+.sm-wakeup-offer p { margin: 5px 0 0; color: var(--plum-soft); font-size: 12px; line-height: 1.5; }
+.sm-wakeup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sm-wakeup-confirmation { margin: 0; padding: 12px 14px; border-radius: 10px; background: #edf4ed; color: #426a50; font-size: 12px; line-height: 1.5; }
+.sm-cycle-history { margin-top: 4px; color: var(--plum-soft); font-size: 11px; }
+.sm-cycle-history summary { cursor: pointer; }
+.sm-cycle-history ul { display: grid; gap: 5px; padding-left: 16px; line-height: 1.5; }
 .sm-live:empty { display: none; }
 @media (max-width: 560px) {
   .sm-backdrop { padding: 10px; align-items: flex-end; }

@@ -2,6 +2,15 @@ export type ServiceMode = 'evergreen' | 'campaign';
 export type CampaignStatus = 'active' | 'dormant';
 export const serviceCalendarTones = ['rose', 'lavender', 'sage', 'sand', 'blue', 'blush', 'muted'] as const;
 export type ServiceTone = (typeof serviceCalendarTones)[number];
+export type CampaignCycleArchive = {
+  name: string;
+  startDate: string;
+  endDate: string;
+  closedAt?: string;
+  postIds: string[];
+  platforms?: string[];
+  tone?: ServiceTone;
+};
 type ServiceIdentity = {
   id: string;
   businessId: string;
@@ -18,6 +27,7 @@ export type ServiceDefinition = ServiceIdentity & (
     dormantSince?: string;
     wakeUpHandledCycles?: string[];
     wakeSourcePostId?: string;
+    campaignHistory?: CampaignCycleArchive[];
   }
 );
 
@@ -34,6 +44,20 @@ function validDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T12:00:00Z`);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function validCampaignHistory(value: unknown): value is CampaignCycleArchive[] {
+  return Array.isArray(value) && value.every((entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    const cycle = entry as Record<string, unknown>;
+    return typeof cycle.name === 'string' && Boolean(cycle.name.trim())
+      && validDate(cycle.startDate) && validDate(cycle.endDate) && cycle.startDate <= cycle.endDate
+      && (cycle.closedAt === undefined || validDate(cycle.closedAt))
+      && Array.isArray(cycle.postIds) && cycle.postIds.every((id) => typeof id === 'string')
+      && (cycle.platforms === undefined || (Array.isArray(cycle.platforms)
+        && cycle.platforms.every((platform) => typeof platform === 'string')))
+      && (cycle.tone === undefined || isServiceTone(cycle.tone));
+  });
 }
 
 export function validateService(service: ServiceDefinition): string | undefined {
@@ -64,6 +88,9 @@ export function validateService(service: ServiceDefinition): string | undefined 
     if (service.wakeSourcePostId !== undefined
       && (typeof service.wakeSourcePostId !== 'string' || !service.wakeSourcePostId.trim())) {
       return 'Campaign learning reference is invalid.';
+    }
+    if (service.campaignHistory !== undefined && !validCampaignHistory(service.campaignHistory)) {
+      return 'Campaign cycle history is invalid.';
     }
   }
   return undefined;
@@ -110,6 +137,9 @@ export function normalizeService(value: unknown): ServiceDefinition {
     && (typeof record.wakeSourcePostId !== 'string' || !record.wakeSourcePostId.trim())) {
     throw new Error('Saved Campaign learning reference is invalid.');
   }
+  if (mode === 'campaign' && record.campaignHistory !== undefined && !validCampaignHistory(record.campaignHistory)) {
+    throw new Error('Saved Campaign cycle history is invalid.');
+  }
   const service = {
     ...identity, ...settings, mode,
     ...(mode === 'campaign' ? {
@@ -120,6 +150,7 @@ export function normalizeService(value: unknown): ServiceDefinition {
       ...(record.wakeUpHandledCycles !== undefined
         ? { wakeUpHandledCycles: [...new Set(record.wakeUpHandledCycles as string[])] } : {}),
       ...(record.wakeSourcePostId !== undefined ? { wakeSourcePostId: record.wakeSourcePostId } : {}),
+      ...(record.campaignHistory !== undefined ? { campaignHistory: record.campaignHistory } : {}),
     } : {}),
   } as ServiceDefinition;
   const error = validateService(service);
@@ -131,7 +162,11 @@ export function markExpiredCampaignsDormant(services: ServiceDefinition[], today
   return services.map((service) => service.mode === 'campaign'
     && service.status !== 'dormant'
     && service.endDate < today
-    ? { ...service, status: 'dormant', dormantSince: today }
+    ? {
+      ...service,
+      status: 'dormant',
+      dormantSince: new Date(Date.parse(`${service.endDate}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10),
+    }
     : service);
 }
 
@@ -145,7 +180,9 @@ export function loadServices(raw: string | null, defaults: ServiceDefinition[]):
     throw new Error('Saved services contain duplicate entries.');
   }
   for (const service of defaults) {
-    if (!services.some((existing) => key(existing) === key(service))) services.push(normalizeService(service));
+    if (!services.some((existing) => existing.id === service.id || key(existing) === key(service))) {
+      services.push(normalizeService(service));
+    }
   }
   return services;
 }

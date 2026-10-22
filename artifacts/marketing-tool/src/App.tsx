@@ -771,8 +771,13 @@ function CalendarSurface() {
     [notifications, activeBusiness.id],
   );
   const unreadNotificationCount = activeNotifications.filter((item) => !item.isRead).length;
-  const campaignWakeupBanners = activeNotifications.filter((item) =>
-    item.kind === 'campaign-wakeup' && !item.bannerDismissed && item.action?.kind === 'campaign-wakeup');
+  const campaignWakeupBanners = activeNotifications.filter((item) => {
+    const action = item.action;
+    return item.kind === 'campaign-wakeup' && !item.bannerDismissed && action?.kind === 'campaign-wakeup'
+      && todayKey >= action.startDate && todayKey <= action.endDate
+      && businessServices.some((service) => service.id === action.campaignId
+        && service.mode === 'campaign' && service.status === 'dormant');
+  });
   const weeklyInsightsPosts = useMemo(() => {
     if (!weeklyInsightsContext || weeklyInsightsContext.businessId !== activeBusiness.id) return [];
     return activeBusinessPosts
@@ -1044,6 +1049,7 @@ function CalendarSurface() {
     const existingTone = activeBusiness.palette.find((item) => item.label === draft.name.trim())?.tone;
     const tone = existing?.tone ?? existingTone ?? nextServiceTone(activeBusiness.palette.map((item) => item.tone));
     const saved = normalizeService({
+      ...existing,
       ...draft,
       name: draft.name.trim(),
       platforms,
@@ -1055,8 +1061,7 @@ function CalendarSurface() {
     });
     if (revivingDormantCampaign && saved.mode === 'campaign') {
       const cycle = { cycleKey: `${saved.id}:${saved.startDate}`, startDate: saved.startDate, endDate: saved.endDate };
-      const revived = reactivateCampaign(saved, cycle);
-      return typeof revived === 'string' ? revived : revived;
+      return reactivateCampaign(saved, cycle);
     }
     const updated = existing ? services.map((service) => service.id === saved.id ? saved : service) : [...services, saved];
     try {
@@ -1200,6 +1205,9 @@ function CalendarSurface() {
     if (!dormant || dormant.mode !== 'campaign' || dormant.status !== 'dormant') {
       return 'This Campaign is no longer dormant.';
     }
+    if (cycle.endDate < todayKey) {
+      return 'That Campaign window has passed. Use Manage services to choose dates for its next cycle.';
+    }
     if (services.some((service) => service.id !== dormant.id
       && service.businessId === dormant.businessId
       && service.name.toLowerCase() === campaignDraft.name.trim().toLowerCase())) {
@@ -1207,16 +1215,38 @@ function CalendarSurface() {
     }
 
     const learningPost = bestCampaignLearningPost(dormant, userPosts);
-    const revived = normalizeService({
+    const platforms = (campaignDraft.platforms ?? activeBusiness.platforms)
+      .filter((platform) => availablePlatforms.includes(platform));
+    if (platforms.length === 0) return 'Choose an available platform in Manage services before restarting this Campaign.';
+    const previousCycle = {
+      name: dormant.name,
+      startDate: dormant.startDate,
+      endDate: dormant.endDate,
+      closedAt: dormant.dormantSince,
+      postIds: userPosts.filter((post) => post.businessId === dormant.businessId && post.project === dormant.name
+        && post.date >= dormant.startDate && post.date <= dormant.endDate).map((post) => post.id),
+      platforms: dormant.platforms,
+      tone: dormant.tone,
+    };
+    const history = dormant.campaignHistory ?? [];
+    const campaignHistory = history.some((entry) => entry.startDate === previousCycle.startDate
+      && entry.endDate === previousCycle.endDate && entry.name === previousCycle.name)
+      ? history : [...history, previousCycle];
+    const revivalInput = {
       ...campaignDraft,
       name: campaignDraft.name.trim(),
+      platforms,
       startDate: cycle.startDate,
       endDate: cycle.endDate,
       status: 'active',
       dormantSince: undefined,
       wakeUpHandledCycles: handledWakeCycle(dormant, cycle.cycleKey),
+      campaignHistory,
       ...(learningPost ? { wakeSourcePostId: learningPost.id } : {}),
-    }) as Extract<ServiceDefinition, { mode: 'campaign' }>;
+    };
+    const revivalError = validateService(revivalInput);
+    if (revivalError) return revivalError;
+    const revived = normalizeService(revivalInput) as Extract<ServiceDefinition, { mode: 'campaign' }>;
     const nextServices = services.map((service) => service.id === dormant.id ? revived : service);
     const nextPosts = userPosts.map((post) =>
       post.businessId === dormant.businessId && post.project === dormant.name
@@ -1226,6 +1256,12 @@ function CalendarSurface() {
       window.localStorage.setItem(servicesStorageKey, JSON.stringify(nextServices));
       window.localStorage.setItem(userPostsStorageKey, JSON.stringify(nextPosts));
     } catch {
+      try {
+        window.localStorage.setItem(servicesStorageKey, JSON.stringify(services));
+        window.localStorage.setItem(userPostsStorageKey, JSON.stringify(userPosts));
+      } catch {
+        // In-memory records are unchanged; the save error remains visible below.
+      }
       return 'This device could not save the Campaign. Free some storage and try again.';
     }
 
@@ -1323,7 +1359,10 @@ function CalendarSurface() {
         showActionMessage('That Campaign is no longer available in this business.');
         return;
       }
-      const result = reactivateCampaign(campaign, action, notification.id);
+      const result = reactivateCampaign({
+        ...campaign,
+        name: campaignNameForCycle(campaign.name, action),
+      }, action, notification.id);
       if (typeof result === 'string') showActionMessage(result);
       return;
     }
@@ -1359,11 +1398,26 @@ function CalendarSurface() {
   };
 
   const dismissActiveNotification = (notificationId: string) => {
+    const notification = activeNotifications.find((item) => item.id === notificationId);
+    if (notification?.action?.kind === 'campaign-wakeup') {
+      markCampaignWakeHandled(notification.businessId, notification.action.campaignId, notification.action.cycleKey);
+    }
     setNotifications((current) => current.filter((notification) =>
       notification.id !== notificationId || notification.businessId !== activeBusiness.id));
   };
 
   const clearActiveNotifications = () => {
+    const wakeups = activeNotifications.flatMap((notification) => notification.action?.kind === 'campaign-wakeup'
+      ? [notification.action] : []);
+    if (wakeups.length) {
+      setServices((current) => current.map((service) => {
+        if (service.businessId !== activeBusiness.id || service.mode !== 'campaign') return service;
+        const cycles = wakeups.filter((action) => action.campaignId === service.id).map((action) => action.cycleKey);
+        return cycles.length
+          ? { ...service, wakeUpHandledCycles: [...new Set([...(service.wakeUpHandledCycles ?? []), ...cycles])] }
+          : service;
+      }));
+    }
     setNotifications((current) => current.filter((notification) =>
       notification.businessId !== activeBusiness.id));
   };
@@ -1983,6 +2037,19 @@ function CalendarSurface() {
             onActivate={handleOpenNotification}
           />
         </div>
+        {campaignWakeupBanners.length > 0 && (
+          <div className="campaign-wakeup-stack">
+            {campaignWakeupBanners.map((notification) => (
+              <CampaignWakeupBanner
+                key={notification.id}
+                notification={notification}
+                onYes={handleOpenNotification}
+                onNotNow={dismissCampaignWakeupBanner}
+                onDismiss={dismissCampaignWakeupBanner}
+              />
+            ))}
+          </div>
+        )}
 
         <header className="calendar-header">
           <div>

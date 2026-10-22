@@ -67,7 +67,7 @@ export function getPacedSuggestionDate(
   intendedDate: string,
   occupiedDates: string[] = [],
 ): string | undefined {
-  if (service.mode === 'campaign' && today > service.endDate) return undefined;
+  if (service.mode === 'campaign' && (service.status === 'dormant' || today > service.endDate)) return undefined;
   let intended = intendedDate < today ? today : intendedDate;
   if (service.mode === 'campaign') {
     if (intended < service.startDate) intended = service.startDate;

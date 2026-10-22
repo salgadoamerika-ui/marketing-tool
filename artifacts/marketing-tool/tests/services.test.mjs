@@ -38,6 +38,13 @@ test('saved modes survive hydration while new defaults and old post projects are
   assert.deepEqual(result, [campaign, extra, otherBusiness]);
   assert.deepEqual(loadServices(JSON.stringify(result), [ongoing, extra, otherBusiness]), result);
 });
+test('a revived Campaign keeps its identity without restoring a renamed seeded default', () => {
+  const revived = {
+    ...campaign, name: 'Insurance 2027', status: 'active',
+    campaignHistory: [{ name: 'Insurance', startDate: campaign.startDate, endDate: campaign.endDate, postIds: ['old-post'] }],
+  };
+  assert.deepEqual(loadServices(JSON.stringify([revived]), [ongoing]), [revived]);
+});
 test('bad storage, unknown modes and duplicate identities fail explicitly instead of erasing data', () => {
   assert.throws(() => loadServices('{', [ongoing]));
   assert.throws(() => loadServices('{}', [ongoing]));

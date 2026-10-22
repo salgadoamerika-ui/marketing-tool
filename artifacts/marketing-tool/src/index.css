@@ -245,6 +245,39 @@
 }
 .icon-button:hover { border-color: var(--rose-soft); background: #f9e9ee; transform: translateY(-1px); }
 
+.campaign-wakeup-stack { display: grid; gap: 10px; margin-top: 20px; }
+.campaign-wakeup-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 46px 18px 18px;
+  border: 1px solid #ddcdd5;
+  border-radius: 15px;
+  background: #fcf3f5;
+}
+.campaign-wakeup-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f3e1e7;
+  color: var(--rose-deep);
+}
+.campaign-wakeup-copy { flex: 1; min-width: 0; }
+.campaign-wakeup-copy p { margin: 0 0 5px; color: var(--rose-deep); font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.campaign-wakeup-copy h2 { margin: 0 0 5px; color: var(--ink); font-family: 'Fraunces', Georgia, serif; font-size: 21px; font-weight: 500; }
+.campaign-wakeup-copy > span { color: var(--plum-soft); font-size: 12px; line-height: 1.5; }
+.campaign-wakeup-actions { display: flex; gap: 8px; flex: none; }
+.campaign-wakeup-actions button { min-height: 36px; padding: 8px 17px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 700; }
+.campaign-wakeup-yes { border: 1px solid var(--rose); background: var(--rose); color: #fffdfb; }
+.campaign-wakeup-yes:hover { background: var(--rose-deep); }
+.campaign-wakeup-later { border: 1px solid var(--line-strong); background: #fffaf8; color: var(--plum-soft); }
+.campaign-wakeup-later:hover { background: #f5e8ed; }
+.campaign-wakeup-dismiss { position: absolute; top: 13px; right: 12px; display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; color: var(--plum-soft); cursor: pointer; }
+.campaign-wakeup-dismiss:hover { background: #f0e0e6; }
 .notification-center {
   position: relative;
   z-index: 40;
@@ -1105,6 +1138,9 @@
   }
   .business-tabs::-webkit-scrollbar { display: none; }
   .business-tab { flex: 0 0 auto; }
+  .campaign-wakeup-banner { flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+  .campaign-wakeup-copy { flex-basis: calc(100% - 48px); }
+  .campaign-wakeup-actions { margin-left: 46px; }
   .calendar-header { align-items: flex-start; flex-direction: column; padding: 32px 2px 20px; }
   .calendar-title { font-size: clamp(3rem, 15vw, 4.2rem); }
   .header-actions { justify-content: space-between; width: 100%; }

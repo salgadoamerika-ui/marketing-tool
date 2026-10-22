@@ -118,7 +118,9 @@ export function bestCampaignLearningPost<T extends CampaignPostLearning>(
 ): T | undefined {
   const campaignPosts = posts.filter((post) => post.businessId === campaign.businessId
     && post.project === campaign.name && post.status !== 'skipped');
-  const measured = campaignPosts.filter((post) => post.performance
+  const lastCyclePosts = campaignPosts.filter((post) => post.date >= campaign.startDate && post.date <= campaign.endDate);
+  const history = lastCyclePosts.length ? lastCyclePosts : campaignPosts;
+  const measured = history.filter((post) => post.performance
     && [post.performance.views, post.performance.saves, post.performance.bookings]
       .some((value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0));
   const ranked = (items: T[]) => [...items].sort((left, right) =>
@@ -126,7 +128,7 @@ export function bestCampaignLearningPost<T extends CampaignPostLearning>(
     || (right.performance?.views ?? -1) - (left.performance?.views ?? -1)
     || (right.performance?.saves ?? -1) - (left.performance?.saves ?? -1)
     || right.date.localeCompare(left.date));
-  return ranked(measured)[0] ?? [...campaignPosts].sort((left, right) => right.date.localeCompare(left.date))[0];
+  return ranked(measured)[0] ?? [...history].sort((left, right) => right.date.localeCompare(left.date))[0];
 }
 
 export function handledWakeCycle(campaign: Extract<ServiceDefinition, { mode: 'campaign' }>, cycleKey: string) {

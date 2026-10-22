@@ -140,6 +140,17 @@ export function ServiceManager({
     setDraft((current) => {
       if (!current) return current;
       const next = { ...current, ...changes };
+      if (current.wakeFromDormant && (
+        changes.mode === 'evergreen'
+        || (changes.name !== undefined
+          && findDormantCampaignMatch(changes.name, services, businessId)?.id !== current.id)
+      )) {
+        next.id = crypto.randomUUID();
+        next.status = undefined;
+        next.dormantSince = undefined;
+        next.wakeSourcePostId = undefined;
+        next.wakeFromDormant = false;
+      }
       if (changes.mode === 'campaign' && !next.startDate) next.startDate = localToday();
       return next;
     });
@@ -278,6 +289,16 @@ export function ServiceManager({
               <span className="sm-row-meta">
                 {describe(service)}{service.mode === 'campaign' && service.status === 'dormant' ? ' · Dormant' : ''}
               </span>
+              {service.mode === 'campaign' && Boolean(service.campaignHistory?.length) && (
+                <details className="sm-cycle-history">
+                  <summary>{service.campaignHistory!.length} previous {service.campaignHistory!.length === 1 ? 'cycle' : 'cycles'} saved</summary>
+                  <ul>{service.campaignHistory!.map((cycle) => (
+                    <li key={`${cycle.name}:${cycle.startDate}`}>
+                      {cycle.name} · {formatDate(cycle.startDate)} to {formatDate(cycle.endDate)}
+                    </li>
+                  ))}</ul>
+                </details>
+              )}
                   </div>
             {service.mode === 'campaign' && service.status !== 'dormant' && (
               <button
@@ -317,7 +338,7 @@ export function ServiceManager({
                   aria-invalid={Boolean(error) && draft.isNew && !draft.name.trim()}
                 />
               </label>
-              {wakeMatch && ignoredWakeMatchId !== wakeMatch.id && draft.wakeSourcePostId !== wakeMatch.id && (
+              {wakeMatch && ignoredWakeMatchId !== wakeMatch.id && !draft.wakeFromDormant && (
                 <section className="sm-wakeup-offer">
                   <div>
                     <strong>Running {wakeMatch.name} again?</strong>
