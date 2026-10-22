@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, Settings2, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { NotificationCenter } from '@/components/notification-center';
+import { CampaignWakeupBanner } from '@/components/campaign-wakeup-banner';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
 import { MonthlyAirtimeBars } from '@/components/monthly-airtime-bars';
@@ -46,6 +47,13 @@ import { buildSkipAlternativeInsight } from '@/lib/skip-alternative';
 import { buildPostRationale } from '@/lib/post-rationale';
 import { getOverperformer } from '@/lib/overperformer';
 import {
+  bestCampaignLearningPost,
+  campaignNameForCycle,
+  handledWakeCycle,
+  isCampaignWakeCycleOpen,
+  nextCampaignWakeCycle,
+} from '@/lib/campaign-wakeups';
+import {
   insightNotificationKey,
   notificationsStorageKey,
   parseNotifications,
@@ -70,6 +78,7 @@ import {
 } from '@/lib/service-seasons';
 import {
   loadServices,
+  markExpiredCampaignsDormant,
   modeLabel,
   normalizeService,
   serviceCalendarTones,
@@ -696,7 +705,10 @@ function CalendarSurface() {
         id: `${post.businessId}:${post.project}`, businessId: post.businessId, name: post.project, mode: 'evergreen' as const,
       })),
     ];
-    return loadServices(window.localStorage.getItem(servicesStorageKey), defaults);
+    return markExpiredCampaignsDormant(
+      loadServices(window.localStorage.getItem(servicesStorageKey), defaults),
+      todayKey,
+    );
   });
   const [seasonMonthsByService, setSeasonMonthsByService] = useState(() =>
     loadServiceSeasonSelections(window.localStorage.getItem(serviceSeasonsStorageKey)));
@@ -720,19 +732,23 @@ function CalendarSurface() {
     ?? createBusinessContentSettings(business.platforms);
   const availablePlatforms = activeContentSettings.platformOptions;
   const contentTypes = activeContentSettings.contentTypes;
-  const activeServices = useMemo(
+  const businessServices = useMemo(
     () => services.filter((service) => service.businessId === business.id),
     [services, business.id],
+  );
+  const activeServices = useMemo(
+    () => businessServices.filter((service) => service.mode !== 'campaign' || service.status !== 'dormant'),
+    [businessServices],
   );
   const activeBusiness = useMemo(() => ({
     ...business,
     platforms: activeContentSettings.selectedPlatforms.filter((platform) => availablePlatforms.includes(platform)),
     projects: activeServices.map((service) => service.name),
-    palette: activeServices.map((service) => ({
+    palette: businessServices.map((service) => ({
       label: service.name,
       tone: service.tone ?? business.palette.find((item) => item.label === service.name)?.tone ?? 'muted' as EventTone,
     })),
-  }), [business, activeServices, activeContentSettings, availablePlatforms]);
+  }), [business, activeServices, businessServices, activeContentSettings, availablePlatforms]);
   const calendarDisplayMonth = calendarView === 'week'
     ? shiftCalendarDays(visibleWeekStart, 3)
     : visibleMonth;
@@ -755,6 +771,8 @@ function CalendarSurface() {
     [notifications, activeBusiness.id],
   );
   const unreadNotificationCount = activeNotifications.filter((item) => !item.isRead).length;
+  const campaignWakeupBanners = activeNotifications.filter((item) =>
+    item.kind === 'campaign-wakeup' && !item.bannerDismissed && item.action?.kind === 'campaign-wakeup');
   const weeklyInsightsPosts = useMemo(() => {
     if (!weeklyInsightsContext || weeklyInsightsContext.businessId !== activeBusiness.id) return [];
     return activeBusinessPosts
@@ -793,7 +811,7 @@ function CalendarSurface() {
   const selectedUserPost = userPosts.find(
     (post) => post.id === selectedPostId && post.businessId === activeBusiness.id,
   );
-  const selectedService = activeServices.find((service) => service.name === selectedUserPost?.project);
+  const selectedService = businessServices.find((service) => service.name === selectedUserPost?.project);
   const conversionMarkers = useMemo(
     () => getConversionGapMarkers(activeBusinessPosts),
     [activeBusinessPosts],
@@ -803,7 +821,7 @@ function CalendarSurface() {
     [...activeBusinessPosts, ...activeSeededCalendarPosts],
     formatDateInput(new Date()),
     seededCalendarDates[activeBusiness.id] ?? [],
-    activeServices,
+    businessServices,
   ) : null;
   const conversionReview = rawConversionReview?.proposal
     && !contentTypes.includes(rawConversionReview.proposal.contentType)
@@ -902,6 +920,33 @@ function CalendarSurface() {
     };
   }, []);
   useEffect(() => {
+    setServices((current) => markExpiredCampaignsDormant(current, todayKey));
+  }, [todayKey]);
+  useEffect(() => {
+    services.forEach((service) => {
+      if (service.mode !== 'campaign' || service.status !== 'dormant') return;
+      const cycle = nextCampaignWakeCycle(service, todayKey);
+      if (!cycle || !isCampaignWakeCycleOpen(service, cycle, todayKey)) return;
+      recordNotification({
+        businessId: service.businessId,
+        dedupeKey: `campaign-wakeup:${service.businessId}:${service.id}:${cycle.cycleKey}`,
+        icon: 'calendar',
+        title: `Running ${service.name} again?`,
+        subtitle: 'I kept the last cycle’s posts and results. Use them to shape this Campaign’s starting plan.',
+        kind: 'campaign-wakeup',
+        bannerDismissed: false,
+        action: {
+          kind: 'campaign-wakeup',
+          label: 'Run this Campaign',
+          campaignId: service.id,
+          cycleKey: cycle.cycleKey,
+          startDate: cycle.startDate,
+          endDate: cycle.endDate,
+        },
+      });
+    });
+  }, [services, todayKey, recordNotification]);
+  useEffect(() => {
     window.localStorage.setItem(
       userBusinessesStorageKey,
       JSON.stringify(userBusinesses.map(({ id, name, accent, platforms }) => ({ id, name, accent, platforms }))),
@@ -930,7 +975,7 @@ function CalendarSurface() {
         [...activeBusinessPosts, ...activeSeededCalendarPosts],
         todayKey,
         seededCalendarDates[activeBusiness.id] ?? [],
-        activeServices,
+        businessServices,
         contentTypes,
         sequenceOnly,
         current.sequenceAnchorDate,
@@ -940,7 +985,7 @@ function CalendarSurface() {
         : refreshedSequence;
       return JSON.stringify(current) === JSON.stringify(refreshed) ? current : refreshed;
     });
-  }, [activeBusiness.id, activeBusinessPosts, activeSeededCalendarPosts, activeServices, todayKey, contentTypes]);
+  }, [activeBusiness.id, activeBusinessPosts, activeSeededCalendarPosts, businessServices, todayKey, contentTypes]);
 
   useEffect(() => {
     if (!actionInsight?.sourcePostId) return;
@@ -983,7 +1028,12 @@ function CalendarSurface() {
     if (error) return error;
     if (draft.businessId !== activeBusiness.id) return 'Choose a service in this business.';
     const existing = services.find((service) => service.id === draft.id);
-    if (existing && (existing.businessId !== draft.businessId || existing.name !== draft.name.trim())) {
+    const revivingDormantCampaign = existing?.mode === 'campaign'
+      && existing.status === 'dormant'
+      && draft.mode === 'campaign'
+      && draft.status === 'active';
+    if (existing && (existing.businessId !== draft.businessId
+      || (existing.name !== draft.name.trim() && !revivingDormantCampaign))) {
       return 'The existing service name cannot be changed here.';
     }
     if (services.some((service) => service.id !== draft.id && service.businessId === draft.businessId
@@ -993,7 +1043,21 @@ function CalendarSurface() {
     if (platforms.length === 0) return 'Choose at least one available platform for this service or campaign.';
     const existingTone = activeBusiness.palette.find((item) => item.label === draft.name.trim())?.tone;
     const tone = existing?.tone ?? existingTone ?? nextServiceTone(activeBusiness.palette.map((item) => item.tone));
-    const saved = normalizeService({ ...draft, name: draft.name.trim(), platforms, tone });
+    const saved = normalizeService({
+      ...draft,
+      name: draft.name.trim(),
+      platforms,
+      tone,
+      ...(revivingDormantCampaign && existing?.mode === 'campaign' ? {
+        wakeUpHandledCycles: existing.wakeUpHandledCycles,
+        wakeSourcePostId: bestCampaignLearningPost(existing, userPosts)?.id,
+      } : {}),
+    });
+    if (revivingDormantCampaign && saved.mode === 'campaign') {
+      const cycle = { cycleKey: `${saved.id}:${saved.startDate}`, startDate: saved.startDate, endDate: saved.endDate };
+      const revived = reactivateCampaign(saved, cycle);
+      return typeof revived === 'string' ? revived : revived;
+    }
     const updated = existing ? services.map((service) => service.id === saved.id ? saved : service) : [...services, saved];
     try {
       window.localStorage.setItem(servicesStorageKey, JSON.stringify(updated));
@@ -1002,6 +1066,22 @@ function CalendarSurface() {
     }
     setServices(updated);
     return saved;
+  };
+
+  const handleCloseCampaign = (campaign: Extract<ServiceDefinition, { mode: 'campaign' }>): string | undefined => {
+    if (campaign.businessId !== activeBusiness.id || campaign.status === 'dormant') {
+      return 'This Campaign is already dormant.';
+    }
+    const updated = services.map((service) => service.id === campaign.id && service.businessId === activeBusiness.id
+      ? { ...service, status: 'dormant' as const, dormantSince: todayKey }
+      : service);
+    try {
+      window.localStorage.setItem(servicesStorageKey, JSON.stringify(updated));
+    } catch {
+      return 'This device could not save the Campaign status. Free some storage and try again.';
+    }
+    setServices(updated);
+    return `${campaign.name} is dormant. Its posts and results are saved for next season.`;
   };
 
   const handleSaveSeasonMonths = (service: string, months: number[]): string | undefined => {
@@ -1110,9 +1190,143 @@ function CalendarSurface() {
     if (calendarView === 'week') setVisibleWeekStart(mondayStart(day));
   };
 
+  const reactivateCampaign = (
+    campaignDraft: Extract<ServiceDefinition, { mode: 'campaign' }>,
+    cycle: { cycleKey: string; startDate: string; endDate: string },
+    notificationId?: string,
+  ): string | Extract<ServiceDefinition, { mode: 'campaign' }> => {
+    const dormant = services.find((service) => service.id === campaignDraft.id
+      && service.businessId === campaignDraft.businessId);
+    if (!dormant || dormant.mode !== 'campaign' || dormant.status !== 'dormant') {
+      return 'This Campaign is no longer dormant.';
+    }
+    if (services.some((service) => service.id !== dormant.id
+      && service.businessId === dormant.businessId
+      && service.name.toLowerCase() === campaignDraft.name.trim().toLowerCase())) {
+      return 'Another service in this business already uses that name.';
+    }
+
+    const learningPost = bestCampaignLearningPost(dormant, userPosts);
+    const revived = normalizeService({
+      ...campaignDraft,
+      name: campaignDraft.name.trim(),
+      startDate: cycle.startDate,
+      endDate: cycle.endDate,
+      status: 'active',
+      dormantSince: undefined,
+      wakeUpHandledCycles: handledWakeCycle(dormant, cycle.cycleKey),
+      ...(learningPost ? { wakeSourcePostId: learningPost.id } : {}),
+    }) as Extract<ServiceDefinition, { mode: 'campaign' }>;
+    const nextServices = services.map((service) => service.id === dormant.id ? revived : service);
+    const nextPosts = userPosts.map((post) =>
+      post.businessId === dormant.businessId && post.project === dormant.name
+        ? { ...post, project: revived.name }
+        : post);
+    try {
+      window.localStorage.setItem(servicesStorageKey, JSON.stringify(nextServices));
+      window.localStorage.setItem(userPostsStorageKey, JSON.stringify(nextPosts));
+    } catch {
+      return 'This device could not save the Campaign. Free some storage and try again.';
+    }
+
+    setServices(nextServices);
+    setUserPosts(nextPosts);
+    const relatedWakeup = notifications.find((notification) =>
+      notification.kind === 'campaign-wakeup'
+      && notification.businessId === dormant.businessId
+      && notification.action?.kind === 'campaign-wakeup'
+      && notification.action.campaignId === dormant.id);
+    setNotifications((current) => current.map((notification) =>
+      notification.kind === 'campaign-wakeup'
+      && notification.businessId === dormant.businessId
+      && notification.action?.kind === 'campaign-wakeup'
+      && notification.action.campaignId === dormant.id
+        ? {
+          ...notification,
+          title: 'Campaign restarted',
+          subtitle: `${revived.name} is active again with last cycle’s posts and results.`,
+          isRead: true,
+          bannerDismissed: true,
+          action: undefined,
+        }
+        : notification));
+    if (!relatedWakeup && !notificationId) {
+      recordNotification({
+        businessId: revived.businessId,
+        dedupeKey: `campaign-wakeup:${revived.businessId}:${revived.id}:${cycle.cycleKey}:restarted`,
+        icon: 'calendar',
+        title: 'Campaign restarted',
+        subtitle: `${revived.name} is active again with last cycle’s posts and results.`,
+        kind: 'campaign-wakeup',
+        bannerDismissed: true,
+      });
+    }
+    if (notificationId) {
+      setNotifications((current) => current.map((notification) => notification.id === notificationId
+        ? {
+          ...notification,
+          title: 'Campaign restarted',
+          subtitle: `${revived.name} is active again with last cycle’s posts and results.`,
+          isRead: true,
+          bannerDismissed: true,
+          action: undefined,
+        }
+        : notification));
+    }
+
+    if (activeBusiness.id === revived.businessId && learningPost) {
+      const source = nextPosts.find((post) => post.id === learningPost.id);
+      if (source) {
+        const anchor = cycle.startDate > todayKey ? cycle.startDate : todayKey;
+        const insight = buildBusinessActionInsight(
+          'completed',
+          source,
+          [...nextPosts.filter((post) => post.businessId === revived.businessId), ...activeSeededCalendarPosts],
+          todayKey,
+          seededCalendarDates[revived.businessId] ?? [],
+          nextServices.filter((service) => service.businessId === revived.businessId),
+          contentTypes,
+          true,
+          anchor,
+        );
+        setActionInsight(insight);
+        revealDateInCalendar(anchor);
+      }
+    }
+    showActionMessage(`${revived.name} is active again. Its past posts and results are still saved.`);
+    return revived;
+  };
+
+  const markCampaignWakeHandled = (businessId: string, campaignId: string, cycleKey: string) => {
+    setServices((current) => current.map((service) =>
+      service.id === campaignId && service.businessId === businessId && service.mode === 'campaign'
+        ? { ...service, wakeUpHandledCycles: handledWakeCycle(service, cycleKey) }
+        : service));
+  };
+
+  const dismissCampaignWakeupBanner = (notification: AppNotification) => {
+    const action = notification.action;
+    if (action?.kind !== 'campaign-wakeup' || notification.businessId !== activeBusiness.id) return;
+    markCampaignWakeHandled(notification.businessId, action.campaignId, action.cycleKey);
+    setNotifications((current) => current.map((item) => item.id === notification.id
+      ? { ...item, isRead: true, bannerDismissed: true }
+      : item));
+  };
+
   const handleOpenNotification = (notification: AppNotification) => {
     const action = notification.action;
     if (notification.businessId !== activeBusiness.id || !action) return;
+    if (action.kind === 'campaign-wakeup') {
+      const campaign = services.find((service) => service.id === action.campaignId
+        && service.businessId === notification.businessId);
+      if (!campaign || campaign.mode !== 'campaign') {
+        showActionMessage('That Campaign is no longer available in this business.');
+        return;
+      }
+      const result = reactivateCampaign(campaign, action, notification.id);
+      if (typeof result === 'string') showActionMessage(result);
+      return;
+    }
     if (action.kind === 'calendar-post') {
       const post = activeBusinessPosts.find((item) => item.id === action.postId);
       if (!post) {
@@ -1344,7 +1558,7 @@ function CalendarSurface() {
       [...postsAfterSave.filter((post) => post.businessId === activeBusiness.id), ...activeSeededCalendarPosts],
       todayKey,
       seededCalendarDates[activeBusiness.id] ?? [],
-      activeServices,
+      businessServices,
       contentTypes,
     ));
     revealDateInCalendar(savedPost.date);
@@ -1367,7 +1581,7 @@ function CalendarSurface() {
       [...activeBusinessPosts, ...activeSeededCalendarPosts],
       formatDateInput(new Date()),
       seededCalendarDates[activeBusiness.id] ?? [],
-      activeServices,
+      businessServices,
       contentTypes,
       sequenceOnly,
       actionInsight.sequenceAnchorDate,
@@ -1479,11 +1693,11 @@ function CalendarSurface() {
     if (!savedPost) return;
     const businessPostsAfterSave = postsAfterSave.filter((post) => post.businessId === postToUpdate.businessId);
     const flatState = getFlatPostState(savedPost, businessPostsAfterSave, todayKey);
-    const service = activeServices.find((item) => item.name === savedPost.project);
+    const service = businessServices.find((item) => item.name === savedPost.project);
     const winner = getOverperformer(savedPost, businessPostsAfterSave.filter((post) => (post as InsightPost).status !== 'skipped' && post.date <= todayKey));
     setActionInsight((flatState.action !== 'none' && flatState.latestPostId === savedPost.id) || winner || service?.mode === 'campaign'
       ? buildBusinessActionInsight('results', savedPost, [...businessPostsAfterSave, ...activeSeededCalendarPosts],
-        todayKey, seededCalendarDates[activeBusiness.id] ?? [], activeServices, contentTypes)
+        todayKey, seededCalendarDates[activeBusiness.id] ?? [], businessServices, contentTypes)
       : null);
   };
 
@@ -1502,7 +1716,7 @@ function CalendarSurface() {
       [...completionPosts, ...activeSeededCalendarPosts],
       todayKey,
       seededCalendarDates[activeBusiness.id] ?? [],
-      activeServices,
+      businessServices,
       contentTypes,
       true,
       sequenceAnchorDate,
@@ -1512,7 +1726,7 @@ function CalendarSurface() {
       completionPosts,
       todayKey,
       seededCalendarDates[activeBusiness.id] ?? [],
-      activeServices,
+      businessServices,
     );
     setActionInsight({
       ...sequence,
@@ -1548,7 +1762,7 @@ function CalendarSurface() {
     const updatedPosts = activeBusinessPosts.map((item) => item.id === postId ? updated : item);
     setActionInsight(buildBusinessActionInsight(
       'skipped', updated, [...updatedPosts, ...activeSeededCalendarPosts],
-      todayKey, seededCalendarDates[activeBusiness.id] ?? [], activeServices, contentTypes,
+      todayKey, seededCalendarDates[activeBusiness.id] ?? [], businessServices, contentTypes,
     ));
     showActionMessage(`Skipped “${post.title}”. Kept in your record.`);
   };
@@ -1572,7 +1786,7 @@ function CalendarSurface() {
   const handleAddConversionSuggestion = () => {
     if (!selectedUserPost) return;
     const refreshed = buildConversionReview(selectedUserPost, [...activeBusinessPosts, ...activeSeededCalendarPosts],
-      formatDateInput(new Date()), seededCalendarDates[activeBusiness.id] ?? [], activeServices);
+      formatDateInput(new Date()), seededCalendarDates[activeBusiness.id] ?? [], businessServices);
     const proposal = refreshed.proposal;
     if (proposal && !contentTypes.includes(proposal.contentType)) {
       showActionMessage('This follow-up was skipped because its content type is not enabled for this business.');
@@ -1975,7 +2189,9 @@ function CalendarSurface() {
 
         {isServiceManagerOpen && (
           <ServiceManager
-            services={activeServices}
+            services={businessServices}
+            onCloseCampaign={handleCloseCampaign}
+            today={todayKey}
             businessId={activeBusiness.id}
             businessName={activeBusiness.name}
             platformOptions={availablePlatforms}
@@ -2266,7 +2482,7 @@ function CalendarSurface() {
                     selectedUserPost,
                     [...activeBusinessPosts, ...activeSeededCalendarPosts],
                     todayKey,
-                    activeServices,
+                    businessServices,
                   )}</p>
                 </section>
                 <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>

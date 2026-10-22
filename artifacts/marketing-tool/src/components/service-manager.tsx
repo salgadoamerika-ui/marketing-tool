@@ -1,6 +1,11 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { Check, X } from 'lucide-react';
-import { type ServiceDefinition, modeLabel } from '../lib/services';
+import {
+  type CampaignStatus,
+  type ServiceDefinition,
+  modeLabel,
+} from '../lib/services';
+import { cycleForCampaignName, findDormantCampaignMatch } from '../lib/campaign-wakeups';
 import './service-manager.css';
 
 type ServiceManagerProps = {
@@ -10,6 +15,8 @@ type ServiceManagerProps = {
   platformOptions: string[];
   defaultPlatforms: string[];
   onSave: (service: ServiceDefinition) => string | ServiceDefinition;
+  onCloseCampaign: (service: Extract<ServiceDefinition, { mode: 'campaign' }>) => string | undefined;
+  today: string;
   onClose: () => void;
 };
 
@@ -22,6 +29,10 @@ type Draft = {
   endDate: string;
   platforms: string[];
   isNew: boolean;
+  status?: CampaignStatus;
+  dormantSince?: string;
+  wakeSourcePostId?: string;
+  wakeFromDormant?: boolean;
 };
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
@@ -48,12 +59,15 @@ export function ServiceManager({
   platformOptions,
   defaultPlatforms,
   onSave,
+  onCloseCampaign,
+  today,
   onClose,
 }: ServiceManagerProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [createdService, setCreatedService] = useState<ServiceDefinition | null>(null);
+  const [ignoredWakeMatchId, setIgnoredWakeMatchId] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const pressStartedOnBackdrop = useRef(false);
@@ -93,10 +107,16 @@ export function ServiceManager({
       endDate: service.mode === 'campaign' ? service.endDate : '',
       platforms: [...(service.platforms ?? defaultPlatforms)],
       isNew: false,
+      ...(service.mode === 'campaign' ? {
+        status: service.status,
+        dormantSince: service.dormantSince,
+        wakeSourcePostId: service.wakeSourcePostId,
+      } : {}),
     });
     setError('');
     setSuccess('');
     setCreatedService(null);
+    setIgnoredWakeMatchId(null);
   };
 
   const startAdd = () => {
@@ -113,6 +133,7 @@ export function ServiceManager({
     setError('');
     setSuccess('');
     setCreatedService(null);
+    setIgnoredWakeMatchId(null);
   };
 
   const patch = (changes: Partial<Draft>) => {
@@ -122,10 +143,38 @@ export function ServiceManager({
       if (changes.mode === 'campaign' && !next.startDate) next.startDate = localToday();
       return next;
     });
+    if (changes.name !== undefined || changes.mode !== undefined) setIgnoredWakeMatchId(null);
     setError('');
   };
 
   const cancel = () => { setDraft(null); setError(''); };
+  const wakeMatch = draft?.isNew && draft.mode === 'campaign'
+    ? findDormantCampaignMatch(draft.name, services, businessId)
+    : undefined;
+  const wakeCycle = wakeMatch && draft
+    ? cycleForCampaignName(wakeMatch, draft.name, today)
+    : null;
+
+  const acceptWakeMatch = () => {
+    if (!draft || !wakeMatch || !wakeCycle) return;
+    setDraft((current) => current ? {
+      ...current,
+      id: wakeMatch.id,
+      startDate: wakeCycle.startDate,
+      endDate: wakeCycle.endDate,
+      platforms: [...(wakeMatch.platforms ?? defaultPlatforms)],
+      status: 'active',
+      dormantSince: undefined,
+      wakeFromDormant: true,
+    } : current);
+    setError('');
+  };
+
+  const closeCampaign = (service: ServiceDefinition) => {
+    if (service.mode !== 'campaign') return;
+    const message = onCloseCampaign(service);
+    setSuccess(message ?? `${service.name} is dormant. Its posts and results are saved for next season.`);
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -145,6 +194,9 @@ export function ServiceManager({
         startDate: draft.startDate,
         endDate: draft.endDate,
         platforms: draft.platforms,
+        ...(draft.status ? { status: draft.status } : {}),
+        ...(draft.dormantSince ? { dormantSince: draft.dormantSince } : {}),
+        ...(draft.wakeSourcePostId ? { wakeSourcePostId: draft.wakeSourcePostId } : {}),
       };
     } else {
       service = { id: draft.id, businessId: draft.businessId, name, mode: 'evergreen', platforms: draft.platforms };
@@ -223,8 +275,20 @@ export function ServiceManager({
                         {service.tone && <span className={`sm-color-dot event-${service.tone}`} aria-hidden="true" />}
                         <span className="sm-row-name">{service.name}</span>
                       </div>
-                    <span className="sm-row-meta">{describe(service)}</span>
+              <span className="sm-row-meta">
+                {describe(service)}{service.mode === 'campaign' && service.status === 'dormant' ? ' · Dormant' : ''}
+              </span>
                   </div>
+            {service.mode === 'campaign' && service.status !== 'dormant' && (
+              <button
+                type="button"
+                className="sm-btn sm-btn-small"
+                aria-label={`Close Campaign ${service.name}`}
+                onClick={() => closeCampaign(service)}
+              >
+                Close Campaign
+              </button>
+            )}
                   <button
                     type="button"
                     className="sm-btn sm-btn-small"
@@ -253,6 +317,29 @@ export function ServiceManager({
                   aria-invalid={Boolean(error) && draft.isNew && !draft.name.trim()}
                 />
               </label>
+              {wakeMatch && ignoredWakeMatchId !== wakeMatch.id && draft.wakeSourcePostId !== wakeMatch.id && (
+                <section className="sm-wakeup-offer">
+                  <div>
+                    <strong>Running {wakeMatch.name} again?</strong>
+                    <p>I kept its posts and results. Build this Campaign from the last cycle?</p>
+                  </div>
+                  <div className="sm-wakeup-actions">
+                    <button className="sm-btn sm-btn-primary sm-btn-small" onClick={acceptWakeMatch} type="button">
+                      Yes, use last cycle
+                    </button>
+                    <button
+                      className="sm-btn sm-btn-small"
+                      onClick={() => setIgnoredWakeMatchId(wakeMatch.id)}
+                      type="button"
+                    >
+                      Not now
+                    </button>
+                  </div>
+                </section>
+              )}
+              {draft.wakeFromDormant && (
+                <p className="sm-wakeup-confirmation">This Campaign will use its previous posts and results. You can still edit its dates below.</p>
+              )}
               <fieldset className="sm-fieldset">
                 <legend>Type</legend>
                 <label className="sm-choice">

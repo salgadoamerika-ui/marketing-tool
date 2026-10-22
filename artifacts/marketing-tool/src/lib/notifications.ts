@@ -16,6 +16,14 @@ export type NotificationAction =
     label: string;
     sourcePostId: string;
     insight: ActionInsight;
+  }
+  | {
+    kind: 'campaign-wakeup';
+    label: string;
+    campaignId: string;
+    cycleKey: string;
+    startDate: string;
+    endDate: string;
   };
 
 export type AppNotification = {
@@ -28,6 +36,7 @@ export type AppNotification = {
   kind: NotificationKind;
   createdAt: number;
   isRead: boolean;
+  bannerDismissed?: boolean;
   action?: NotificationAction;
 };
 
@@ -54,6 +63,12 @@ function isNotificationAction(value: unknown): value is NotificationAction {
       && Array.isArray(insight.proposals)
       && Array.isArray(insight.beats);
   }
+  if (value.kind === 'campaign-wakeup') {
+    return typeof value.campaignId === 'string'
+      && typeof value.cycleKey === 'string'
+      && typeof value.startDate === 'string'
+      && typeof value.endDate === 'string';
+  }
   return false;
 }
 
@@ -73,6 +88,7 @@ export function parseNotifications(serialized: string | null): AppNotification[]
       && validKinds.has(value.kind as NotificationKind)
       && typeof value.createdAt === 'number'
       && typeof value.isRead === 'boolean'
+      && (value.bannerDismissed === undefined || typeof value.bannerDismissed === 'boolean')
       && (value.dedupeKey === undefined || typeof value.dedupeKey === 'string')
       && (value.action === undefined || isNotificationAction(value.action)));
   } catch {

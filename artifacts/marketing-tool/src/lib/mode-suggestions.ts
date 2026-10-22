@@ -31,6 +31,13 @@ export function applyModeSuggestions(
 ): ActionInsight {
   const service = services.find((item) => item.businessId === post.businessId && item.name === post.project);
   if (!service) throw new Error('Choose a saved Service or Campaign before planning content.');
+  if (service.mode === 'campaign' && service.status === 'dormant') return {
+    ...base,
+    title: 'This Campaign is dormant',
+    recommendation: 'Its posts and results are still saved. Wake it when the season returns to plan another cycle.',
+    beats: [],
+    proposals: [],
+  };
   const closed = service.mode === 'campaign' && today > service.endDate;
   if (closed || (service.mode === 'campaign' && post.date > service.endDate)) return {
     ...base, title: 'This Campaign is complete',
@@ -65,9 +72,19 @@ export function applyModeSuggestions(
   const working = [...posts];
   const reserved = [...occupiedDates];
   let cursor = post.date > today ? post.date : today;
-  let previous = working.filter((item) => item.businessId === service.businessId && item.project === service.name
+  const currentCyclePosts = service.mode === 'campaign'
+    ? working.filter((item) => item.businessId === service.businessId && item.project === service.name
+      && item.status !== 'skipped' && item.date >= service.startDate && item.date <= cursor)
+    : [];
+  const wakeSource = service.mode === 'campaign' && service.wakeSourcePostId
+    ? working.find((item) => item.id === service.wakeSourcePostId && item.businessId === service.businessId)
+    : undefined;
+  const useWakeLearning = service.mode === 'campaign' && currentCyclePosts.length === 0 && Boolean(wakeSource);
+  let previous = currentCyclePosts.length
+    ? currentCyclePosts.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).at(-1)!.contentType
+    : wakeSource?.contentType ?? working.filter((item) => item.businessId === service.businessId && item.project === service.name
     && item.status !== 'skipped' && item.date <= cursor)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).at(-1)?.contentType ?? post.contentType;
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).at(-1)?.contentType ?? post.contentType;
   if (previous === 'Announcement' && service.mode === 'evergreen') previous = 'Testimonial';
 
   const closingPreview = service.mode === 'campaign' && getCampaignPhase(service, cursor) === 'closing';
@@ -99,7 +116,9 @@ export function applyModeSuggestions(
     const postingPhase = service.mode === 'campaign' ? getCampaignPhase(service, date) : undefined;
     const floor = service.mode === 'evergreen' && getClosingCampaigns(services, service.businessId, date).length > 0;
     const contentType = postingPhase
-      ? nextType(campaignRotation[postingPhase === 'upcoming' || postingPhase === 'closed' ? 'early' : postingPhase], previous)
+      ? useWakeLearning && index === 0 && wakeSource
+        ? wakeSource.contentType
+        : nextType(campaignRotation[postingPhase === 'upcoming' || postingPhase === 'closed' ? 'early' : postingPhase], previous)
       : floor ? 'Insight' : winner && index === 0 ? 'Fresh angle' : nextType(serviceRotation, previous);
     const existing = working.filter((item) => item.businessId === service.businessId && item.project === service.name
       && item.status !== 'skipped' && item.date > cursor && item.date <= date

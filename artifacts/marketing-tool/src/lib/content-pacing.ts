@@ -16,7 +16,8 @@ export function getCampaignPhase(service: Extract<ServiceDefinition, { mode: 'ca
 
 export function getClosingCampaigns(services: ServiceDefinition[], businessId: string, date: string) {
   return services.filter((service): service is Extract<ServiceDefinition, { mode: 'campaign' }> =>
-    service.businessId === businessId && service.mode === 'campaign' && getCampaignPhase(service, date) === 'closing');
+    service.businessId === businessId && service.mode === 'campaign' && service.status !== 'dormant'
+    && getCampaignPhase(service, date) === 'closing');
 }
 
 export function describeContentPacing(service: ServiceDefinition, services: ServiceDefinition[], date: string): string {

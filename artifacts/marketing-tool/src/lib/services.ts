@@ -1,4 +1,5 @@
 export type ServiceMode = 'evergreen' | 'campaign';
+export type CampaignStatus = 'active' | 'dormant';
 export const serviceCalendarTones = ['rose', 'lavender', 'sage', 'sand', 'blue', 'blush', 'muted'] as const;
 export type ServiceTone = (typeof serviceCalendarTones)[number];
 type ServiceIdentity = {
@@ -9,7 +10,15 @@ type ServiceIdentity = {
   tone?: ServiceTone;
 };
 export type ServiceDefinition = ServiceIdentity & (
-  { mode: 'evergreen' } | { mode: 'campaign'; startDate: string; endDate: string }
+  { mode: 'evergreen' } | {
+    mode: 'campaign';
+    startDate: string;
+    endDate: string;
+    status?: CampaignStatus;
+    dormantSince?: string;
+    wakeUpHandledCycles?: string[];
+    wakeSourcePostId?: string;
+  }
 );
 
 export const servicesStorageKey = 'marketing-tool.services';
@@ -41,6 +50,21 @@ export function validateService(service: ServiceDefinition): string | undefined 
   if (service.mode === 'campaign') {
     if (!validDate(service.startDate) || !validDate(service.endDate)) return 'Add a valid start date and deadline.';
     if (service.startDate > service.endDate) return 'The deadline must be on or after the start date.';
+    if (service.status !== undefined && service.status !== 'active' && service.status !== 'dormant') {
+      return 'Choose a valid Campaign status.';
+    }
+    if (service.dormantSince !== undefined && !validDate(service.dormantSince)) {
+      return 'Campaign dormancy date is invalid.';
+    }
+    if (service.wakeUpHandledCycles !== undefined
+      && (!Array.isArray(service.wakeUpHandledCycles)
+        || service.wakeUpHandledCycles.some((cycle) => typeof cycle !== 'string' || !cycle.trim()))) {
+      return 'Campaign wake-up history is invalid.';
+    }
+    if (service.wakeSourcePostId !== undefined
+      && (typeof service.wakeSourcePostId !== 'string' || !service.wakeSourcePostId.trim())) {
+      return 'Campaign learning reference is invalid.';
+    }
   }
   return undefined;
 }
@@ -70,13 +94,45 @@ export function normalizeService(value: unknown): ServiceDefinition {
   };
   // Existing entries without a mode remain ongoing; never invent a deadline.
   const mode = record.mode ?? 'evergreen';
+  if (mode === 'campaign'
+    && record.status !== undefined && record.status !== 'active' && record.status !== 'dormant') {
+    throw new Error('Saved Campaign status is invalid.');
+  }
+  if (mode === 'campaign' && record.dormantSince !== undefined && !validDate(record.dormantSince)) {
+    throw new Error('Saved Campaign dormancy date is invalid.');
+  }
+  if (mode === 'campaign' && record.wakeUpHandledCycles !== undefined
+    && (!Array.isArray(record.wakeUpHandledCycles)
+      || record.wakeUpHandledCycles.some((cycle) => typeof cycle !== 'string' || !cycle.trim()))) {
+    throw new Error('Saved Campaign wake-up history is invalid.');
+  }
+  if (mode === 'campaign' && record.wakeSourcePostId !== undefined
+    && (typeof record.wakeSourcePostId !== 'string' || !record.wakeSourcePostId.trim())) {
+    throw new Error('Saved Campaign learning reference is invalid.');
+  }
   const service = {
     ...identity, ...settings, mode,
-    ...(mode === 'campaign' ? { startDate: record.startDate, endDate: record.endDate } : {}),
+    ...(mode === 'campaign' ? {
+      startDate: record.startDate,
+      endDate: record.endDate,
+      ...(record.status !== undefined ? { status: record.status } : {}),
+      ...(record.dormantSince !== undefined ? { dormantSince: record.dormantSince } : {}),
+      ...(record.wakeUpHandledCycles !== undefined
+        ? { wakeUpHandledCycles: [...new Set(record.wakeUpHandledCycles as string[])] } : {}),
+      ...(record.wakeSourcePostId !== undefined ? { wakeSourcePostId: record.wakeSourcePostId } : {}),
+    } : {}),
   } as ServiceDefinition;
   const error = validateService(service);
   if (error) throw new Error(error);
   return service;
+}
+
+export function markExpiredCampaignsDormant(services: ServiceDefinition[], today: string): ServiceDefinition[] {
+  return services.map((service) => service.mode === 'campaign'
+    && service.status !== 'dormant'
+    && service.endDate < today
+    ? { ...service, status: 'dormant', dormantSince: today }
+    : service);
 }
 
 /** Merge defaults and recovered post projects without overwriting saved modes. */
