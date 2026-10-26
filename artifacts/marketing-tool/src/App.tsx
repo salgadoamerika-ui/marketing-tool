@@ -14,6 +14,11 @@ import { NotificationCenter } from '@/components/notification-center';
 import { WelcomeEntry } from '@/components/welcome-entry';
 import { FirstRunSetup } from '@/components/first-run-setup';
 import { useFirstRun } from '@/components/first-run-context';
+import { BusinessManager } from '@/components/business-manager';
+import {
+  businessOverridesStorageKey, loadBusinessOverrides, validateBusinessName,
+  withoutBusiness, withoutBusinessSettings, withoutBusinessSeasons,
+} from '@/lib/business-management';
 import { firstRunStorageKey, validateFirstRun, type FirstRunSetupInput } from '@/lib/first-run';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { performanceAttentionKey } from '@/lib/notification-sound';
@@ -664,9 +669,15 @@ function formatPostOptionDate(date: string) {
 function CalendarSurface() {
   const { needsSetup, isFreshWorkspace, finishSetup } = useFirstRun();
   const [userBusinesses, setUserBusinesses] = useState<Business[]>(readUserBusinesses);
+  const [businessOverrides, setBusinessOverrides] = useState(() =>
+    loadBusinessOverrides(window.localStorage.getItem(businessOverridesStorageKey)));
+  const [isBusinessManagerOpen, setIsBusinessManagerOpen] = useState(false);
   const businesses = useMemo(() => [
-    ...(isFreshWorkspace ? [] : sampleBusinesses), ...userBusinesses,
-  ], [userBusinesses, isFreshWorkspace]);
+    ...(isFreshWorkspace ? [] : sampleBusinesses).map((business) => ({
+      ...business, name: businessOverrides[business.id]?.name ?? business.name,
+    })), ...userBusinesses,
+  ].filter((business) => !businessOverrides[business.id]?.deleted),
+  [userBusinesses, isFreshWorkspace, businessOverrides]);
   const [businessContentSettingsById, setBusinessContentSettingsById] = useState(() =>
     readBusinessContentSettings(businesses));
   const [activeBusinessId, setActiveBusinessId] = useState(() => {
@@ -707,7 +718,8 @@ function CalendarSurface() {
   }, []);
   const [services, setServices] = useState<ServiceDefinition[]>(() => {
     const defaults: ServiceDefinition[] = [
-      ...(isFreshWorkspace ? [] : sampleBusinesses).flatMap((business) => business.projects.map((name) => ({
+      ...(isFreshWorkspace ? [] : sampleBusinesses).filter((business) =>
+        !businessOverrides[business.id]?.deleted).flatMap((business) => business.projects.map((name) => ({
         id: `${business.id}:${name}`, businessId: business.id, name, mode: 'evergreen' as const,
       }))),
       ...userPosts.map((post) => ({
@@ -2064,6 +2076,74 @@ function CalendarSurface() {
     setIsBusinessDialogOpen(false);
   };
 
+  const handleRenameBusiness = (name: string): string | undefined => {
+    const target = activeBusiness.id;
+    if (!businesses.some((business) => business.id === target)) return 'Choose a business first.';
+    const error = validateBusinessName(name, target, businesses);
+    if (error) return error;
+    const nextBusinesses = userBusinesses.map((business) =>
+      business.id === target ? { ...business, name: name.trim() } : business);
+    const nextOverrides = userBusinesses.some((business) => business.id === target)
+      ? businessOverrides
+      : { ...businessOverrides, [target]: { ...businessOverrides[target], name: name.trim() } };
+    try {
+      writeLocalStorageBatch([
+        [userBusinessesStorageKey, JSON.stringify(nextBusinesses.map(({ id, name: businessName, accent, platforms }) =>
+          ({ id, name: businessName, accent, platforms })))],
+        [businessOverridesStorageKey, JSON.stringify(nextOverrides)],
+      ]);
+    } catch { return 'The new business name could not be saved. Please try again.'; }
+    setUserBusinesses(nextBusinesses);
+    setBusinessOverrides(nextOverrides);
+    return undefined;
+  };
+
+  const handleDeleteBusiness = (): string | undefined => {
+    const target = activeBusiness.id;
+    if (!businesses.some((business) => business.id === target)) return 'Choose a business first.';
+    const nextBusinesses = userBusinesses.filter((business) => business.id !== target);
+    const nextServices = withoutBusiness(services, target);
+    const nextPosts = withoutBusiness(userPosts, target);
+    const nextNotifications = withoutBusiness(notifications, target);
+    const nextSettings = withoutBusinessSettings(businessContentSettingsById, target);
+    const nextSeasons = withoutBusinessSeasons(seasonMonthsByService, target);
+    // Tombstones prevent legacy built-in workspaces from reappearing on reload.
+    const nextOverrides = { ...businessOverrides, [target]: { deleted: true } };
+    const nextActiveId = businesses.find((business) => business.id !== target)?.id ?? emptyWorkspace.id;
+    try {
+      writeLocalStorageBatch([
+        [userBusinessesStorageKey, JSON.stringify(nextBusinesses.map(({ id, name, accent, platforms }) =>
+          ({ id, name, accent, platforms })))],
+        [servicesStorageKey, JSON.stringify(nextServices)],
+        [userPostsStorageKey, JSON.stringify(nextPosts)],
+        [notificationsStorageKey, JSON.stringify(nextNotifications)],
+        [businessContentSettingsStorageKey, JSON.stringify(nextSettings)],
+        [serviceSeasonsStorageKey, JSON.stringify(nextSeasons)],
+        [businessOverridesStorageKey, JSON.stringify(nextOverrides)],
+        [activeBusinessStorageKey, nextActiveId],
+      ]);
+    } catch { return 'The business could not be deleted. Nothing was changed. Please try again.'; }
+    setUserBusinesses(nextBusinesses);
+    setServices(nextServices);
+    setUserPosts(nextPosts);
+    setNotifications(nextNotifications);
+    setBusinessContentSettingsById(nextSettings);
+    setSeasonMonthsByService(nextSeasons);
+    setBusinessOverrides(nextOverrides);
+    setActiveBusinessId(nextActiveId);
+    setIsBusinessManagerOpen(false);
+    setIsServiceManagerOpen(false);
+    setIsContentManagerOpen(false);
+    setIsBusinessDialogOpen(false);
+    setActionInsight(null);
+    setSelectedPostId(null);
+    setWeeklyInsightsContext(null);
+    setSelectedWeeklyInsightsPostId('');
+    closePostForm();
+    setStatusMessage('');
+    return undefined;
+  };
+
   if (needsSetup) {
     return <FirstRunSetup
       platformOptions={defaultPlatformOptions}
@@ -2073,7 +2153,7 @@ function CalendarSurface() {
         const error = validateFirstRun(input, defaultPlatformOptions, defaultContentTypes, currentDateInput());
         if (error) return error;
         const result = handleCreateBusiness({
-          name: input.serviceName, accent: 'rose', serviceName: input.serviceName,
+          name: input.businessName, accent: 'rose', serviceName: input.serviceName,
           mode: input.mode, startDate: input.date < currentDateInput() ? input.date : currentDateInput(),
           deadline: input.deadline, platforms: input.platforms,
         }, input);
@@ -2109,6 +2189,7 @@ function CalendarSurface() {
                   closePostForm();
                   setIsServiceManagerOpen(false);
                   setIsContentManagerOpen(false);
+                  setIsBusinessManagerOpen(false);
                 }}
                 type="button"
               >
@@ -2131,6 +2212,13 @@ function CalendarSurface() {
               <Plus size={17} strokeWidth={1.7} />
             </button>
           </nav>
+          {activeBusiness.id !== emptyWorkspace.id && (
+            <button className="icon-button business-manager-trigger" type="button" onClick={() => setIsBusinessManagerOpen(true)}
+              aria-label={`Manage business: ${activeBusiness.name}`}>
+              <Settings2 size={15} aria-hidden="true" />
+              <span><span className="business-manager-trigger-prefix">Manage </span>business</span>
+            </button>
+          )}
           <NotificationCenter
             key={activeBusiness.id}
             businessName={activeBusiness.name}
@@ -2375,6 +2463,17 @@ function CalendarSurface() {
             defaultPlatforms={activeBusiness.platforms}
             onSave={handleSaveService}
             onClose={() => setIsServiceManagerOpen(false)}
+          />
+        )}
+        {isBusinessManagerOpen && (
+          <BusinessManager
+            key={activeBusiness.id}
+            businessName={activeBusiness.name}
+            serviceCount={businessServices.length}
+            postCount={activeBusinessPosts.length}
+            onRename={handleRenameBusiness}
+            onDelete={handleDeleteBusiness}
+            onClose={() => setIsBusinessManagerOpen(false)}
           />
         )}
         {isContentManagerOpen && (

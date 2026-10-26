@@ -8,3 +8,7 @@ Each business is its own workspace. Its services, posts, performance, airtime ba
 **Why:** The user explicitly requires fully separate, walled-off workspaces, with all service rules calculated per business.
 
 **How to apply:** Treat the business identifier as a required scope for reads, writes, calculations, and transient UI state. When a business changes, only show and act on that business's data.
+
+Businesses can be renamed or deleted after creation. A rename changes only the business name, not service names or identifiers. Deletion requires explicit confirmation and removes that business's services, posts/results, notifications, settings, and learning while leaving every other business intact.
+
+**Why:** The user explicitly requires post-creation rename/delete controls and reiterated that business names and service names are different things.

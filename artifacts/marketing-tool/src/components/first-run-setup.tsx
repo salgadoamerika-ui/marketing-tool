@@ -12,10 +12,11 @@ type Props = {
   onEnterCalendar(): void;
 };
 
-const stepTitles = ['What are you promoting?', 'Where will you share it?', 'Plan your first post'];
+const stepTitles = ['Your business, then your first service', 'Where will you share it?', 'Plan your first post'];
 
 export function FirstRunSetup({ platformOptions, contentTypes, today, onComplete, onSkip, onEnterCalendar }: Props) {
   const [step, setStep] = useState(0);
+  const [businessName, setBusinessName] = useState('');
   const [serviceName, setServiceName] = useState('');
   const [mode, setMode] = useState<'evergreen' | 'campaign'>('evergreen');
   const [deadline, setDeadline] = useState('');
@@ -33,12 +34,14 @@ export function FirstRunSetup({ platformOptions, contentTypes, today, onComplete
   useEffect(() => { headingRef.current?.focus(); }, [step]);
 
   const input = (): FirstRunSetupInput => ({
+    businessName: businessName.trim(),
     serviceName: serviceName.trim(), mode, deadline: mode === 'campaign' ? deadline : '',
     platforms, contentType, date, isCompleted,
   });
 
   const validateStep = (): string | undefined => {
     if (step === 0) {
+      if (!businessName.trim()) return 'Name your business first.';
       if (!serviceName.trim()) return 'Name the service or project you want to promote.';
       if (mode === 'campaign' && (!deadline || deadline < today)) return 'Choose a Campaign deadline that is today or later.';
     }
@@ -97,11 +100,15 @@ export function FirstRunSetup({ platformOptions, contentTypes, today, onComplete
       <form onSubmit={submit} noValidate className="frs-form">
         {step === 0 && (
           <div className="frs-fields" key="s1">
+            <label className="frs-label" htmlFor={`${id}-business-name`}>Business name</label>
+            <input id={`${id}-business-name`} className="frs-input" value={businessName} autoComplete="organization"
+              placeholder="e.g. Willow Studio" data-testid="input-business-name"
+              onChange={(e) => { setBusinessName(e.target.value); setError(''); }} />
+            <p className="frs-help">Your business is the workspace. Its services and Campaigns each have their own name.</p>
             <label className="frs-label" htmlFor={`${id}-name`}>Service or project name</label>
             <input id={`${id}-name`} className="frs-input" value={serviceName} autoComplete="off"
               placeholder="e.g. Saturday pottery class" data-testid="input-service-name"
               onChange={(e) => { setServiceName(e.target.value); setError(''); }} />
-            <p className="frs-help">This name also names your starting business workspace. You can add more businesses later.</p>
             <fieldset className="frs-choice">
               <legend className="frs-label">Is it ongoing or time-bound?</legend>
               <label className={mode === 'evergreen' ? 'sel' : ''}>

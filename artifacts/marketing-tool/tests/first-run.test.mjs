@@ -49,6 +49,7 @@ const today = '2031-04-15';
 const platforms = ['Facebook', 'Instagram', 'TikTok'];
 const types = ['Announcement', 'Insight'];
 const draft = {
+  businessName: 'Willow Studio',
   serviceName: 'Tax preparation', mode: 'evergreen', deadline: '',
   platforms: ['Instagram'], contentType: 'Announcement', date: today, isCompleted: false,
 };
@@ -70,7 +71,7 @@ test('Campaigns require a real future deadline and keep their first move inside 
 
 test('missing service, platform, content type, or valid calendar day is rejected', () => {
   for (const change of [
-    { serviceName: '  ' }, { platforms: [] }, { platforms: ['Unavailable'] },
+    { businessName: '  ' }, { serviceName: '  ' }, { platforms: [] }, { platforms: ['Unavailable'] },
     { contentType: 'Deleted type' }, { date: '2031-02-30' },
   ]) assert.equal(typeof validateFirstRun({ ...draft, ...change }, platforms, types, today), 'string');
 });

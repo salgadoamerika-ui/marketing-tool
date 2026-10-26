@@ -11,9 +11,9 @@ New first-run workspaces display no demo businesses or seeded demo posts. Preser
 
 **Why:** The user explicitly deferred full sample removal but requires a new user's workspace to begin empty.
 
-The first service's name also names the initial business workspace; “Build my plan” explicitly adds the first move and starting suggestions through the existing engine.
+Step 1 asks for the business name first, then a separate service/project name and Service/Campaign mode. Never derive the business name from its first service. “Build my plan” explicitly adds the first move and starting suggestions through the existing engine.
 
-**Why:** The specified three-step flow has no separate business-name question and explicitly asks for starting suggestions on arrival.
+**Why:** The user corrected the original shared-name setup: “business name then service. they are two different things.” Keep both fields within the first step so the flow remains three steps.
 
 **How to apply:** Keep business isolation and the shared post store intact. Show a brief building state after successful saving; only then reveal the monthly calendar and run its one-time left-sliding ripple. Skipping leaves an empty calendar with the existing add-business path available.
 

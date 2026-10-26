@@ -1,0 +1,41 @@
+.business-switcher .business-manager-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  min-height: 32px;
+  padding: 7px 10px;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.business-manager-trigger svg { flex-shrink: 0; }
+@media (max-width: 640px) {
+  .business-manager-trigger-prefix { display: none; }
+}
+.business-manager {
+  max-width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 28px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+}
+.business-manager-title { font: 500 28px/1.2 'Fraunces', Georgia, serif; padding-right: 22px; }
+.business-manager-description { color: var(--plum-soft); font-size: 13px; line-height: 1.6; }
+.business-manager-form { display: grid; gap: 10px; }
+.business-manager-form label { font-size: 13px; font-weight: 600; }
+.business-manager-form input { width: 100%; padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--champagne); color: var(--ink); font: inherit; }
+.business-manager-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.business-manager-actions button, .business-manager-danger button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 999px; padding: 10px 14px; font-size: 12px; cursor: pointer; }
+.business-manager-danger { border-top: 1px solid var(--line-strong); margin-top: 8px; padding-top: 20px; }
+.business-manager-danger p { color: var(--plum-soft); font-size: 12px; margin-bottom: 10px; }
+.business-manager-danger button { border: 1px solid #e5c5ce; background: #fbf0f3; color: #943c58; }
+.business-manager .business-delete-confirm { border: 1px solid #943c58; background: #943c58; color: #fffaf8; }
+.business-manager button:disabled { opacity: .45; cursor: not-allowed; }
+.business-manager-error { color: #943c58; font-size: 12px; }
+.business-manager button:focus-visible, .business-manager input:focus-visible { outline: 2px solid var(--rose); outline-offset: 3px; }

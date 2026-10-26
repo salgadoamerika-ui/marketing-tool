@@ -3,6 +3,7 @@ import { defaultContentTypes, defaultPlatformOptions } from './business-content-
 export const firstRunStorageKey = 'marketing-tool.first-run-setup';
 
 export type FirstRunSetupInput = {
+  businessName: string;
   serviceName: string;
   mode: 'evergreen' | 'campaign';
   deadline: string;
@@ -18,6 +19,9 @@ type ReadableStorage = { getItem(key: string): string | null };
 export function shouldOfferFirstRun(storage: ReadableStorage, sampleServiceIds: string[]): boolean {
   try {
     if (storage.getItem(firstRunStorageKey)) return false;
+    const businessOverrides = JSON.parse(storage.getItem('marketing-tool.business-overrides') ?? '{}');
+    if (!businessOverrides || typeof businessOverrides !== 'object' || Array.isArray(businessOverrides)
+      || Object.keys(businessOverrides).length > 0) return false;
     const businesses: unknown = JSON.parse(storage.getItem('marketing-tool.businesses') ?? '[]');
     const posts: unknown = JSON.parse(storage.getItem('marketing-tool.user-posts') ?? '[]');
     const services: unknown = JSON.parse(storage.getItem('marketing-tool.services') ?? '[]');
@@ -56,6 +60,7 @@ export function validateFirstRun(
   contentTypes: string[],
   today: string,
 ): string | undefined {
+  if (!input.businessName.trim()) return 'Name your business first.';
   if (!input.serviceName.trim()) return 'Name the service or project you want to promote.';
   if (input.mode !== 'evergreen' && input.mode !== 'campaign') return 'Choose Service or Campaign.';
   if (input.mode === 'campaign' && (!validDate(input.deadline) || input.deadline < today)) {
