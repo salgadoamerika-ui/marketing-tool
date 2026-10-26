@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { resolveWelcomeName, welcomeNameStorageKey } from '@/lib/welcome-profile';
+import { useCalendarEntrance } from '@/hooks/use-calendar-entrance';
 import { WelcomeScreen } from './welcome-screen';
 import './welcome-entry.css';
 
@@ -12,6 +13,7 @@ export function WelcomeEntry({ children, userName }: { children: ReactNode; user
   });
   const contentRef = useRef<HTMLDivElement>(null);
   const isBlocking = phase !== 'entered';
+  useCalendarEntrance(contentRef, phase === 'entered');
 
   useEffect(() => {
     if (!isBlocking) return;
@@ -35,6 +37,7 @@ export function WelcomeEntry({ children, userName }: { children: ReactNode; user
     <>
       <div
         ref={contentRef}
+        data-calendar-entry={phase === 'entered' ? 'running' : 'waiting'}
         className={`welcome-app-content${phase !== 'welcome' ? ' welcome-app-content-visible' : ''}`}
         aria-hidden={isBlocking ? true : undefined}
         inert={isBlocking}

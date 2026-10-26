@@ -1,0 +1,20 @@
+@keyframes calendar-post-ripple {
+  from { opacity: 0; transform: translateX(-3px) scale(.985); }
+  /* Let opacity return to each chip's own value, including skipped styling. */
+  to { transform: none; }
+}
+
+.welcome-app-content .calendar-post-ripple {
+  animation: calendar-post-ripple 950ms cubic-bezier(.2, .65, .3, 1)
+    var(--calendar-ripple-delay, 0ms) backwards paused;
+}
+
+.welcome-app-content[data-calendar-entry="running"] .calendar-post-ripple {
+  animation-play-state: running;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-app-content .calendar-post-ripple {
+    animation: none;
+  }
+}
