@@ -7,18 +7,12 @@ Offer exactly three setup steps after the welcome screen: first Service/Campaign
 
 **Why:** The user wants help for genuinely new users, not an interruption for people who already have data. Automatically persisted demo services must not count as real setup.
 
-New first-run workspaces display no demo businesses or seeded demo posts. Preserve the old demo experience and real saved data for existing workspaces until the separate sample-data cleanup is requested.
+All workspaces display no built-in demo businesses or seeded demo posts. Recover a former demo business only when real saved work or customization needs that workspace; never restore its sample calendar.
 
-**Why:** The user explicitly deferred full sample removal but requires a new user's workspace to begin empty.
+**Why:** The user subsequently requested the deferred full sample cleanup, while requiring existing posts, services, results, and learning to remain accessible.
 
 Step 1 asks for the business name first, then a separate service/project name and Service/Campaign mode. Never derive the business name from its first service. “Build my plan” explicitly adds the first move and starting suggestions through the existing engine.
 
 **Why:** The user corrected the original shared-name setup: “business name then service. they are two different things.” Keep both fields within the first step so the flow remains three steps.
 
 **How to apply:** Keep business isolation and the shared post store intact. Show a brief building state after successful saving; only then reveal the monthly calendar and run its one-time left-sliding ripple. Skipping leaves an empty calendar with the existing add-business path available.
-
-One-shot calendar animation must wait for the actual calendar DOM, not only the outer entry shell's ready state.
-
-**Why:** After setup, routing/context updates can mount the calendar after the outer shell's layout effect; an early snapshot finds no chips and silently loses the entrance.
-
-**How to apply:** Attach the initial animation once the first calendar grid is mounted, then stop watching; never make ordinary post mutations retrigger the full entrance.

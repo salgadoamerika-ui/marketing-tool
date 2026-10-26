@@ -25,6 +25,8 @@ test('real businesses, posts, and custom services are existing user data', () =>
     serialized('marketing-tool.services', [{ id: 'real-service', mode: 'evergreen' }]),
     serialized('marketing-tool.services', [{ id: sampleIds[0], mode: 'campaign' }]),
     serialized('marketing-tool.services', [{ id: sampleIds[0], mode: 'evergreen', platforms: ['TikTok'] }]),
+    serialized('marketing-tool.services', [{ id: sampleIds[0], mode: 'evergreen', tone: 'sage' }]),
+    serialized('marketing-tool.services', [{ id: sampleIds[0], businessId: 'mosaic', name: 'My renamed service', mode: 'evergreen' }]),
   ]) assert.equal(shouldOfferFirstRun(store(data), sampleIds), false);
 });
 
@@ -42,6 +44,9 @@ test('customized content/platform catalogs are existing data, not disposable sam
   assert.equal(shouldOfferFirstRun(store(serialized('marketing-tool.platform-options', ['Instagram', 'LinkedIn'])), sampleIds), false);
   assert.equal(shouldOfferFirstRun(store(serialized('marketing-tool.business-content-settings', {
     mosaic: { contentTypeAliases: { Announcement: null } },
+  })), sampleIds), false);
+  assert.equal(shouldOfferFirstRun(store(serialized('marketing-tool.business-content-settings', {
+    mosaic: { selectedPlatforms: ['Instagram'] },
   })), sampleIds), false);
 });
 

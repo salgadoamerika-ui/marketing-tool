@@ -82,7 +82,6 @@ import {
   deleteContentTypeAliases,
   loadBusinessContentSettings,
   renameContentTypeAliases,
-  resolveSeededContentType,
   type BusinessContentSettings,
 } from '@/lib/business-content-settings';
 import {
@@ -92,7 +91,6 @@ import {
   serviceSeasonsStorageKey,
 } from '@/lib/service-seasons';
 import {
-  loadServices,
   markExpiredCampaignsDormant,
   modeLabel,
   normalizeService,
@@ -109,6 +107,8 @@ import {
   useLocation,
   Router as WouterRouter,
 } from 'wouter';
+
+import { initializeLegacyWorkspace, legacyBusinessIdentities, legacySampleServiceIds } from '@/lib/legacy-workspace';
 
 const queryClient = new QueryClient();
 
@@ -179,7 +179,6 @@ type Business = {
   focus: string;
   projects: string[];
   palette: Array<{ label: string; tone: EventTone }>;
-  events: Record<string, CalendarEvent[]>;
 };
 
 const userPostsStorageKey = 'marketing-tool.user-posts';
@@ -190,141 +189,9 @@ const businessContentSettingsStorageKey = 'marketing-tool.business-content-setti
 const emptyWorkspace: Business = {
   id: 'empty-workspace', name: 'Your workspace', accent: 'rose',
   platforms: [...defaultPlatformOptions], descriptor: 'A fresh start',
-  focus: 'Add your first business when you’re ready.', projects: [], palette: [], events: {},
+  focus: 'Add your first business when you’re ready.', projects: [], palette: [],
 };
-const sampleBusinesses: Business[] = [
-  {
-    id: 'mosaic',
-    name: 'Mosaic Legal',
-    accent: 'rose',
-    platforms: [...defaultPlatformOptions],
-    descriptor: 'One calm view for every service line.',
-    focus: 'Fall programs are carrying the month, with ongoing services kept visible.',
-    projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
-    palette: [
-      { label: 'Fall programs', tone: 'rose' },
-      { label: 'Tax planning', tone: 'sand' },
-      { label: 'Divorce', tone: 'lavender' },
-      { label: 'Immigration', tone: 'blue' },
-      { label: 'Insurance', tone: 'sage' },
-    ],
-    events: {
-      '2026-08': [
-        { day: 4, project: 'Tax planning', title: 'Tax planning: common filing errors', detail: 'Post', tone: 'sand' },
-        { day: 8, project: 'Immigration', title: 'Immigration: document checklist', detail: 'Inside look', tone: 'blue' },
-        { day: 13, project: 'Fall programs', title: 'Fall programs: save the date', detail: 'Announcement', tone: 'rose' },
-        { day: 18, project: 'Divorce', title: 'Divorce: first conversation', detail: 'Insight', tone: 'lavender' },
-        { day: 25, project: 'Insurance', title: 'Insurance review: what changed?', detail: 'Book now', tone: 'sage' },
-      ],
-      '2026-09': [
-        { day: 2, project: 'Fall programs', title: 'Fall programs open', detail: 'Announcement', tone: 'rose' },
-        { day: 4, project: 'Tax planning', title: 'Tax planning for a new quarter', detail: 'Insight', tone: 'sand' },
-        { day: 7, project: 'Divorce', title: 'Divorce: the first practical step', detail: 'Inside look', tone: 'lavender' },
-        { day: 9, project: 'Fall programs', title: 'Meet the fall team', detail: 'Inside look', tone: 'rose' },
-        { day: 11, project: 'Immigration', title: 'Immigration: what to bring', detail: 'Insight', tone: 'blue' },
-        { day: 14, project: 'Insurance', title: 'Insurance review week', detail: 'Book now', tone: 'sage' },
-        { day: 16, project: 'Fall programs', title: 'Fall programs: early places', detail: 'Proof', tone: 'blush' },
-        { day: 18, project: 'Tax planning', title: 'Tax planning: a cleaner close', detail: 'Book now', tone: 'sand' },
-        { day: 21, project: 'Divorce', title: 'Divorce consults, explained', detail: 'Announcement', tone: 'lavender' },
-        { day: 23, project: 'Fall programs', title: 'Fall programs: behind the scenes', detail: 'Inside look', tone: 'rose' },
-        { day: 25, project: 'Immigration', title: 'Immigration clinic', detail: 'Book now', tone: 'blue' },
-        { day: 28, project: 'Insurance', title: 'Insurance questions answered', detail: 'Recap', tone: 'sage' },
-        { day: 30, project: 'Fall programs', title: 'Fall programs: last places', detail: 'Closing note', tone: 'blush' },
-      ],
-      '2026-10': [
-        { day: 2, project: 'Fall programs', title: 'Fall programs: final call', detail: 'Announcement', tone: 'rose' },
-        { day: 6, project: 'Insurance', title: 'Insurance renewal checklist', detail: 'Insight', tone: 'sage' },
-        { day: 10, project: 'Divorce', title: 'Divorce: what happens next', detail: 'Inside look', tone: 'lavender' },
-        { day: 15, project: 'Tax planning', title: 'Tax planning before year-end', detail: 'Book now', tone: 'sand' },
-        { day: 22, project: 'Immigration', title: 'Immigration Q&A', detail: 'Insight', tone: 'blue' },
-        { day: 29, title: 'October service recap', detail: 'Recap', tone: 'muted' },
-      ],
-    },
-  },
-  {
-    id: 'northline',
-    name: 'Northline Financial',
-    accent: 'sage',
-    platforms: [...defaultPlatformOptions],
-    descriptor: 'Keep the useful work in motion.',
-    focus: 'Year-end planning is moving forward with useful guidance for prospective clients.',
-    projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
-    palette: [
-      { label: 'Fall programs', tone: 'rose' },
-      { label: 'Tax planning', tone: 'sand' },
-      { label: 'Divorce', tone: 'lavender' },
-      { label: 'Immigration', tone: 'blue' },
-      { label: 'Insurance', tone: 'sage' },
-    ],
-    events: {
-      '2026-08': [
-        { day: 6, project: 'Tax planning', title: 'Quarterly planning notes', detail: 'Insight', tone: 'sand' },
-        { day: 12, project: 'Fall programs', title: 'Fall programs: early places', detail: 'Proof', tone: 'rose' },
-        { day: 20, project: 'Insurance', title: 'Insurance review office hours', detail: 'Book now', tone: 'sage' },
-      ],
-      '2026-09': [
-        { day: 3, project: 'Fall programs', title: 'Fall programs: planning ahead', detail: 'Announcement', tone: 'rose' },
-        { day: 8, project: 'Tax planning', title: 'Tax planning for the final quarter', detail: 'Insight', tone: 'sand' },
-        { day: 12, project: 'Insurance', title: 'What an insurance review covers', detail: 'Inside look', tone: 'sage' },
-        { day: 17, project: 'Tax planning', title: 'Year-end decisions, made simple', detail: 'Book now', tone: 'sand' },
-        { day: 24, project: 'Immigration', title: 'Immigration: the timeline view', detail: 'Inside look', tone: 'blue' },
-      ],
-      '2026-10': [
-        { day: 3, project: 'Tax planning', title: 'Year-end planning begins', detail: 'Announcement', tone: 'sand' },
-        { day: 14, project: 'Insurance', title: 'Insurance renewal questions', detail: 'Insight', tone: 'sage' },
-        { day: 24, project: 'Tax planning', title: 'Tax planning: final spots', detail: 'Book now', tone: 'sand' },
-      ],
-    },
-  },
-  {
-    id: 'harbor',
-    name: 'Harbor Coverage',
-    accent: 'amber',
-    platforms: [...defaultPlatformOptions],
-    descriptor: 'Useful guidance for the people you serve.',
-    focus: 'Insurance leads the calendar, with a few useful cross-service reminders alongside it.',
-    projects: ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'],
-    palette: [
-      { label: 'Fall programs', tone: 'rose' },
-      { label: 'Tax planning', tone: 'sand' },
-      { label: 'Divorce', tone: 'lavender' },
-      { label: 'Immigration', tone: 'blue' },
-      { label: 'Insurance', tone: 'sage' },
-    ],
-    events: {
-      '2026-08': [
-        { day: 5, project: 'Insurance', title: 'Insurance review: a reset', detail: 'Announcement', tone: 'sage' },
-        { day: 19, project: 'Insurance', title: 'The coverage check-in', detail: 'Book now', tone: 'sage' },
-      ],
-      '2026-09': [
-        { day: 1, project: 'Insurance', title: 'Insurance review week', detail: 'Announcement', tone: 'sage' },
-        { day: 6, project: 'Insurance', title: 'Three questions to ask now', detail: 'Insight', tone: 'sage' },
-        { day: 15, project: 'Tax planning', title: 'Tax planning: the early look', detail: 'Inside look', tone: 'sand' },
-        { day: 20, project: 'Insurance', title: 'Coverage stories from the field', detail: 'Proof', tone: 'blush' },
-        { day: 26, project: 'Immigration', title: 'Immigration support, explained', detail: 'Insight', tone: 'blue' },
-      ],
-      '2026-10': [
-        { day: 7, project: 'Insurance', title: 'Renewal season, without the rush', detail: 'Inside look', tone: 'sage' },
-        { day: 16, project: 'Insurance', title: 'Insurance review office hours', detail: 'Book now', tone: 'sage' },
-        { day: 27, title: 'October questions, answered', detail: 'Recap', tone: 'muted' },
-      ],
-    },
-  },
-];
-
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const seededCalendarPosts: InsightPost[] = sampleBusinesses.flatMap((business) =>
-  Object.entries(business.events).flatMap(([month, events]) =>
-    events.filter((event) => event.project).map((event, index) => ({
-      id: `seed-${business.id}-${month}-${index}`,
-      businessId: business.id, project: event.project!, title: event.title,
-      contentType: event.detail ?? 'Post', date: `${month}-${String(event.day).padStart(2, '0')}`,
-    }))));
-const seededCalendarDates = Object.fromEntries(sampleBusinesses.map((business) => [
-  business.id,
-  Object.entries(business.events).flatMap(([month, events]) =>
-    events.map((event) => `${month}-${String(event.day).padStart(2, '0')}`)),
-]));
 const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
 
 function createBusinessWorkspace(
@@ -344,7 +211,6 @@ function createBusinessWorkspace(
     focus: firstServiceName ? 'A fresh calendar for your first Service or Campaign.' : 'Add a Service or Campaign to begin building this calendar.',
     projects: firstServiceName ? [firstServiceName] : [],
     palette: firstServiceName ? [{ label: firstServiceName, tone }] : [],
-    events: {},
   };
 }
 
@@ -357,7 +223,7 @@ function readUserBusinesses(): Business[] {
     const parsed: unknown = JSON.parse(serialized);
     if (!Array.isArray(parsed)) throw new Error('Saved businesses are not a list.');
 
-    const ids = new Set(sampleBusinesses.map((business) => business.id));
+    const ids = new Set<string>();
     const names = new Set<string>();
     return parsed.map((entry) => {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -670,18 +536,38 @@ function formatPostOptionDate(date: string) {
 }
 
 function CalendarSurface() {
-  const { needsSetup, isFreshWorkspace, finishSetup } = useFirstRun();
-  const [userBusinesses, setUserBusinesses] = useState<Business[]>(readUserBusinesses);
+  const { needsSetup, finishSetup } = useFirstRun();
+  const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
   const [businessOverrides, setBusinessOverrides] = useState(() =>
     loadBusinessOverrides(window.localStorage.getItem(businessOverridesStorageKey)));
   const [isBusinessManagerOpen, setIsBusinessManagerOpen] = useState(false);
   const [businessManagerAction, setBusinessManagerAction] = useState<'edit' | 'delete'>('edit');
-  const businesses = useMemo(() => [
-    ...(isFreshWorkspace ? [] : sampleBusinesses).map((business) => ({
-      ...business, name: businessOverrides[business.id]?.name ?? business.name,
-    })), ...userBusinesses,
-  ].filter((business) => !businessOverrides[business.id]?.deleted),
-  [userBusinesses, isFreshWorkspace, businessOverrides]);
+  const [initialWorkspace] = useState(() => {
+    const savedBusinesses = readUserBusinesses();
+    const legacy = initializeLegacyWorkspace(
+      window.localStorage.getItem(servicesStorageKey),
+      userPosts,
+      savedBusinesses,
+      JSON.parse(window.localStorage.getItem(businessContentSettingsStorageKey) ?? '{}'),
+      loadServiceSeasonSelections(window.localStorage.getItem(serviceSeasonsStorageKey)),
+      readAvailablePlatforms(),
+    );
+    return {
+      services: legacy.services,
+      businesses: [
+        ...savedBusinesses,
+        ...legacyBusinessIdentities.filter(({ id }) =>
+          !savedBusinesses.some((business) => business.id === id)
+          && !businessOverrides[id]?.deleted
+          && (businessOverrides[id]?.name || legacy.recoveredBusinesses.some((business) => business.id === id)))
+          .map(({ id, name, accent }) =>
+            createBusinessWorkspace(id, businessOverrides[id]?.name ?? name, accent)),
+      ],
+    };
+  });
+  const [userBusinesses, setUserBusinesses] = useState<Business[]>(initialWorkspace.businesses);
+  const businesses = useMemo(() => userBusinesses.filter((business) =>
+    !businessOverrides[business.id]?.deleted), [userBusinesses, businessOverrides]);
   const [businessContentSettingsById, setBusinessContentSettingsById] = useState(() =>
     readBusinessContentSettings(businesses));
   const [activeBusinessId, setActiveBusinessId] = useState(() => {
@@ -695,7 +581,6 @@ function CalendarSurface() {
   const [visibleWeekStart, setVisibleWeekStart] = useState(() => mondayStart(new Date()));
   const [calendarView, setCalendarView] = useState<'month' | 'week'>('month');
   const [statusMessage, setStatusMessage] = useState('');
-  const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     parseNotifications(window.localStorage.getItem(notificationsStorageKey)));
   const { soundEnabled, toggleSound } = useNotificationSound(notifications, activeBusinessId);
@@ -720,21 +605,8 @@ function CalendarSurface() {
       return [entry, ...current];
     });
   }, []);
-  const [services, setServices] = useState<ServiceDefinition[]>(() => {
-    const defaults: ServiceDefinition[] = [
-      ...(isFreshWorkspace ? [] : sampleBusinesses).filter((business) =>
-        !businessOverrides[business.id]?.deleted).flatMap((business) => business.projects.map((name) => ({
-        id: `${business.id}:${name}`, businessId: business.id, name, mode: 'evergreen' as const,
-      }))),
-      ...userPosts.map((post) => ({
-        id: `${post.businessId}:${post.project}`, businessId: post.businessId, name: post.project, mode: 'evergreen' as const,
-      })),
-    ];
-    return markExpiredCampaignsDormant(
-      loadServices(window.localStorage.getItem(servicesStorageKey), defaults),
-      todayKey,
-    );
-  });
+  const [services, setServices] = useState<ServiceDefinition[]>(() =>
+    markExpiredCampaignsDormant(initialWorkspace.services, todayKey));
   const [seasonMonthsByService, setSeasonMonthsByService] = useState(() =>
     loadServiceSeasonSelections(window.localStorage.getItem(serviceSeasonsStorageKey)));
   const [isServiceManagerOpen, setIsServiceManagerOpen] = useState(false);
@@ -778,14 +650,6 @@ function CalendarSurface() {
     ? shiftCalendarDays(visibleWeekStart, 3)
     : visibleMonth;
   const days = useMemo(() => makeCalendarDays(visibleMonth), [visibleMonth]);
-  const events = (activeBusiness.events[monthKey(calendarDisplayMonth)] ?? []).map((event) => {
-    const resolved = event.detail
-      ? resolveSeededContentType(event.detail, activeContentSettings)
-      : null;
-    return resolved === null
-      ? event
-      : { ...event, detail: resolved || undefined, contentTypeName: resolved || undefined };
-  });
   const activeBusinessPosts = useMemo(
     () => userPosts.filter((post) => post.businessId === activeBusiness.id),
     [userPosts, activeBusiness.id],
@@ -813,28 +677,11 @@ function CalendarSurface() {
   const selectedWeeklyInsightsPost = weeklyInsightsPosts.find(
     (post) => post.id === selectedWeeklyInsightsPostId,
   );
-  const activeSeededCalendarPosts = useMemo(
-    () => seededCalendarPosts
-      .filter((post) => post.businessId === activeBusiness.id)
-      .map((post) => {
-        const resolved = resolveSeededContentType(post.contentType, activeContentSettings);
-        return resolved === null ? post : { ...post, contentType: resolved };
-      }),
-    [activeBusiness.id, activeContentSettings],
-  );
   const monthPosts = activeBusinessPosts.filter((post) => post.date.startsWith(monthKey(visibleMonth)));
   const monthlyAirtime = getMonthlyAirtime(
     activeBusiness.id,
     activeBusiness.projects,
-    [
-      ...activeBusinessPosts,
-      ...events.filter((event) => event.project).map((event, index) => ({
-        id: `calendar-${monthKey(calendarDisplayMonth)}-${index}`,
-        businessId: activeBusiness.id,
-        project: event.project!,
-        date: `${monthKey(calendarDisplayMonth)}-${String(event.day).padStart(2, '0')}`,
-      })),
-    ],
+    activeBusinessPosts,
     calendarDisplayMonth.getFullYear(),
     calendarDisplayMonth.getMonth() + 1,
   );
@@ -848,9 +695,9 @@ function CalendarSurface() {
   );
   const rawConversionReview = selectedUserPost ? buildConversionReview(
     selectedUserPost,
-    [...activeBusinessPosts, ...activeSeededCalendarPosts],
+    activeBusinessPosts,
     formatDateInput(new Date()),
-    seededCalendarDates[activeBusiness.id] ?? [],
+    [],
     businessServices,
   ) : null;
   const conversionReview = rawConversionReview?.proposal
@@ -879,27 +726,11 @@ function CalendarSurface() {
       ? { bestTime: getBestTimeRecommendation(post.businessId, post.project, post.platforms, activeBusinessPosts) }
       : {}),
   });
-  const calendarEvents = [
-    ...events,
-    ...monthPosts.map(postAsEvent),
-  ];
+  const calendarEvents = monthPosts.map(postAsEvent);
   const weekStartKey = formatDateInput(visibleWeekStart);
   const weekEndKey = formatDateInput(shiftCalendarDays(visibleWeekStart, 6));
   const isInWeek = (date: string) => date >= weekStartKey && date <= weekEndKey;
   const weekCalendarItems: WeekCalendarItem[] = [
-    ...Object.entries(activeBusiness.events).flatMap(([month, entries]) =>
-      entries.flatMap((event) => {
-        const date = `${month}-${String(event.day).padStart(2, '0')}`;
-        if (!isInWeek(date)) return [];
-        const resolved = event.detail ? resolveSeededContentType(event.detail, activeContentSettings) : null;
-        const contentType = resolved && contentTypes.includes(resolved) ? resolved : undefined;
-        return [{
-          date, title: event.title, project: event.project ?? activeBusiness.name,
-          contentType, platformLabel: 'Platform not set', timeLabel: 'Time not set',
-          colorClass: contentType ? 'event-content-type' : `event-${event.tone}`,
-          colorStyle: contentType ? getContentTypeStyle(contentType) : undefined,
-        }];
-      })),
     ...activeBusinessPosts.filter((post) => isInWeek(post.date)).map((post) => {
       const contentType = contentTypes.includes(post.contentType) ? post.contentType : undefined;
       const isSuggestion = post.schedulingStatus === 'approved-suggestion';
@@ -1002,9 +833,9 @@ function CalendarSurface() {
       const refreshedSequence = buildBusinessActionInsight(
         current.action,
         source,
-        [...activeBusinessPosts, ...activeSeededCalendarPosts],
+        activeBusinessPosts,
         todayKey,
-        seededCalendarDates[activeBusiness.id] ?? [],
+        [],
         businessServices,
         contentTypes,
         sequenceOnly,
@@ -1015,7 +846,7 @@ function CalendarSurface() {
         : refreshedSequence;
       return JSON.stringify(current) === JSON.stringify(refreshed) ? current : refreshed;
     });
-  }, [activeBusiness.id, activeBusinessPosts, activeSeededCalendarPosts, businessServices, todayKey, contentTypes]);
+  }, [activeBusiness.id, activeBusinessPosts, businessServices, todayKey, contentTypes]);
 
   useEffect(() => {
     if (!actionInsight?.sourcePostId) return;
@@ -1032,7 +863,7 @@ function CalendarSurface() {
         source,
         activeBusinessPosts.filter((post) => post.date <= todayKey),
         todayKey,
-        seededCalendarDates[activeBusiness.id] ?? [],
+        [],
         businessServices,
       ) : undefined;
     recordNotification({
@@ -1355,9 +1186,9 @@ function CalendarSurface() {
         const insight = buildBusinessActionInsight(
           'completed',
           source,
-          [...nextPosts.filter((post) => post.businessId === revived.businessId), ...activeSeededCalendarPosts],
+          nextPosts.filter((post) => post.businessId === revived.businessId),
           todayKey,
-          seededCalendarDates[revived.businessId] ?? [],
+          [],
           nextServices.filter((service) => service.businessId === revived.businessId),
           contentTypes,
           true,
@@ -1672,9 +1503,9 @@ function CalendarSurface() {
     setActionInsight(buildBusinessActionInsight(
       'logged',
       savedPost,
-      [...postsAfterSave.filter((post) => post.businessId === activeBusiness.id), ...activeSeededCalendarPosts],
+      postsAfterSave.filter((post) => post.businessId === activeBusiness.id),
       todayKey,
-      seededCalendarDates[activeBusiness.id] ?? [],
+      [],
       businessServices,
       contentTypes,
     ));
@@ -1695,9 +1526,9 @@ function CalendarSurface() {
     const refreshedSequence = buildBusinessActionInsight(
       actionInsight.action,
       source,
-      [...activeBusinessPosts, ...activeSeededCalendarPosts],
+      activeBusinessPosts,
       formatDateInput(new Date()),
-      seededCalendarDates[activeBusiness.id] ?? [],
+      [],
       businessServices,
       contentTypes,
       sequenceOnly,
@@ -1813,8 +1644,8 @@ function CalendarSurface() {
     const service = businessServices.find((item) => item.name === savedPost.project);
     const winner = getOverperformer(savedPost, businessPostsAfterSave.filter((post) => (post as InsightPost).status !== 'skipped' && post.date <= todayKey));
     setActionInsight((flatState.action !== 'none' && flatState.latestPostId === savedPost.id) || winner || service?.mode === 'campaign'
-      ? buildBusinessActionInsight('results', savedPost, [...businessPostsAfterSave, ...activeSeededCalendarPosts],
-        todayKey, seededCalendarDates[activeBusiness.id] ?? [], businessServices, contentTypes)
+      ? buildBusinessActionInsight('results', savedPost, businessPostsAfterSave,
+        todayKey, [], businessServices, contentTypes)
       : null);
   };
 
@@ -1830,9 +1661,9 @@ function CalendarSurface() {
     const sequence = buildBusinessActionInsight(
       'completed',
       post,
-      [...completionPosts, ...activeSeededCalendarPosts],
+      completionPosts,
       todayKey,
-      seededCalendarDates[activeBusiness.id] ?? [],
+      [],
       businessServices,
       contentTypes,
       true,
@@ -1842,7 +1673,7 @@ function CalendarSurface() {
       post,
       completionPosts,
       todayKey,
-      seededCalendarDates[activeBusiness.id] ?? [],
+      [],
       businessServices,
     );
     setActionInsight({
@@ -1878,8 +1709,8 @@ function CalendarSurface() {
     }
     const updatedPosts = activeBusinessPosts.map((item) => item.id === postId ? updated : item);
     setActionInsight(buildBusinessActionInsight(
-      'skipped', updated, [...updatedPosts, ...activeSeededCalendarPosts],
-      todayKey, seededCalendarDates[activeBusiness.id] ?? [], businessServices, contentTypes,
+      'skipped', updated, updatedPosts,
+      todayKey, [], businessServices, contentTypes,
     ));
     showActionMessage(`Skipped “${post.title}”. Kept in your record.`);
   };
@@ -1902,8 +1733,8 @@ function CalendarSurface() {
 
   const handleAddConversionSuggestion = () => {
     if (!selectedUserPost) return;
-    const refreshed = buildConversionReview(selectedUserPost, [...activeBusinessPosts, ...activeSeededCalendarPosts],
-      formatDateInput(new Date()), seededCalendarDates[activeBusiness.id] ?? [], businessServices);
+    const refreshed = buildConversionReview(selectedUserPost, activeBusinessPosts,
+      formatDateInput(new Date()), [], businessServices);
     const proposal = refreshed.proposal;
     if (proposal && !contentTypes.includes(proposal.contentType)) {
       showActionMessage('This follow-up was skipped because its content type is not enabled for this business.');
@@ -2777,12 +2608,12 @@ function CalendarSurface() {
                   <h3 id="post-rationale-title">Why this move</h3>
                   <p>{buildPostRationale(
                     selectedUserPost,
-                    [...activeBusinessPosts, ...activeSeededCalendarPosts],
+                    activeBusinessPosts,
                     todayKey,
                     businessServices,
                   )}</p>
                 </section>
-                <p className="post-detail-note">Deleting removes this saved post from the calendar. Sample events are not affected.</p>
+                <p className="post-detail-note">Deleting removes this saved post from the calendar.</p>
                 <div className="post-detail-actions">
                   <button
                     aria-label={selectedUserPost.isCompleted ? 'Mark post not done' : 'Mark post done'}
@@ -2913,8 +2744,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <WelcomeEntry sampleServiceIds={sampleBusinesses.flatMap((business) =>
-            business.projects.map((name) => `${business.id}:${name}`))}>
+          <WelcomeEntry sampleServiceIds={legacySampleServiceIds}>
             <Router />
           </WelcomeEntry>
         </WouterRouter>

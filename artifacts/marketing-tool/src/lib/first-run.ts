@@ -15,7 +15,7 @@ export type FirstRunSetupInput = {
 
 type ReadableStorage = { getItem(key: string): string | null };
 
-/** Sample services auto-persist on load; they are not evidence of user setup. */
+/** Older versions auto-persisted sample services; they are not evidence of user setup. */
 export function shouldOfferFirstRun(storage: ReadableStorage, sampleServiceIds: string[]): boolean {
   try {
     if (storage.getItem(firstRunStorageKey)) return false;
@@ -38,11 +38,14 @@ export function shouldOfferFirstRun(storage: ReadableStorage, sampleServiceIds: 
         && JSON.stringify(catalog.contentTypes) !== JSON.stringify(defaultContentTypes))
       || (catalog.platformOptions !== undefined
         && JSON.stringify(catalog.platformOptions) !== JSON.stringify(defaultPlatformOptions))
+      || (catalog.selectedPlatforms !== undefined
+        && JSON.stringify(catalog.selectedPlatforms) !== JSON.stringify(defaultPlatformOptions))
       || Object.keys(catalog.contentTypeAliases ?? {}).length > 0)) return false;
     const sampleIds = new Set(sampleServiceIds);
     return !services.some((service) => !service || typeof service !== 'object'
       || !sampleIds.has(service.id) || service.mode !== 'evergreen'
-      || service.platforms !== undefined || service.campaignHistory !== undefined);
+      || (service.name !== undefined && service.id !== `${service.businessId}:${service.name}`)
+      || Object.keys(service).some((key) => !['id', 'businessId', 'name', 'mode'].includes(key)));
   } catch {
     return false;
   }

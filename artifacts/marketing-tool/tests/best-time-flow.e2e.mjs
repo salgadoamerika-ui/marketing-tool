@@ -1182,14 +1182,47 @@ async function startCdpPage(url) {
       }
       return response.result?.value;
     };
+    const enterCalendar = async () => {
+      const point = await waitFor(() => evaluate(`(() => {
+        const button = document.querySelector('[data-testid="button-step-in"]');
+        if (!button || button.disabled) return false;
+        const bounds = button.getBoundingClientRect();
+        const x = bounds.left + bounds.width / 2;
+        const y = bounds.top + bounds.height / 2;
+        return button.contains(document.elementFromPoint(x, y)) ? { x, y } : false;
+      })()`), 'visible Step in control');
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+      await waitFor(() => evaluate("!document.querySelector('.welcome-screen') && !document.querySelector('.welcome-app-content')?.inert"),
+        'calendar ready after welcome');
+    };
 
     await send('Page.enable');
     await send('Runtime.enable');
+    // Existing-flow tests explicitly own their business/service fixtures now.
+    // No test may depend on the app silently creating sample workspaces/events.
+    const fixtureBusinesses = [
+      { id: 'mosaic', name: 'Mosaic Legal', accent: 'rose', platforms: ['Facebook', 'Instagram', 'TikTok'] },
+      { id: 'northline', name: 'Northline Financial', accent: 'sage', platforms: ['Facebook', 'Instagram', 'TikTok'] },
+      { id: 'harbor', name: 'Harbor Coverage', accent: 'amber', platforms: ['Facebook', 'Instagram', 'TikTok'] },
+    ];
+    const fixtureServices = fixtureBusinesses.flatMap(({ id }) =>
+      ['Fall programs', 'Tax planning', 'Divorce', 'Immigration', 'Insurance'].map((name) => ({
+        id: `${id}:${name}`, businessId: id, name, mode: 'evergreen',
+      })));
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+      if (sessionStorage.getItem('test-workspace-ready')) return;
+      localStorage.setItem('marketing-tool.businesses', ${jsString(JSON.stringify(fixtureBusinesses))});
+      localStorage.setItem('marketing-tool.services', ${jsString(JSON.stringify(fixtureServices))});
+      localStorage.setItem('marketing-tool.first-run-setup', 'skipped');
+      sessionStorage.setItem('test-workspace-ready', 'true');
+    })()` });
     await send('Page.navigate', { url });
     await waitFor(
       () => evaluate("Boolean(document.querySelector('button.add-post'))"),
       'marketing calendar to render',
     );
+    await enterCalendar();
 
     return {
       child,
@@ -1227,6 +1260,7 @@ async function startCdpPage(url) {
         await loaded;
         await waitFor(() => evaluate(`document.documentElement.dataset.testReloadMarker !== ${jsString(marker)}
           && Boolean(document.querySelector('button.add-post'))`), 'new calendar document after reload');
+        await enterCalendar();
       },
       close: async () => {
         socket.close();
@@ -1746,7 +1780,7 @@ test('flat-post policy stays invisible while normal approvals retry, refresh and
     await assertInvisible(evaluate);
     await click(evaluate, '.action-insight-add');
     const monthly = await waitFor(async () => (await readPosts(evaluate)).find((post) => post.suggestionKind === 'maintenance'), 'approved monthly check-in');
-    assert.equal(monthly.date, '2026-11-05', 'The existing Insurance post on October 6 keeps the next monthly check-in 30 days later.');
+    assert.equal(monthly.date, '2026-10-06', 'Monthly pacing uses saved Insurance posts only, not a built-in October demo event.');
     assert.equal((await readPosts(evaluate)).length, 7);
 
     await browser.reload();
