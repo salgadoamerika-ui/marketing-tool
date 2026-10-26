@@ -12,6 +12,9 @@ import { CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, S
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { NotificationCenter } from '@/components/notification-center';
 import { WelcomeEntry } from '@/components/welcome-entry';
+import { FirstRunSetup } from '@/components/first-run-setup';
+import { useFirstRun } from '@/components/first-run-context';
+import { firstRunStorageKey, validateFirstRun, type FirstRunSetupInput } from '@/lib/first-run';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { performanceAttentionKey } from '@/lib/notification-sound';
 import { currentDateInput } from '@/lib/current-date';
@@ -176,6 +179,11 @@ const userBusinessesStorageKey = 'marketing-tool.businesses';
 const activeBusinessStorageKey = 'marketing-tool.active-business-id';
 const platformOptionsStorageKey = 'marketing-tool.platform-options';
 const businessContentSettingsStorageKey = 'marketing-tool.business-content-settings';
+const emptyWorkspace: Business = {
+  id: 'empty-workspace', name: 'Your workspace', accent: 'rose',
+  platforms: [...defaultPlatformOptions], descriptor: 'A fresh start',
+  focus: 'Add your first business when you’re ready.', projects: [], palette: [], events: {},
+};
 const sampleBusinesses: Business[] = [
   {
     id: 'mosaic',
@@ -342,7 +350,7 @@ function readUserBusinesses(): Business[] {
     if (!Array.isArray(parsed)) throw new Error('Saved businesses are not a list.');
 
     const ids = new Set(sampleBusinesses.map((business) => business.id));
-    const names = new Set(sampleBusinesses.map((business) => business.name.toLowerCase()));
+    const names = new Set<string>();
     return parsed.map((entry) => {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
         throw new Error('A saved business entry is invalid.');
@@ -654,15 +662,18 @@ function formatPostOptionDate(date: string) {
 }
 
 function CalendarSurface() {
+  const { needsSetup, isFreshWorkspace, finishSetup } = useFirstRun();
   const [userBusinesses, setUserBusinesses] = useState<Business[]>(readUserBusinesses);
-  const businesses = useMemo(() => [...sampleBusinesses, ...userBusinesses], [userBusinesses]);
+  const businesses = useMemo(() => [
+    ...(isFreshWorkspace ? [] : sampleBusinesses), ...userBusinesses,
+  ], [userBusinesses, isFreshWorkspace]);
   const [businessContentSettingsById, setBusinessContentSettingsById] = useState(() =>
     readBusinessContentSettings(businesses));
   const [activeBusinessId, setActiveBusinessId] = useState(() => {
     const savedBusinessId = window.localStorage.getItem(activeBusinessStorageKey);
     return savedBusinessId && businesses.some((item) => item.id === savedBusinessId)
       ? savedBusinessId
-      : sampleBusinesses[0].id;
+      : businesses[0]?.id ?? emptyWorkspace.id;
   });
   const [todayKey, setTodayKey] = useState(() => formatDateInput(new Date()));
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
@@ -696,7 +707,7 @@ function CalendarSurface() {
   }, []);
   const [services, setServices] = useState<ServiceDefinition[]>(() => {
     const defaults: ServiceDefinition[] = [
-      ...sampleBusinesses.flatMap((business) => business.projects.map((name) => ({
+      ...(isFreshWorkspace ? [] : sampleBusinesses).flatMap((business) => business.projects.map((name) => ({
         id: `${business.id}:${name}`, businessId: business.id, name, mode: 'evergreen' as const,
       }))),
       ...userPosts.map((post) => ({
@@ -725,7 +736,7 @@ function CalendarSurface() {
   const [actionInsight, setActionInsight] = useState<ActionInsight | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
-  const business = businesses.find((item) => item.id === activeBusinessId) ?? businesses[0];
+  const business = businesses.find((item) => item.id === activeBusinessId) ?? businesses[0] ?? emptyWorkspace;
   const activeContentSettings = businessContentSettingsById[business.id]
     ?? createBusinessContentSettings(business.platforms);
   const availablePlatforms = activeContentSettings.platformOptions;
@@ -1039,6 +1050,7 @@ function CalendarSurface() {
   }, [services]);
 
   const handleSaveService = (draft: ServiceDefinition): string | ServiceDefinition => {
+    if (activeBusiness.id === emptyWorkspace.id) return 'Add a business before creating its services.';
     const error = validateService(draft);
     if (error) return error;
     if (draft.businessId !== activeBusiness.id) return 'Choose a service in this business.';
@@ -1454,6 +1466,10 @@ function CalendarSurface() {
   };
 
   const openPostForm = () => {
+    if (activeBusiness.id === emptyWorkspace.id) {
+      setIsBusinessDialogOpen(true);
+      return;
+    }
     setPostForm(createPostForm(currentDateInput(), activeBusiness.platforms));
     setFormError('');
     setStatusMessage('');
@@ -1929,7 +1945,7 @@ function CalendarSurface() {
     showActionMessage(`Added “${suggestion.title}” to the calendar.`);
   };
 
-  const handleCreateBusiness = (input: BusinessSetupInput): BusinessSetupResult => {
+  const handleCreateBusiness = (input: BusinessSetupInput, firstMove?: FirstRunSetupInput): BusinessSetupResult => {
     const name = input.name.trim();
     if (!name) return { error: 'Enter a name for this business.' };
     if (businesses.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
@@ -1980,11 +1996,35 @@ function CalendarSurface() {
     const serializedBusinesses = JSON.stringify(nextBusinesses.map(({ id, name: businessName, accent, platforms }) => ({
       id, name: businessName, accent, platforms,
     })));
+    let startingPosts: UserPost[] | undefined;
+    if (firstMove) {
+      const firstPost: UserPost = {
+        id: createPostId(), businessId, project: service.name,
+        contentType: firstMove.contentType, title: `${firstMove.contentType} · ${service.name}`,
+        date: firstMove.date, platforms: selectedPlatforms, distribution: 'organic',
+        ...(firstMove.isCompleted ? { isCompleted: true, status: 'completed' as const } : {}),
+      };
+      const startingInsight = buildBusinessActionInsight(
+        firstMove.isCompleted ? 'completed' : 'logged', firstPost, [firstPost],
+        currentDateInput(), [], [service], nextContentSettings[businessId].contentTypes,
+      );
+      startingPosts = [firstPost, ...startingInsight.proposals.map((proposal): UserPost => ({
+        id: createPostId(), businessId, project: service.name,
+        contentType: proposal.contentType, title: proposal.title, date: proposal.date,
+        platforms: selectedPlatforms, distribution: proposal.distribution ?? 'organic',
+        schedulingStatus: 'approved-suggestion', sourcePostId: firstPost.id, suggestionKind: proposal.kind,
+      }))];
+    }
     try {
       writeLocalStorageBatch([
         [userBusinessesStorageKey, serializedBusinesses],
         [servicesStorageKey, JSON.stringify(nextServices)],
         [businessContentSettingsStorageKey, JSON.stringify(nextContentSettings)],
+        ...(startingPosts ? [
+          [userPostsStorageKey, JSON.stringify([...userPosts, ...startingPosts])],
+          [activeBusinessStorageKey, businessId],
+          [firstRunStorageKey, 'completed'],
+        ] as Array<[string, string]> : []),
       ]);
     } catch {
       return { error: 'This business and its first Service or Campaign could not be saved on this device.' };
@@ -1993,6 +2033,14 @@ function CalendarSurface() {
     setUserBusinesses(nextBusinesses);
     setServices(nextServices);
     setBusinessContentSettingsById(nextContentSettings);
+    if (startingPosts) {
+      setUserPosts((current) => [...current, ...startingPosts!]);
+      setActiveBusinessId(businessId);
+      setCalendarView('month');
+      revealDateInCalendar(startingPosts[0].date);
+      setActionInsight(null);
+      setSelectedPostId(null);
+    }
     return {
       business: {
         id: newBusiness.id,
@@ -2015,6 +2063,32 @@ function CalendarSurface() {
     setIsServiceManagerOpen(false);
     setIsBusinessDialogOpen(false);
   };
+
+  if (needsSetup) {
+    return <FirstRunSetup
+      platformOptions={defaultPlatformOptions}
+      contentTypes={defaultContentTypes}
+      today={currentDateInput()}
+      onComplete={(input) => {
+        const error = validateFirstRun(input, defaultPlatformOptions, defaultContentTypes, currentDateInput());
+        if (error) return error;
+        const result = handleCreateBusiness({
+          name: input.serviceName, accent: 'rose', serviceName: input.serviceName,
+          mode: input.mode, startDate: input.date < currentDateInput() ? input.date : currentDateInput(),
+          deadline: input.deadline, platforms: input.platforms,
+        }, input);
+        return 'error' in result ? result.error : undefined;
+      }}
+      onSkip={() => {
+        try { window.localStorage.setItem(firstRunStorageKey, 'skipped'); }
+        catch { return 'Setup could not be saved on this device. Please try again.'; }
+        setCalendarView('month');
+        finishSetup();
+        return undefined;
+      }}
+      onEnterCalendar={finishSetup}
+    />;
+  }
 
   return (
     <main className="calendar-page">
@@ -2093,11 +2167,13 @@ function CalendarSurface() {
             <p className="calendar-subtitle">{activeBusiness.descriptor} {activeBusiness.focus}</p>
           </div>
           <div className="header-actions">
-            <button className="icon-button manage-services" onClick={() => setIsServiceManagerOpen(true)} type="button">
+            <button className="icon-button manage-services" onClick={() =>
+              activeBusiness.id === emptyWorkspace.id ? setIsBusinessDialogOpen(true) : setIsServiceManagerOpen(true)} type="button">
               <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
               Manage services
             </button>
-            <button className="icon-button manage-content" onClick={() => setIsContentManagerOpen(true)} type="button">
+            <button className="icon-button manage-content" onClick={() =>
+              activeBusiness.id === emptyWorkspace.id ? setIsBusinessDialogOpen(true) : setIsContentManagerOpen(true)} type="button">
               <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
               Manage content
             </button>
@@ -2717,7 +2793,8 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <WelcomeEntry>
+          <WelcomeEntry sampleServiceIds={sampleBusinesses.flatMap((business) =>
+            business.projects.map((name) => `${business.id}:${name}`))}>
             <Router />
           </WelcomeEntry>
         </WouterRouter>

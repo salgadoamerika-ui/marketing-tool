@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
+import { type RefObject, useLayoutEffect } from 'react';
 import { calendarRippleDelay, calendarRippleFinishMs } from '@/lib/calendar-entrance';
 import './calendar-entrance.css';
 
@@ -10,38 +10,47 @@ import './calendar-entrance.css';
 export function useCalendarEntrance(
   calendarRef: RefObject<HTMLDivElement | null>,
   hasEntered: boolean,
+  prepare = true,
 ) {
-  const initialPosts = useRef<HTMLElement[]>([]);
-
   useLayoutEffect(() => {
-    const posts = Array.from(
-      calendarRef.current?.querySelectorAll<HTMLElement>('.calendar-grid .event-chip, .week-post') ?? [],
-    );
-    initialPosts.current = posts;
-    posts.forEach((post, index) => {
-      post.style.setProperty('--calendar-ripple-delay', `${calendarRippleDelay(index)}ms`);
-      post.classList.add('calendar-post-ripple');
-    });
-    return () => {
+    if (!prepare) return;
+    const root = calendarRef.current;
+    if (!root) return;
+    let posts: HTMLElement[] = [];
+    let attached = false;
+    let observer: MutationObserver | undefined;
+    let timer: number | undefined;
+    const clearDecoration = () => {
       posts.forEach((post) => {
         post.classList.remove('calendar-post-ripple');
         post.style.removeProperty('--calendar-ripple-delay');
       });
     };
-  }, [calendarRef]);
-
-  useEffect(() => {
-    if (!hasEntered) return;
-    // Remove the animation decoration once, not per post or on data changes.
-    // This also cleans up when reduced-motion disables animationend events.
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const timer = window.setTimeout(() => {
-      initialPosts.current.forEach((post) => {
-        post.classList.remove('calendar-post-ripple');
-        post.style.removeProperty('--calendar-ripple-delay');
+    const attachOnce = () => {
+      if (attached || !root.querySelector('.calendar-grid, .week-post')) return;
+      attached = true;
+      observer?.disconnect();
+      posts = Array.from(root.querySelectorAll<HTMLElement>('.calendar-grid .event-chip, .week-post'));
+      posts.forEach((post, index) => {
+        post.style.setProperty('--calendar-ripple-delay', `${calendarRippleDelay(index)}ms`);
+        post.classList.add('calendar-post-ripple');
       });
-      initialPosts.current = [];
-    }, reduceMotion ? 0 : calendarRippleFinishMs(initialPosts.current.length));
-    return () => window.clearTimeout(timer);
-  }, [hasEntered]);
+      if (hasEntered) {
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        timer = window.setTimeout(clearDecoration, reduceMotion ? 0 : calendarRippleFinishMs(posts.length));
+      }
+    };
+    attachOnce();
+    if (!attached) {
+      // Routing/context updates can commit the newly built calendar after its
+      // outer entry shell. Watch only until that first grid actually exists.
+      observer = new MutationObserver(attachOnce);
+      observer.observe(root, { childList: true, subtree: true });
+    }
+    return () => {
+      observer?.disconnect();
+      window.clearTimeout(timer);
+      clearDecoration();
+    };
+  }, [calendarRef, prepare, hasEntered]);
 }

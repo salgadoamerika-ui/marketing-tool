@@ -12,3 +12,4 @@
 - [Skip feedback intent](skip-feedback-intent.md) — retained skips gently reduce same-type suggestions within one service and business; offer one opt-in alternative.
 - [Notification sound intent](notification-sound-intent.md) — only real performance alerts and Campaign wake-ups chime; ordinary actions and replays stay quiet.
 - [Welcome entry intent](welcome-entry-intent.md) — latest design waits for Step in; no timed dismissal or background-click skip, and no replay on navigation.
+- [First-run setup intent](first-run-intent.md) — three steps after welcome for genuinely new workspaces; samples never block setup, and the ripple waits for completion.

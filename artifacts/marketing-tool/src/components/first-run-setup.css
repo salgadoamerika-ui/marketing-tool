@@ -1,0 +1,44 @@
+.frs { max-width: 34rem; margin: 2rem auto; padding: 2rem; background: var(--surface); border: 1px solid var(--line); border-radius: 1.25rem; box-shadow: var(--shadow-panel); color: var(--ink); animation: frs-in .35s ease both; }
+.frs-head { display: flex; justify-content: space-between; align-items: center; }
+.frs-step { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--plum-soft); margin: 0; }
+.frs-skip { background: none; border: 0; color: var(--rose-deep); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font: inherit; font-size: .9rem; padding: .25rem; }
+.frs-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; margin: .9rem 0 1.4rem; }
+.frs-bar span { height: 4px; border-radius: 4px; background: var(--line-strong); transition: background .3s; }
+.frs-bar span.on { background: var(--rose); }
+.frs-title { font-family: 'Fraunces', serif; font-weight: 500; font-size: 1.7rem; line-height: 1.2; margin: 0 0 1.2rem; outline: none; }
+.frs-form, .frs-fields { display: flex; flex-direction: column; gap: .6rem; }
+.frs-fields { border: 0; padding: 0; margin: 0; animation: frs-in .3s ease both; }
+.frs-label { font-weight: 600; font-size: .9rem; padding: 0; margin-top: .4rem; }
+.frs-input { font: inherit; padding: .7rem .85rem; border: 1px solid var(--line-strong); border-radius: .75rem; background: var(--champagne); color: var(--ink); }
+.frs-help { font-size: .88rem; color: var(--plum-soft); margin: 0; line-height: 1.5; }
+.frs-input:focus-visible, .frs-btn:focus-visible, .frs-skip:focus-visible, .frs-choice input:focus-visible + span, .frs-chips input:focus-visible + span, .frs-check input:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+.frs-choice { border: 0; padding: 0; margin: .4rem 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.frs-choice legend { margin-bottom: .5rem; }
+.frs-choice label { display: flex; border: 1px solid var(--line-strong); border-radius: .9rem; background: var(--champagne); cursor: pointer; }
+.frs-choice label.sel, .frs-chips label.sel { border-color: var(--rose); background: #f7e9ef; }
+.frs-choice input, .frs-chips input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.frs-choice span { display: flex; flex-direction: column; gap: .2rem; padding: .85rem; border-radius: .9rem; width: 100%; }
+.frs-choice small, .frs-check small { color: var(--plum-soft); font-size: .8rem; display: block; }
+.frs-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.frs-chips label { border: 1px solid var(--line-strong); border-radius: 999px; background: var(--champagne); cursor: pointer; }
+.frs-chips span { display: inline-flex; align-items: center; gap: .3rem; padding: .5rem .95rem; border-radius: 999px; }
+.frs-check { display: flex; gap: .6rem; align-items: flex-start; margin-top: .5rem; cursor: pointer; }
+.frs-check input { margin-top: .25rem; accent-color: var(--rose); }
+.frs-error { margin: .4rem 0 0; padding: .6rem .8rem; border-radius: .7rem; background: #f9e6ea; color: var(--rose-deep); font-size: .9rem; }
+.frs-actions { display: flex; justify-content: space-between; margin-top: 1.2rem; gap: .75rem; }
+.frs-btn { font: inherit; font-weight: 600; display: inline-flex; align-items: center; gap: .4rem; padding: .7rem 1.3rem; border-radius: 999px; cursor: pointer; border: 1px solid transparent; }
+.frs-btn.primary { background: var(--ink); color: var(--surface); }
+.frs-btn.primary:hover { background: var(--rose-deep); }
+.frs-btn.ghost { background: transparent; border-color: var(--line-strong); color: var(--ink); }
+.frs-building { text-align: center; padding: 3rem 2rem; }
+.frs-pulse { width: 3rem; height: 3rem; margin: 0 auto 1.2rem; border-radius: 50%; background: var(--rose-soft); animation: frs-pulse 1s ease-in-out infinite; }
+@keyframes frs-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes frs-pulse { 50% { transform: scale(1.2); opacity: .6; } }
+@media (max-width: 640px) {
+  .frs { margin: 1rem; padding: 1.4rem; }
+  .frs-choice { grid-template-columns: 1fr; }
+  .frs-title { font-size: 1.45rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .frs, .frs-fields, .frs-pulse, .frs-bar span { animation: none; transition: none; }
+}
