@@ -1,6 +1,6 @@
 export const welcomeNameStorageKey = 'marketing-tool.display-name';
-// Editable fallback until an authenticated profile supplies a name.
-export const defaultWelcomeName = 'Amerika';
+// No demo identity: an unnamed visitor sees the greeting without a name line.
+export const defaultWelcomeName = '';
 
 export function resolveWelcomeName(userName?: unknown, storedName?: unknown): string {
   for (const value of [userName, storedName]) {

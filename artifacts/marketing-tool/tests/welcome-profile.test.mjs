@@ -11,7 +11,8 @@ test('the stored display name is used until a logged-in profile is available', (
   assert.equal(resolveWelcomeName('   ', 'Sam'), 'Sam');
 });
 
-test('missing or invalid names use the editable fallback without rendering undefined', () => {
+test('missing or invalid names omit personalization instead of inventing a demo identity', () => {
+  assert.equal(defaultWelcomeName, '');
   assert.equal(resolveWelcomeName(), defaultWelcomeName);
   assert.equal(resolveWelcomeName(null, '  '), defaultWelcomeName);
   assert.equal(resolveWelcomeName({ name: 'Invalid' }, 123), defaultWelcomeName);
