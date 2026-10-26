@@ -16,6 +16,9 @@ import { FirstRunSetup } from '@/components/first-run-setup';
 import { useFirstRun } from '@/components/first-run-context';
 import { BusinessManager } from '@/components/business-manager';
 import {
+  ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem,
+} from '@/components/ui/context-menu';
+import {
   businessOverridesStorageKey, loadBusinessOverrides, validateBusinessName,
   withoutBusiness, withoutBusinessSettings, withoutBusinessSeasons,
 } from '@/lib/business-management';
@@ -672,6 +675,7 @@ function CalendarSurface() {
   const [businessOverrides, setBusinessOverrides] = useState(() =>
     loadBusinessOverrides(window.localStorage.getItem(businessOverridesStorageKey)));
   const [isBusinessManagerOpen, setIsBusinessManagerOpen] = useState(false);
+  const [businessManagerAction, setBusinessManagerAction] = useState<'edit' | 'delete'>('edit');
   const businesses = useMemo(() => [
     ...(isFreshWorkspace ? [] : sampleBusinesses).map((business) => ({
       ...business, name: businessOverrides[business.id]?.name ?? business.name,
@@ -2144,6 +2148,19 @@ function CalendarSurface() {
     return undefined;
   };
 
+  const openBusinessAction = (businessId: string, action: 'edit' | 'delete') => {
+    setActiveBusinessId(businessId);
+    setBusinessManagerAction(action);
+    setStatusMessage('');
+    setActionInsight(null);
+    closeSelectedPost();
+    closePostForm();
+    setIsServiceManagerOpen(false);
+    setIsContentManagerOpen(false);
+    setIsBusinessDialogOpen(false);
+    setIsBusinessManagerOpen(true);
+  };
+
   if (needsSetup) {
     return <FirstRunSetup
       platformOptions={defaultPlatformOptions}
@@ -2176,10 +2193,12 @@ function CalendarSurface() {
         <div className="business-switcher">
           <nav className="business-tabs" aria-label="Businesses">
             {businesses.map((business) => (
+              <ContextMenu key={business.id} modal={false}>
+                <ContextMenuTrigger asChild>
               <button
                 aria-pressed={business.id === activeBusiness.id}
                 className={`business-tab ${business.id === activeBusiness.id ? 'active' : ''}`}
-                key={business.id}
+                title="Right-click to edit or delete this business"
                 style={{ '--business-accent-color': getBusinessAccent(business.accent).color } as CSSProperties}
                 onClick={() => {
                   setActiveBusinessId(business.id);
@@ -2196,6 +2215,14 @@ function CalendarSurface() {
                 <span className="business-dot" aria-hidden="true" />
                 {business.name}
               </button>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="business-tab-menu" aria-label={`Options for ${business.name}`}>
+                  <ContextMenuItem className="business-tab-menu-item"
+                    onSelect={() => openBusinessAction(business.id, 'edit')}>Edit</ContextMenuItem>
+                  <ContextMenuItem className="business-tab-menu-item business-tab-menu-delete"
+                    onSelect={() => openBusinessAction(business.id, 'delete')}>Delete</ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             ))}
             <button
               aria-label="Add a business"
@@ -2212,13 +2239,6 @@ function CalendarSurface() {
               <Plus size={17} strokeWidth={1.7} />
             </button>
           </nav>
-          {activeBusiness.id !== emptyWorkspace.id && (
-            <button className="icon-button business-manager-trigger" type="button" onClick={() => setIsBusinessManagerOpen(true)}
-              aria-label={`Manage business: ${activeBusiness.name}`}>
-              <Settings2 size={15} aria-hidden="true" />
-              <span><span className="business-manager-trigger-prefix">Manage </span>business</span>
-            </button>
-          )}
           <NotificationCenter
             key={activeBusiness.id}
             businessName={activeBusiness.name}
@@ -2467,7 +2487,8 @@ function CalendarSurface() {
         )}
         {isBusinessManagerOpen && (
           <BusinessManager
-            key={activeBusiness.id}
+            key={`${activeBusiness.id}-${businessManagerAction}`}
+            initialAction={businessManagerAction}
             businessName={activeBusiness.name}
             serviceCount={businessServices.length}
             postCount={activeBusinessPosts.length}

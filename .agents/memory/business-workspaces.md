@@ -12,3 +12,7 @@ Each business is its own workspace. Its services, posts, performance, airtime ba
 Businesses can be renamed or deleted after creation. A rename changes only the business name, not service names or identifiers. Deletion requires explicit confirmation and removes that business's services, posts/results, notifications, settings, and learning while leaving every other business intact.
 
 **Why:** The user explicitly requires post-creation rename/delete controls and reiterated that business names and service names are different things.
+
+Expose business actions through a right-click menu on the business name/tab with exactly “Edit” and “Delete”; do not add a separate “Manage business” button. Selecting Delete opens the existing confirmation, never immediate deletion.
+
+**Why:** The user explicitly rejected the standalone management button and requested the context menu instead.

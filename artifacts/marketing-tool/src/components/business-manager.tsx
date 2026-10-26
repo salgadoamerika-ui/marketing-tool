@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dial
 import './business-manager.css';
 
 type Props = {
+  initialAction?: 'edit' | 'delete';
   businessName: string;
   serviceCount: number;
   postCount: number;
@@ -12,15 +13,15 @@ type Props = {
   onClose(): void;
 };
 
-export function BusinessManager({ businessName, serviceCount, postCount, onRename, onDelete, onClose }: Props) {
+export function BusinessManager({ initialAction = 'edit', businessName, serviceCount, postCount, onRename, onDelete, onClose }: Props) {
   const [name, setName] = useState(businessName);
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting] = useState(initialAction === 'delete');
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState('');
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="business-manager">
-        <DialogTitle className="business-manager-title">{deleting ? 'Delete this business?' : 'Manage business'}</DialogTitle>
+        <DialogTitle className="business-manager-title">{deleting ? 'Delete this business?' : 'Edit business'}</DialogTitle>
         <DialogDescription className="business-manager-description">
           {deleting
             ? `Permanently delete ${businessName}, its ${serviceCount} services and ${postCount} saved posts, including results, learning, suggestions, notifications, and settings. This cannot be undone. Other businesses will not change.`
