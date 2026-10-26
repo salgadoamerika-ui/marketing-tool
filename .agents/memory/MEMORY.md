@@ -4,8 +4,8 @@
 - [Airtime balance intent](airtime-balance-intent.md) — at-a-glance bars reflect monthly calendar volume, not aggregate results or recommended weekly capacity.
 - [Conversion service pattern](conversion-service-pattern.md) — last-three booking-to-views trend; newest-post flag, trust before offers, and recovery resets the episode.
 - [Invisible flat-post ladder](flat-post-ladder.md) — hidden weak-view streak shapes retry, fresh approach and monthly pacing; recovery restores ordinary suggestions.
-- [Service mode intent](service-mode-intent.md) — distinct lifecycles, priority, and additive Campaign history through its deadline; cadence stays internal.
-- [Browser readiness](browser-readiness.md) — prove reloads use a new document; use hit-tested pointer clicks, not DOM clicks, to verify popup controls.
+- [Service mode intent](service-mode-intent.md) — distinct lifecycles, priority, additive history, and dormant Campaign wake-ups; cadence stays internal.
+- [Browser readiness](browser-readiness.md) — seed fixtures once, prove reloads use a new document, and use hit-tested pointer clicks for popup controls.
 - [Business workspace boundaries](business-workspaces.md) — each business owns isolated content, services, airtime, and learning.
 - [Calendar view scope](calendar-view-scope.md) — Month and Week are displays of the same posts; weekly check-in learning is a separate phase.
 - [Vercel build scope](vercel-build-scope.md) — deploy the marketing frontend alone; the workspace-wide build includes a preview sandbox requiring PORT.

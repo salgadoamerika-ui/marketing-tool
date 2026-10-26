@@ -1238,7 +1238,7 @@ function CalendarSurface() {
       platforms,
       startDate: cycle.startDate,
       endDate: cycle.endDate,
-      status: 'active',
+      status: 'active' as const,
       dormantSince: undefined,
       wakeUpHandledCycles: handledWakeCycle(dormant, cycle.cycleKey),
       campaignHistory,
@@ -1338,6 +1338,27 @@ function CalendarSurface() {
       service.id === campaignId && service.businessId === businessId && service.mode === 'campaign'
         ? { ...service, wakeUpHandledCycles: handledWakeCycle(service, cycleKey) }
         : service));
+  };
+
+  const dismissCampaignNameMatch = (
+    campaign: Extract<ServiceDefinition, { mode: 'campaign' }>,
+    cycle: { cycleKey: string; startDate: string; endDate: string },
+  ) => {
+    if (campaign.businessId !== activeBusiness.id) return;
+    markCampaignWakeHandled(campaign.businessId, campaign.id, cycle.cycleKey);
+    const dedupeKey = `campaign-wakeup:${campaign.businessId}:${campaign.id}:${cycle.cycleKey}`;
+    recordNotification({
+      businessId: campaign.businessId,
+      dedupeKey,
+      icon: 'calendar',
+      kind: 'campaign-wakeup',
+      title: `Running ${campaign.name} again?`,
+      subtitle: 'Saved for when you’re ready. The previous cycle’s posts and results are still here.',
+      bannerDismissed: true,
+      action: { kind: 'campaign-wakeup', label: 'Run this Campaign', campaignId: campaign.id, ...cycle },
+    });
+    setNotifications((current) => current.map((notification) => notification.dedupeKey === dedupeKey
+      ? { ...notification, bannerDismissed: true, isRead: true } : notification));
   };
 
   const dismissCampaignWakeupBanner = (notification: AppNotification) => {
@@ -2258,6 +2279,7 @@ function CalendarSurface() {
           <ServiceManager
             services={businessServices}
             onCloseCampaign={handleCloseCampaign}
+            onDismissWakeMatch={dismissCampaignNameMatch}
             today={todayKey}
             businessId={activeBusiness.id}
             businessName={activeBusiness.name}

@@ -14,3 +14,9 @@ Programmatic DOM clicks do not prove a calendar control is usable. Check suggest
 **Why:** A calendar-move check passed using DOM clicks even though the mobile popup placed Add and Skip outside the viewport and scrolled its close button away. Storage assertions alone missed the user-facing failure.
 
 **How to apply:** Verify that Add, Skip and close are visible and hit-test to their own controls, then verify the changed post's visible calendar placement and persistence. Keep control accessibility checks distinct from the planner's data tests.
+
+Persistence test seeds must run only once in an isolated browser context. An unconditional `addInitScript` storage seed reruns on every navigation and can make working saves appear to revert.
+
+**Why:** A Campaign restart check falsely reported lost results and approved posts because the tester restored its original fixture on each reload; the same journey persisted correctly with a one-time seed guard.
+
+**How to apply:** Seed through a one-time setup or a guarded initialization script, and confirm both the new document and the unchanged seed sentinel when verifying reload persistence.

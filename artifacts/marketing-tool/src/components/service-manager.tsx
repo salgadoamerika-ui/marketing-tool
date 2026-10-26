@@ -5,7 +5,7 @@ import {
   type ServiceDefinition,
   modeLabel,
 } from '../lib/services';
-import { cycleForCampaignName, findDormantCampaignMatch } from '../lib/campaign-wakeups';
+import { cycleForCampaignName, findDormantCampaignMatch, type CampaignWakeCycle } from '../lib/campaign-wakeups';
 import './service-manager.css';
 
 type ServiceManagerProps = {
@@ -16,6 +16,7 @@ type ServiceManagerProps = {
   defaultPlatforms: string[];
   onSave: (service: ServiceDefinition) => string | ServiceDefinition;
   onCloseCampaign: (service: Extract<ServiceDefinition, { mode: 'campaign' }>) => string | undefined;
+  onDismissWakeMatch: (service: Extract<ServiceDefinition, { mode: 'campaign' }>, cycle: CampaignWakeCycle) => void;
   today: string;
   onClose: () => void;
 };
@@ -60,6 +61,7 @@ export function ServiceManager({
   defaultPlatforms,
   onSave,
   onCloseCampaign,
+  onDismissWakeMatch,
   today,
   onClose,
 }: ServiceManagerProps) {
@@ -338,7 +340,8 @@ export function ServiceManager({
                   aria-invalid={Boolean(error) && draft.isNew && !draft.name.trim()}
                 />
               </label>
-              {wakeMatch && ignoredWakeMatchId !== wakeMatch.id && !draft.wakeFromDormant && (
+              {wakeMatch && wakeCycle && ignoredWakeMatchId !== wakeMatch.id && !draft.wakeFromDormant
+                && !(wakeMatch.wakeUpHandledCycles ?? []).includes(wakeCycle.cycleKey) && (
                 <section className="sm-wakeup-offer">
                   <div>
                     <strong>Running {wakeMatch.name} again?</strong>
@@ -350,7 +353,10 @@ export function ServiceManager({
                     </button>
                     <button
                       className="sm-btn sm-btn-small"
-                      onClick={() => setIgnoredWakeMatchId(wakeMatch.id)}
+                      onClick={() => {
+                        setIgnoredWakeMatchId(wakeMatch.id);
+                        onDismissWakeMatch(wakeMatch, wakeCycle);
+                      }}
                       type="button"
                     >
                       Not now

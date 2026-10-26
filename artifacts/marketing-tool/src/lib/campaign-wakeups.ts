@@ -57,7 +57,8 @@ export function nextCampaignWakeCycle(
   const dormantSince = campaign.dormantSince ?? campaign.endDate;
   const afterYear = dateParts(dormantSince).year;
   const todayYear = dateParts(today).year;
-  for (let year = Math.min(afterYear, todayYear); year <= Math.max(afterYear, todayYear) + 3; year += 1) {
+  const firstYear = Math.max(dateParts(campaign.startDate).year + 1, Math.min(afterYear, todayYear));
+  for (let year = firstYear; year <= Math.max(firstYear, afterYear, todayYear) + 3; year += 1) {
     const cycle = campaignCycleForYear(campaign, year);
     if (cycle.startDate <= dormantSince || cycle.endDate < today) continue;
     return cycle;

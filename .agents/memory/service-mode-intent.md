@@ -38,3 +38,9 @@ Campaign additions accumulate through the deadline. Keep completed, measured, pu
 **Why:** The user explicitly asked that approving new closing posts never erase completed or past Campaign posts, while earlier-due approved steps can still move up and new steps can fill the remaining deadline window.
 
 **How to apply:** Keep historical entries out of Campaign replacement candidates. Limit earlier moves to still-upcoming, unmeasured approved plans, and keep every added Campaign date on or before its deadline.
+
+An ended or manually closed Campaign becomes dormant, not deleted. Keep its posts, results, previous cycle details, and learning. Offer to run it again when its annual season returns, or when a new Campaign name matches a dormant one after ignoring the year.
+
+**Why:** The user defines dormant Campaigns as sleeping projects whose previous work should make the next cycle easier, not discarded projects.
+
+**How to apply:** Keep wake-ups inside the same business. Yes reactivates the project and uses its prior results for the starting-plan suggestions, retaining Add approval. Not now suppresses the offer for that cycle; dismissed wake-ups remain actionable in the bell. Do not merge wake-ups with the weekly or paid-ad check-ins.
