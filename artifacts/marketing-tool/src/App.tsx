@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, Settings2, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { NotificationCenter } from '@/components/notification-center';
+import { useNotificationSound } from '@/hooks/use-notification-sound';
+import { performanceAttentionKey } from '@/lib/notification-sound';
 import { CampaignWakeupBanner } from '@/components/campaign-wakeup-banner';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
@@ -675,6 +677,7 @@ function CalendarSurface() {
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     parseNotifications(window.localStorage.getItem(notificationsStorageKey)));
+  const { soundEnabled, toggleSound } = useNotificationSound(notifications, activeBusinessId);
   const recordNotification = useCallback((
     notification: Omit<AppNotification, 'id' | 'createdAt' | 'isRead'>,
     refreshExisting = false,
@@ -1001,6 +1004,15 @@ function CalendarSurface() {
       ? `${proposal.contentType} for ${source.project}, ${formatPostOptionDate(proposal.date)}`
       : `${source.project} · ${actionInsight.performanceInsight?.title ?? actionInsight.title}`;
     const dedupeKey = insightNotificationKey(activeBusiness.id, actionInsight);
+    const performanceAlert = actionInsight.action !== 'skipped' && (
+      actionInsight.performanceInsight || actionInsight.performanceOnly || actionInsight.action === 'results'
+    ) ? getCompletionPerformanceInsight(
+        source,
+        activeBusinessPosts.filter((post) => post.date <= todayKey),
+        todayKey,
+        seededCalendarDates[activeBusiness.id] ?? [],
+        businessServices,
+      ) : undefined;
     recordNotification({
       businessId: activeBusiness.id,
       dedupeKey,
@@ -1008,6 +1020,9 @@ function CalendarSurface() {
       title: 'New insight surfaced',
       subtitle: description,
       kind: 'insight',
+      ...(performanceAlert ? {
+        attentionEventKey: performanceAttentionKey(activeBusiness.id, source.project, performanceAlert),
+      } : {}),
       action: {
         kind: 'reopen-insight',
         label: 'Reopen insight',
@@ -1015,7 +1030,7 @@ function CalendarSurface() {
         insight: actionInsight,
       },
     });
-  }, [actionInsight, activeBusiness.id, activeBusinessPosts, recordNotification]);
+  }, [actionInsight, activeBusiness.id, activeBusinessPosts, recordNotification, todayKey, businessServices]);
 
   useEffect(() => {
     try {
@@ -2056,6 +2071,8 @@ function CalendarSurface() {
             onDismiss={dismissActiveNotification}
             onClearAll={clearActiveNotifications}
             onActivate={handleOpenNotification}
+            soundEnabled={soundEnabled}
+            onToggleSound={toggleSound}
           />
         </div>
         {campaignWakeupBanners.length > 0 && (

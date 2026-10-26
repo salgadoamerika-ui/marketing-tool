@@ -10,3 +10,4 @@
 - [Calendar view scope](calendar-view-scope.md) — Month and Week are displays of the same posts; weekly check-in learning is a separate phase.
 - [Vercel build scope](vercel-build-scope.md) — deploy the marketing frontend alone; the workspace-wide build includes a preview sandbox requiring PORT.
 - [Skip feedback intent](skip-feedback-intent.md) — retained skips gently reduce same-type suggestions within one service and business; offer one opt-in alternative.
+- [Notification sound intent](notification-sound-intent.md) — only real performance alerts and Campaign wake-ups chime; ordinary actions and replays stay quiet.

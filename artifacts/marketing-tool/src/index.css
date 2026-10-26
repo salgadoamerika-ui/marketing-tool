@@ -284,7 +284,25 @@
   display: inline-flex;
   flex: none;
   margin-bottom: 2px;
+  align-items: center;
+  gap: 8px;
 }
+.notification-sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: #9a7b31;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease;
+}
+.notification-sound-toggle:hover { background: #f8f1df; color: #755a1e; }
+.notification-sound-toggle[aria-pressed="false"] { color: var(--plum-soft); }
+.notification-sound-toggle:focus-visible { outline: 2px solid #b29752; outline-offset: 3px; }
 .notification-bell {
   position: relative;
   display: inline-flex;

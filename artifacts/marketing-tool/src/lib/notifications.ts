@@ -37,6 +37,7 @@ export type AppNotification = {
   createdAt: number;
   isRead: boolean;
   bannerDismissed?: boolean;
+  attentionEventKey?: string;
   action?: NotificationAction;
 };
 
@@ -89,6 +90,7 @@ export function parseNotifications(serialized: string | null): AppNotification[]
       && typeof value.createdAt === 'number'
       && typeof value.isRead === 'boolean'
       && (value.bannerDismissed === undefined || typeof value.bannerDismissed === 'boolean')
+      && (value.attentionEventKey === undefined || typeof value.attentionEventKey === 'string')
       && (value.dedupeKey === undefined || typeof value.dedupeKey === 'string')
       && (value.action === undefined || isNotificationAction(value.action)));
   } catch {

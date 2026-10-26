@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, CalendarDays, Check, Sparkles, X } from 'lucide-react';
+import { Bell, CalendarDays, Check, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import type { AppNotification } from '@/lib/notifications';
 
 type Props = {
@@ -10,6 +10,8 @@ type Props = {
   onDismiss: (id: string) => void;
   onClearAll: () => void;
   onActivate: (notification: AppNotification) => void;
+  soundEnabled: boolean;
+  onToggleSound: () => void;
 };
 
 function notificationIcon(icon: string) {
@@ -36,6 +38,8 @@ export function NotificationCenter({
   onDismiss,
   onClearAll,
   onActivate,
+  soundEnabled,
+  onToggleSound,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -65,6 +69,16 @@ export function NotificationCenter({
 
   return (
     <div className="notification-center" ref={rootRef}>
+      <button
+        aria-label={soundEnabled ? 'Mute notification sound' : 'Enable notification sound'}
+        aria-pressed={soundEnabled}
+        title={soundEnabled ? 'Notification sound on' : 'Notification sound off'}
+        className="notification-sound-toggle"
+        onClick={onToggleSound}
+        type="button"
+      >
+        {soundEnabled ? <Volume2 size={16} strokeWidth={1.7} /> : <VolumeX size={16} strokeWidth={1.7} />}
+      </button>
       <button
         aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
         aria-expanded={isOpen}
