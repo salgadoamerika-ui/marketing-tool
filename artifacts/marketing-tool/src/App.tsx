@@ -13,6 +13,7 @@ import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { NotificationCenter } from '@/components/notification-center';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { performanceAttentionKey } from '@/lib/notification-sound';
+import { currentDateInput } from '@/lib/current-date';
 import { CampaignWakeupBanner } from '@/components/campaign-wakeup-banner';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ConversionGapPanel } from '@/components/conversion-gap-panel';
@@ -412,13 +413,6 @@ function formatDateInput(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function defaultPostDate(visibleMonth: Date) {
-  const today = new Date();
-  return today.getFullYear() === visibleMonth.getFullYear() && today.getMonth() === visibleMonth.getMonth()
-    ? formatDateInput(today)
-    : formatDateInput(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1));
-}
-
 function createPostForm(date: string, platforms: Platform[] = []): PostForm {
   return {
     project: '',
@@ -670,8 +664,8 @@ function CalendarSurface() {
       : sampleBusinesses[0].id;
   });
   const [todayKey, setTodayKey] = useState(() => formatDateInput(new Date()));
-  const [visibleMonth, setVisibleMonth] = useState(new Date(2026, 8, 1));
-  const [visibleWeekStart, setVisibleWeekStart] = useState(() => mondayStart(new Date(2026, 8, 1)));
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date());
+  const [visibleWeekStart, setVisibleWeekStart] = useState(() => mondayStart(new Date()));
   const [calendarView, setCalendarView] = useState<'month' | 'week'>('month');
   const [statusMessage, setStatusMessage] = useState('');
   const [userPosts, setUserPosts] = useState<UserPost[]>(readUserPosts);
@@ -725,7 +719,7 @@ function CalendarSurface() {
     endKey: string;
   } | null>(null);
   const [selectedWeeklyInsightsPostId, setSelectedWeeklyInsightsPostId] = useState('');
-  const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(formatDateInput(new Date())));
+  const [postForm, setPostForm] = useState<PostForm>(() => createPostForm(currentDateInput()));
   const [formError, setFormError] = useState('');
   const [actionInsight, setActionInsight] = useState<ActionInsight | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -1458,8 +1452,8 @@ function CalendarSurface() {
       notification.businessId !== activeBusiness.id));
   };
 
-  const openPostForm = (date?: string) => {
-    setPostForm(createPostForm(date ?? defaultPostDate(calendarDisplayMonth), activeBusiness.platforms));
+  const openPostForm = () => {
+    setPostForm(createPostForm(currentDateInput(), activeBusiness.platforms));
     setFormError('');
     setStatusMessage('');
     setIsPostFormOpen(true);
@@ -2155,7 +2149,7 @@ function CalendarSurface() {
               todayKey={todayKey}
               onPreviousWeek={() => setVisibleWeekStart((current) => shiftCalendarDays(current, -7))}
               onNextWeek={() => setVisibleWeekStart((current) => shiftCalendarDays(current, 7))}
-              onAddPost={(date) => openPostForm(date)}
+              onAddPost={() => openPostForm()}
               onOpenPost={setSelectedPostId}
               onToggleComplete={handleTogglePostCompletion}
               onSkipPost={handleSkipPost}

@@ -10,7 +10,7 @@ type Props = {
 
 function monthName(month: number): string {
   return new Intl.DateTimeFormat('en-US', { month: 'long' })
-    .format(new Date(2026, month - 1, 1));
+    .format(new Date(new Date().getFullYear(), month - 1, 1));
 }
 
 export function SeasonalitySuggestionPopup({
