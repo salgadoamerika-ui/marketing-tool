@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  businessOverridesStorageKey, loadBusinessOverrides, validateBusinessName,
+  businessOverridesStorageKey, loadBusinessOverrides, validateBusinessName, renameBusiness,
   withoutBusiness, withoutBusinessSettings, withoutBusinessSeasons,
 } from '../src/lib/business-management.ts';
 import { shouldOfferFirstRun } from '../src/lib/first-run.ts';
@@ -12,6 +12,39 @@ test('business names are required and unique, without blocking an unchanged name
   assert.match(validateBusinessName(' orchard school ', 'a', businesses), /already exists/);
   assert.equal(validateBusinessName(' Willow Studio ', 'a', businesses), undefined);
   assert.equal(validateBusinessName('Willow Collective', 'a', businesses), undefined);
+  assert.match(validateBusinessName('ORCHARD SCHOOL', 'a', [
+    businesses[0], { id: 'b', name: ' Orchard School ' },
+  ]), /already exists/);
+  assert.equal(validateBusinessName('Willow Studio', 'new-business', []), undefined);
+});
+
+test('rename changes only the business label, retaining identifiers and all workspace data', () => {
+  const services = [{ id: 'service-a', businessId: 'a', name: 'Consulting' }];
+  const posts = [{
+    id: 'post-a', businessId: 'a', project: 'Consulting',
+    title: 'Consulting results', performance: { views: 120, saves: 4, bookings: 2 },
+  }];
+  const settings = { platforms: ['Instagram'], contentTypes: ['Proof'] };
+  const learning = { skippedTypes: ['Insight'], seasonMonths: [1, 2] };
+  const first = {
+    id: 'a', name: 'Consulting', accent: 'sage', projects: ['Consulting'],
+    services, posts, settings, learning,
+  };
+  const second = { ...first, id: 'b', name: 'Other brand' };
+  const businesses = [first, second];
+  const before = JSON.stringify(businesses);
+  const renamed = renameBusiness(businesses, 'a', '  Willow Studio  ');
+
+  assert.deepEqual(renamed[0], { ...first, name: 'Willow Studio' });
+  assert.equal(renamed[1], second);
+  for (const key of ['projects', 'services', 'posts', 'settings', 'learning']) {
+    assert.equal(renamed[0][key], first[key], `${key} must not be rewritten`);
+  }
+  assert.equal(JSON.stringify(businesses), before, 'original records are not mutated');
+  assert.deepEqual(JSON.parse(JSON.stringify(renamed)), [
+    { ...first, name: 'Willow Studio' }, second,
+  ], 'the updated label and all existing work survive a storage round-trip');
+  assert.deepEqual(renameBusiness(businesses, 'missing', 'Unused'), businesses);
 });
 
 test('deletion removes only the exact business, retaining other businesses and embedded results', () => {

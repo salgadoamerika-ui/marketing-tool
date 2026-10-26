@@ -22,10 +22,18 @@ export function validateBusinessName(
 ): string | undefined {
   if (!name.trim()) return 'Enter a business name.';
   if (businesses.some((business) => business.id !== businessId
-    && business.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase())) {
+    && business.name.trim().toLowerCase() === name.trim().toLowerCase())) {
     return 'A business with that name already exists.';
   }
   return undefined;
+}
+
+/** Business names are labels, never keys for services, posts, or learning. */
+export function renameBusiness<T extends { id: string; name: string }>(
+  businesses: T[], businessId: string, name: string,
+): T[] {
+  return businesses.map((business) =>
+    business.id === businessId ? { ...business, name: name.trim() } : business);
 }
 
 export function withoutBusiness<T extends { businessId: string }>(items: T[], businessId: string): T[] {

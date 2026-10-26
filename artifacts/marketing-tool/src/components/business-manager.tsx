@@ -21,11 +21,11 @@ export function BusinessManager({ initialAction = 'edit', businessName, serviceC
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="business-manager">
-        <DialogTitle className="business-manager-title">{deleting ? 'Delete this business?' : 'Edit business'}</DialogTitle>
+        <DialogTitle className="business-manager-title">{deleting ? 'Delete this business?' : 'Rename business'}</DialogTitle>
         <DialogDescription className="business-manager-description">
           {deleting
             ? `Permanently delete ${businessName}, its ${serviceCount} services and ${postCount} saved posts, including results, learning, suggestions, notifications, and settings. This cannot be undone. Other businesses will not change.`
-            : 'Your business and its services are separate. Renaming the business keeps all services, posts, results, and learning as they are.'}
+            : 'Use your brand name here. Only the business tab name changes; service names, posts, results, settings, and learning stay as they are.'}
         </DialogDescription>
         {deleting ? (
           <form className="business-manager-form" onSubmit={(event) => {
@@ -57,8 +57,9 @@ export function BusinessManager({ initialAction = 'edit', businessName, serviceC
             }}>
               <label htmlFor="rename-business">Business name</label>
               <input id="rename-business" value={name} required autoComplete="organization"
+                aria-invalid={Boolean(error)} aria-describedby={error ? 'rename-business-error' : undefined}
                 onChange={(event) => { setName(event.target.value); setError(''); }} />
-              {error && <p className="business-manager-error" role="alert">{error}</p>}
+              {error && <p id="rename-business-error" className="business-manager-error" role="alert">{error}</p>}
               <div className="business-manager-actions">
                 <button type="button" className="cancel-button" onClick={onClose}>Cancel</button>
                 <button type="submit" className="save-button">Save business name</button>

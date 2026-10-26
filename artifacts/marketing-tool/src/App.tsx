@@ -19,7 +19,7 @@ import {
   ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem,
 } from '@/components/ui/context-menu';
 import {
-  businessOverridesStorageKey, loadBusinessOverrides, validateBusinessName,
+  businessOverridesStorageKey, loadBusinessOverrides, validateBusinessName, renameBusiness,
   withoutBusiness, withoutBusinessSettings, withoutBusinessSeasons,
 } from '@/lib/business-management';
 import { firstRunStorageKey, validateFirstRun, type FirstRunSetupInput } from '@/lib/first-run';
@@ -1916,8 +1916,7 @@ function CalendarSurface() {
     if (!businesses.some((business) => business.id === target)) return 'Choose a business first.';
     const error = validateBusinessName(name, target, businesses);
     if (error) return error;
-    const nextBusinesses = userBusinesses.map((business) =>
-      business.id === target ? { ...business, name: name.trim() } : business);
+    const nextBusinesses = renameBusiness(userBusinesses, target, name);
     const nextOverrides = userBusinesses.some((business) => business.id === target)
       ? businessOverrides
       : { ...businessOverrides, [target]: { ...businessOverrides[target], name: name.trim() } };
@@ -2028,8 +2027,9 @@ function CalendarSurface() {
                 <ContextMenuTrigger asChild>
               <button
                 aria-pressed={business.id === activeBusiness.id}
+                aria-describedby="business-rename-hint"
                 className={`business-tab ${business.id === activeBusiness.id ? 'active' : ''}`}
-                title="Right-click to edit or delete this business"
+                title="Right-click and choose Edit to rename this business"
                 style={{ '--business-accent-color': getBusinessAccent(business.accent).color } as CSSProperties}
                 onClick={() => {
                   setActiveBusinessId(business.id);
@@ -2083,6 +2083,11 @@ function CalendarSurface() {
             onToggleSound={toggleSound}
           />
         </div>
+        {businesses.length > 0 && (
+          <p id="business-rename-hint" className="business-rename-hint">
+            To rename a business, right-click its tab and choose Edit.
+          </p>
+        )}
         {campaignWakeupBanners.length > 0 && (
           <div className="campaign-wakeup-stack">
             {campaignWakeupBanners.map((notification) => (
