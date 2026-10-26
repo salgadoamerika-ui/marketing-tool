@@ -1,0 +1,12 @@
+.welcome-app-content {
+  min-height: 100svh;
+  opacity: 0;
+  outline: none;
+  transition: opacity 650ms cubic-bezier(.2, .7, .2, 1);
+}
+
+.welcome-app-content-visible { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-app-content { transition: none; }
+}

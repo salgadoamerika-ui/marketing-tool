@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, HeartHandshake, Plus, Settings2, X } from 'lucide-react';
 import { ActionInsightPopup } from '@/components/action-insight-popup';
 import { NotificationCenter } from '@/components/notification-center';
+import { WelcomeEntry } from '@/components/welcome-entry';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { performanceAttentionKey } from '@/lib/notification-sound';
 import { currentDateInput } from '@/lib/current-date';
@@ -2716,7 +2717,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
+          <WelcomeEntry>
+            <Router />
+          </WelcomeEntry>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
